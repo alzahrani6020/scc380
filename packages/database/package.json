@@ -6,7 +6,7 @@
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "tsup src/index.ts --format cjs,esm --dts --external prisma --external @prisma/client",
+    "build": "pnpm exec tsup src/index.ts --format cjs,esm --dts --external prisma --external @prisma/client",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",

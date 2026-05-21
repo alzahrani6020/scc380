@@ -7,8 +7,8 @@
   "types": "./dist/index.d.ts",
   "sideEffects": false,
   "scripts": {
-    "build": "tsup src/index.ts --format cjs,esm --dts --external react --external react-dom",
-    "dev": "tsup src/index.ts --format cjs,esm --dts --external react --external react-dom --watch",
+    "build": "pnpm exec tsup src/index.ts --format cjs,esm --dts --external react --external react-dom",
+    "dev": "pnpm exec tsup src/index.ts --format cjs,esm --dts --external react --external react-dom --watch",
     "lint": "eslint \"src/**/*.tsx\" --fix"
   },
   "dependencies": {
