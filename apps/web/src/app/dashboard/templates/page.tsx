@@ -164,7 +164,7 @@ export default function TemplatesPage() {
           <p>لا توجد نماذج مطابقة للبحث</p>
         </div>
       ) : (
-        Object.entries(grouped).map(([catKey, items]) => {
+        (Object.entries(grouped) as [string, Template[]][]).map(([catKey, items]) => {
           const cat = categories.find((c) => c.key === catKey);
           const colorClass = categoryColors[catKey] || 'bg-slate-50 text-slate-700 border-slate-200';
           const Icon = categoryIcons[catKey] || FileText;
