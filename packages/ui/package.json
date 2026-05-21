@@ -17,7 +17,7 @@
     "clsx": "^2.1.0",
     "tailwind-merge": "^2.2.0"
   },
-  "devDependencies": {
+  "dependencies": {
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "react": "^18.2.0",
