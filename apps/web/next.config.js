@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  transpilePackages: ['@scc/ui', '@scc/utils'],
   images: {
     unoptimized: true,
   },
