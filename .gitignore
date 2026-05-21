@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+.pnpm-debug.log*
+
+# Next.js
+.next/
+out/
+
+# NestJS
+dist/
+build/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Misc
+*.swp
+*.swo
+*~
+
+# Docker volumes
+infrastructure/docker/**/data/

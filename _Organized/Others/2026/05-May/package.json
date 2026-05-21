@@ -1,0 +1,31 @@
+{
+  "name": "smart-command-center",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Hybrid Multi-Tenant SaaS Platform: CRM + ERP + HR + Fleet + Analytics + Government Integrations",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "format": "prettier --write \"**/*.{ts,tsx,md}\"",
+    "db:generate": "turbo run db:generate",
+    "db:migrate": "turbo run db:migrate",
+    "db:push": "turbo run db:push",
+    "db:studio": "cd packages/database && npx prisma studio",
+    "docker:up": "docker compose -f infrastructure/docker/dev/docker-compose.yml up -d",
+    "docker:down": "docker compose -f infrastructure/docker/dev/docker-compose.yml down",
+    "docker:prod": "docker compose -f infrastructure/docker/prod/docker-compose.yml up -d",
+    "setup": "pnpm install && pnpm db:generate && pnpm docker:up"
+  },
+  "devDependencies": {
+    "prettier": "^3.2.0",
+    "tsx": "^4.7.0",
+    "turbo": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "packageManager": "pnpm@8.15.0"
+}

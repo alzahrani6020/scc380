@@ -1,0 +1,118 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary: #0066CC;
+  --primary-dark: #004499;
+  --accent: #f59e0b;
+  --dark: #0f172a;
+  --dark-light: #1e293b;
+  --dark-lighter: #334155;
+}
+
+@layer base {
+  html { @apply antialiased; direction: rtl; }
+  body { @apply bg-slate-950 text-white font-sans; }
+}
+
+@layer components {
+  /* Cards */
+  .scc-card {
+    @apply bg-slate-900/60 backdrop-blur-xl rounded-2xl border border-slate-700/50 p-6 shadow-xl;
+  }
+  .scc-card-hover {
+    @apply scc-card transition-all duration-300 hover:border-primary-500/30 hover:shadow-primary-500/10 hover:-translate-y-1;
+  }
+
+  /* Buttons */
+  .scc-btn {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold transition-all duration-200;
+  }
+  .scc-btn-primary {
+    @apply scc-btn bg-gradient-to-r from-primary-600 to-primary-700 text-white shadow-lg shadow-primary-500/25 hover:shadow-primary-500/40 hover:scale-[1.02] active:scale-[0.98];
+  }
+  .scc-btn-gold {
+    @apply scc-btn bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-lg shadow-amber-500/25 hover:shadow-amber-500/40 hover:scale-[1.02] active:scale-[0.98];
+  }
+  .scc-btn-ghost {
+    @apply scc-btn bg-slate-800/80 text-slate-300 border border-slate-700 hover:bg-slate-700 hover:text-white;
+  }
+
+  /* Inputs */
+  .scc-input {
+    @apply w-full bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 transition-all;
+  }
+
+  /* Sidebar */
+  .scc-sidebar-link {
+    @apply flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-slate-400 transition-all duration-200 hover:bg-slate-800 hover:text-white;
+  }
+  .scc-sidebar-link.active {
+    @apply bg-gradient-to-r from-primary-600/20 to-transparent text-primary-400 border-r-2 border-primary-500;
+  }
+
+  /* Gradients & Effects */
+  .scc-gradient-text {
+    @apply bg-gradient-to-r from-primary-400 via-purple-400 to-amber-400 bg-clip-text text-transparent;
+  }
+  .scc-glow {
+    box-shadow: 0 0 40px rgba(0, 102, 204, 0.15);
+  }
+  .scc-glow-gold {
+    box-shadow: 0 0 40px rgba(245, 158, 11, 0.2);
+  }
+
+  /* Status Badges */
+  .badge-vip {
+    @apply inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-gradient-to-r from-amber-500 to-orange-600 text-white;
+  }
+  .badge-active {
+    @apply inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30;
+  }
+}
+
+/* Animations */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 20px rgba(0, 102, 204, 0.3); }
+  50% { box-shadow: 0 0 40px rgba(0, 102, 204, 0.5); }
+}
+.animate-fade-in-up {
+  animation: fadeInUp 0.6s ease-out forwards;
+}
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Print Styles for Thermal Receipt */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .fixed.inset-0,
+  .fixed.inset-0 * {
+    visibility: visible;
+  }
+  .fixed.inset-0 {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    background: white !important;
+  }
+  .fixed.inset-0 > div {
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 auto !important;
+  }
+  .scc-sidebar-link,
+  nav,
+  header,
+  button {
+    display: none !important;
+  }
+}

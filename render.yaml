@@ -1,0 +1,69 @@
+databases:
+  - name: scc-postgres
+    databaseName: scc_main
+    user: postgres
+    plan: free
+    region: frankfurt
+
+services:
+  # Redis
+  - type: pserv
+    name: scc-redis
+    runtime: docker
+    plan: free
+    image: redis:7-alpine
+
+  # Backend API
+  - type: web
+    name: scc-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./apps/api/Dockerfile
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+      - key: DATABASE_URL
+        fromDatabase:
+          name: scc-postgres
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: pserv
+          name: scc-redis
+          property: host
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 1h
+      - key: CORS_ORIGINS
+        value: https://*.onrender.com
+      - key: MINIO_ENDPOINT
+        value: localhost
+      - key: MINIO_PORT
+        value: 9000
+      - key: MINIO_ACCESS_KEY
+        value: minioadmin
+      - key: MINIO_SECRET_KEY
+        value: minioadmin
+      - key: OLLAMA_URL
+        value: http://localhost:11434
+    healthCheckPath: /
+
+  # Frontend Web
+  - type: web
+    name: scc-web
+    runtime: docker
+    plan: free
+    dockerfilePath: ./apps/web/Dockerfile
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          type: web
+          name: scc-api
+          property: url
