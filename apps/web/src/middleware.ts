@@ -7,7 +7,6 @@ function verifyToken(token: string): boolean {
   try {
     const decoded = Buffer.from(token, 'base64url').toString('utf-8');
     const data = JSON.parse(decoded);
-    // صالح لمدة 24 ساعة من الإنشاء
     if (data.exp && Date.now() > data.exp) return false;
     if (data.secret !== SECRET) return false;
     return true;
@@ -21,8 +20,32 @@ export function middleware(request: NextRequest) {
   const demoToken = request.nextUrl.searchParams.get('demo');
   const demoUsed = request.cookies.get('demo_used')?.value;
 
-  // السماح بالوصول لـ API routes وصفحة expired و admin
-  if (path.startsWith('/api/') || path === '/expired' || path.startsWith('/admin/')) {
+  // السماح بالوصول لـ API routes وصفحة expired و admin و landing و preview
+  if (
+    path.startsWith('/api/') ||
+    path === '/expired' ||
+    path.startsWith('/admin/') ||
+    path === '/landing' ||
+    path === '/preview'
+  ) {
+    // بالنسبة لـ preview: إذا جاء مع demo token نتحقق منه ونضع cookie
+    if (path === '/preview' && demoToken) {
+      if (!verifyToken(demoToken)) {
+        return NextResponse.redirect(new URL('/expired', request.url));
+      }
+      if (demoUsed === demoToken) {
+        return NextResponse.redirect(new URL('/expired', request.url));
+      }
+      const response = NextResponse.next();
+      response.cookies.set('demo_used', demoToken, {
+        httpOnly: true,
+        secure: true,
+        sameSite: 'strict',
+        path: '/',
+        maxAge: 60 * 60 * 24,
+      });
+      return response;
+    }
     return NextResponse.next();
   }
 
@@ -31,20 +54,16 @@ export function middleware(request: NextRequest) {
     if (!verifyToken(demoToken)) {
       return NextResponse.redirect(new URL('/expired', request.url));
     }
-
-    // إذا استُخدم من قبل في نفس المتصفح
     if (demoUsed === demoToken) {
       return NextResponse.redirect(new URL('/expired', request.url));
     }
-
-    // السماح بالوصول ووضع cookie
     const response = NextResponse.next();
     response.cookies.set('demo_used', demoToken, {
       httpOnly: true,
       secure: true,
       sameSite: 'strict',
       path: '/',
-      maxAge: 60 * 60 * 24, // 24 ساعة
+      maxAge: 60 * 60 * 24,
     });
     return response;
   }
