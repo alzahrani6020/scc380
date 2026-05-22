@@ -105,7 +105,7 @@ export default function LandingPage() {
 
           <div className="hidden md:flex items-center gap-3">
             <Link href="/auth/login" className="text-slate-300 hover:text-white transition-colors text-sm font-medium px-4 py-2">تسجيل الدخول</Link>
-            <Link href="/auth/register" className="bg-primary-600 hover:bg-primary-500 text-white text-sm font-bold px-5 py-2.5 rounded-xl transition-all shadow-lg shadow-primary-600/20">ابدأ مجانًا</Link>
+            <Link href="/auth/register" className="bg-primary-600 hover:bg-primary-500 text-white text-sm font-bold px-5 py-2.5 rounded-xl transition-all shadow-lg shadow-primary-600/20">إنشاء حساب</Link>
           </div>
 
           <button className="md:hidden p-2" onClick={() => setMobileMenu(!mobileMenu)}>
@@ -121,7 +121,7 @@ export default function LandingPage() {
             <a href="#faq" onClick={() => setMobileMenu(false)} className="block text-slate-300 py-2">الأسئلة</a>
             <hr className="border-slate-800" />
             <Link href="/auth/login" className="block text-slate-300 py-2">تسجيل الدخول</Link>
-            <Link href="/auth/register" className="block bg-primary-600 text-white text-center py-2.5 rounded-xl font-bold">ابدأ مجانًا</Link>
+            <Link href="/auth/register" className="block bg-primary-600 text-white text-center py-2.5 rounded-xl font-bold">إنشاء حساب</Link>
           </div>
         )}
       </nav>
