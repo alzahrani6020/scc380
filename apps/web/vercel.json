@@ -1,9 +1,5 @@
 {
-  "buildCommand": "npm install -g pnpm && pnpm install && pnpm --filter @scc/types build && pnpm --filter @scc/utils build && pnpm --filter @scc/ui build && pnpm --filter @scc/auth build && pnpm --filter @scc/web build",
-  "outputDirectory": "apps/web/.next",
+  "buildCommand": "pnpm --filter @scc/types build && pnpm --filter @scc/utils build && pnpm --filter @scc/ui build && pnpm --filter @scc/auth build && pnpm --filter @scc/web build",
   "framework": "nextjs",
-  "installCommand": "echo 'Installed via buildCommand'",
-  "env": {
-    "NEXT_PUBLIC_API_URL": "https://scc-api.onrender.com"
-  }
+  "installCommand": "NODE_ENV=development pnpm install --frozen-lockfile"
 }

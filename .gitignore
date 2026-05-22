@@ -35,3 +35,5 @@ npm-debug.log*
 
 # Docker volumes
 infrastructure/docker/**/data/
+
+.vercel
