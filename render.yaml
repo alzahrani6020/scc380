@@ -1,7 +1,7 @@
 databases:
   - name: scc-postgres
     databaseName: scc_main
-    user: postgres
+    user: sccuser
     plan: free
 
 services:
