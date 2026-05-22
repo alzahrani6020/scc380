@@ -84,8 +84,44 @@ model Tenant {
   depreciationEntries DepreciationEntry[]
   costCenters   CostCenter[]
   financialPeriods FinancialPeriod[]
+  zatcaCredential ZatcaCredential?
 
   @@map("tenants")
+}
+
+model ZatcaCredential {
+  id            String   @id @default(cuid())
+  tenantId      String   @unique
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // CSR & Keys
+  privateKey    String?  @db.Text
+  publicKey     String?  @db.Text
+  csrPem        String?  @db.Text
+
+  // CSID from ZATCA
+  csid          String?  @db.Text
+  secretKey     String?  @db.Text
+  complianceToken  String? @db.Text
+  productionToken  String? @db.Text
+
+  // OTP from ZATCA portal
+  otp           String?
+  otpExpiresAt  DateTime?
+
+  // Status
+  status        String   @default("PENDING") // PENDING, COMPLIANCE_TESTED, ACTIVE, EXPIRED, REVOKED
+  environment   String   @default("SANDBOX") // SANDBOX, PRODUCTION
+
+  // Tracking
+  lastRenewedAt DateTime?
+  expiresAt     DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([status])
+  @@map("zatca_credentials")
 }
 
 model User {

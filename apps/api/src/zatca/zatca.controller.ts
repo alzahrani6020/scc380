@@ -1,7 +1,8 @@
-import { Controller, Get, Post, Param, Request, UseGuards, Body, Res } from '@nestjs/common';
+import { Controller, Get, Post, Param, Request, UseGuards, Body, Res, Query, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ZatcaService } from './zatca.service';
+import { ZatcaCredentialService } from './zatca-credential.service';
 import { Response } from 'express';
 
 @ApiTags('ZATCA')
@@ -9,8 +10,40 @@ import { Response } from 'express';
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class ZatcaController {
-  constructor(private service: ZatcaService) {}
+  constructor(
+    private service: ZatcaService,
+    private credentialService: ZatcaCredentialService,
+  ) {}
 
+  // ─── Credential Management ───────────────────────────────────────────
+  @Post('credentials/csr')
+  async generateCSR(
+    @Request() req: any,
+    @Body('otp') otp: string,
+  ) {
+    if (!otp) throw new BadRequestException('OTP مطلوب');
+    return this.credentialService.generateCSR(req.user.tenantId, otp);
+  }
+
+  @Post('credentials/csid')
+  async requestCSID(
+    @Request() req: any,
+    @Query('environment') environment?: 'SANDBOX' | 'PRODUCTION',
+  ) {
+    return this.credentialService.requestCSID(req.user.tenantId, environment || 'SANDBOX');
+  }
+
+  @Post('credentials/renew')
+  async renewCSID(@Request() req: any) {
+    return this.credentialService.renewCSID(req.user.tenantId);
+  }
+
+  @Get('credentials/status')
+  async getCredentialStatus(@Request() req: any) {
+    return this.credentialService.getStatus(req.user.tenantId);
+  }
+
+  // ─── Invoice Operations ──────────────────────────────────────────────
   @Post('invoices/:id/sign')
   async signInvoice(@Param('id') id: string, @Request() req: any) {
     return this.service.signInvoice(id, req.user.tenantId);
@@ -40,6 +73,7 @@ export class ZatcaController {
     res.send(pdfBuffer);
   }
 
+  // ─── Credit/Debit Notes ──────────────────────────────────────────────
   @Post('credit-note')
   async createCreditNote(
     @Request() req: any,

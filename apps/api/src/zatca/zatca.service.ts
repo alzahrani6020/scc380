@@ -1,9 +1,9 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { prisma } from '@scc/database';
-import { createHash, createSign, generateKeyPairSync, randomUUID } from 'crypto';
+import { createHash, createSign, randomUUID } from 'crypto';
 import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
-import { PDFDocument, PDFName, PDFString } from 'pdf-lib';
+import { PDFDocument } from 'pdf-lib';
 import * as QRCode from 'qrcode';
 
 // ZATCA UBL 2.1 Invoice structure
@@ -38,35 +38,26 @@ interface ZatcaInvoiceData {
 
 @Injectable()
 export class ZatcaService {
-  private privateKey: string;
-  private publicKey: string;
-  private certificate: string;
+  constructor(private config: ConfigService) {}
 
-  constructor(private config: ConfigService) {
-    // Generate demo keys if not configured
-    const existingPrivate = this.config.get('ZATCA_PRIVATE_KEY');
-    const existingCert = this.config.get('ZATCA_CERTIFICATE');
+  private async getTenantCredential(tenantId: string) {
+    const credential = await prisma.zatcaCredential.findUnique({
+      where: { tenantId },
+    });
 
-    if (existingPrivate && existingCert) {
-      this.privateKey = existingPrivate;
-      this.certificate = existingCert;
-    } else {
-      // Generate demo ECDSA key pair for development
-      const { privateKey, publicKey } = generateKeyPairSync('ec', {
-        namedCurve: 'prime256v1', // P-256 as required by ZATCA
-        privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
-        publicKeyEncoding: { type: 'spki', format: 'pem' },
-      });
-      this.privateKey = privateKey;
-      this.publicKey = publicKey;
-      this.certificate = `-----BEGIN CERTIFICATE-----
-DEMO CERTIFICATE - Replace with real ZATCA certificate
------END CERTIFICATE-----`;
+    if (!credential || credential.status !== 'ACTIVE' || !credential.privateKey) {
+      throw new BadRequestException(
+        'الشهادة الرقمية غير نشطة — أكمل إعداد ZATCA أولاً (CSR → CSID)',
+      );
     }
+
+    return credential;
   }
 
   // ─── Invoice Signing ─────────────────────────────────────────────────
   async signInvoice(invoiceId: string, tenantId: string) {
+    const credential = await this.getTenantCredential(tenantId);
+
     const invoice = await prisma.invoice.findFirst({
       where: { id: invoiceId, tenantId },
       include: { items: true, contact: true, tenant: true },
@@ -127,8 +118,8 @@ DEMO CERTIFICATE - Replace with real ZATCA certificate
     // Compute hash
     const hash = createHash('sha256').update(canonicalXml).digest('base64');
 
-    // Sign hash
-    const signature = this.signHash(hash);
+    // Sign hash with tenant's private key
+    const signature = this.signHash(hash, credential.privateKey);
 
     // Generate QR Code data (TLV + signature)
     const qrTlv = this.generateQrTlv(zatcaData, signature);
@@ -414,11 +405,11 @@ DEMO CERTIFICATE - Replace with real ZATCA certificate
     }
   }
 
-  private signHash(hash: string): string {
+  private signHash(hash: string, privateKey: string): string {
     const signer = createSign('SHA256');
     signer.update(hash);
     signer.end();
-    return signer.sign(this.privateKey, 'base64');
+    return signer.sign(privateKey, 'base64');
   }
 
   private generateQrTlv(data: ZatcaInvoiceData, signature: string): string {
