@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { prisma, tenantWhere } from '@scc/database';
+import { PosPaymentMethod } from '@prisma/client';
 import { CreatePosOrderDto, CreatePosSessionDto, ClosePosSessionDto } from './dto/pos.dto';
 
 function generateOrderNumber(): string {
@@ -142,7 +143,7 @@ export class PosService {
         payments: {
           createMany: {
             data: dto.payments.map(p => ({
-              method: p.method,
+              method: p.method as PosPaymentMethod,
               amount: parseFloat(p.amount),
               reference: p.reference,
               tenantId: userRole === 'SUPER_ADMIN' ? undefined : tenantId,

@@ -195,7 +195,7 @@ export class ReportsService {
       where: { ...tw, accountId: cashAccount.id },
       orderBy: { date: 'asc' },
       include: {
-        account: { select: { code: true, name: true, type: true } },
+        chartAccount: { select: { code: true, name: true, type: true } },
       },
     });
 

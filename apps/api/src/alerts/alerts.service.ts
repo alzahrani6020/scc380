@@ -149,7 +149,7 @@ export class SmartAlertsService {
     const counts = await this.getAlertCounts(tenantId, userRole);
     this.gateway?.sendAlertCount(resolvedTenantId, counts);
 
-    return this.getAllAlerts(tenantId, userRole);
+    return this.getAllAlerts(tenantId, userRole) as Promise<AlertItem[]>;
   }
 
   async getAllAlerts(tenantId: string | undefined, userRole: string) {

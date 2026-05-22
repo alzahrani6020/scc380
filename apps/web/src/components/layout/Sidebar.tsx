@@ -11,6 +11,7 @@ import {
   BarChart3, Landmark, Bot, Settings, Building2, LogOut,
   ChevronLeft, FolderKanban, Receipt, Shield, CreditCard, Bell,
   FileStack, ShoppingCart, Package, BookOpen, ArrowLeftRight, Store,
+  Route, Wrench, Fuel,
 } from 'lucide-react';
 
 const navigation = [
@@ -20,6 +21,10 @@ const navigation = [
   { name: 'المشاريع', href: '/dashboard/projects', icon: FolderKanban },
   { name: 'الموارد البشرية', href: '/dashboard/hr', icon: Briefcase },
   { name: 'إدارة الأسطول', href: '/dashboard/fleet', icon: Truck },
+  { name: '├── الرحلات', href: '/dashboard/fleet/trips', icon: Route },
+  { name: '├── السائقون', href: '/dashboard/fleet/drivers', icon: Users },
+  { name: '├── الصيانة', href: '/dashboard/fleet/maintenance', icon: Wrench },
+  { name: '├── الوقود', href: '/dashboard/fleet/fuel', icon: Fuel },
   { name: 'المالية', href: '/dashboard/finance', icon: Receipt },
   { name: '├── القيود اليومية', href: '/dashboard/finance/journal-entries', icon: Receipt },
   { name: '├── دفتر الأستاذ', href: '/dashboard/finance/general-ledger', icon: Receipt },

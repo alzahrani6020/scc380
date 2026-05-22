@@ -2,10 +2,12 @@ import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { TenantMiddleware } from './common/middleware/tenant.middleware';
 import { AuditLogInterceptor } from './common/interceptors/audit-log.interceptor';
+import { RetentionService } from './compliance/retention.service';
 
 import { AuthModule } from './auth/auth.module';
 import { TenantModule } from './tenant/tenant.module';
@@ -79,10 +81,12 @@ import { ComplianceModule } from './compliance/compliance.module';
     StockTransferModule,
     AlertsModule,
     ComplianceModule,
+    ScheduleModule.forRoot(),
   ],
   controllers: [AppController],
   providers: [
     AppService,
+    RetentionService,
     {
       provide: APP_INTERCEPTOR,
       useClass: AuditLogInterceptor,

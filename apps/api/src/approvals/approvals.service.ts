@@ -101,11 +101,15 @@ export class ApprovalsService {
     // Invoices
     const invoices = await prisma.invoice.findMany({
       where: { ...tw, status: 'DRAFT' },
-      include: { contact: { select: { firstName: true, lastName: true } } },
       orderBy: { createdAt: 'desc' },
     });
+    const invoiceContactIds = invoices.map(i => i.contactId).filter(Boolean);
+    const invoiceContacts = invoiceContactIds.length > 0
+      ? await prisma.contact.findMany({ where: { id: { in: invoiceContactIds } }, select: { id: true, firstName: true, lastName: true } })
+      : [];
     for (const i of invoices) {
-      results.push({ id: i.id, type: 'invoice', title: `فاتورة ${i.invoiceNumber}`, requester: i.contact ? `${i.contact.firstName} ${i.contact.lastName}` : '-', date: i.createdAt, status: i.status, amount: i.total });
+      const contact = invoiceContacts.find(c => c.id === i.contactId);
+      results.push({ id: i.id, type: 'invoice', title: `فاتورة ${i.invoiceNumber}`, requester: contact ? `${contact.firstName} ${contact.lastName}` : '-', date: i.createdAt, status: i.status, amount: i.total });
     }
 
     // Purchase Orders

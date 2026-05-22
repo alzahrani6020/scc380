@@ -86,6 +86,16 @@ model Tenant {
   financialPeriods FinancialPeriod[]
   zatcaCredential ZatcaCredential?
   dataSubjectConsents DataSubjectConsent[]
+  gpsLogs         VehicleGpsLog[]
+  driverCompliances DriverCompliance[]
+  fleetViolations FleetViolation[]
+  tripManifests   TripManifest[]
+  properties      Property[]
+  units           Unit[]
+  leaseContracts  LeaseContract[]
+  rentPayments    RentPayment[]
+  contractDocuments ContractDocument[]
+  propertyExpenses PropertyExpense[]
 
   @@map("tenants")
 }
@@ -387,6 +397,7 @@ model Invoice {
   clearanceStatus     String?   // PENDING, CLEARED, REJECTED
   reportingStatus     String?   // PENDING, REPORTED, REJECTED
   notes         String?
+  retentionUntil DateTime? // ZATCA: 6-year retention requirement
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -894,15 +905,34 @@ model Vehicle {
   insuranceExpiry DateTime?
   periodicInspectionExpiry DateTime?
   fuelType      FuelType @default(PETROL)
+
+  // TGA / Wassl compliance
+  tgaOperatingLicense String?   // رخصة التشغيل
+  tgaLicenseExpiry DateTime?
+  loadCapacityKg  Decimal?  @db.Decimal(10, 2)
+  axleCount       Int?
+  euroClass       String?   // Euro 2, 3, 4, 5, 6
+  vehicleCategory String?   // LIGHT, MEDIUM, HEAVY, TRAILER, TANKER
+  maxSpeedLimit   Decimal?  @db.Decimal(5, 2)
+
   lastLatitude  Decimal?  @db.Decimal(10, 8)
   lastLongitude Decimal?  @db.Decimal(11, 8)
   lastLocationAt DateTime?
+  lastSpeed     Decimal?  @db.Decimal(5, 2)
+  lastHeading   Decimal?  @db.Decimal(5, 2)
+
+  // Device / Tracking
+  gpsDeviceId     String?
+  gpsProvider     String?   @default("WASSL")
+
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
   fleetTrips    FleetTrip[]
   maintenances  FleetMaintenance[]
   fuelLogs      FleetFuelLog[]
+  gpsLogs       VehicleGpsLog[]
+  fleetViolations FleetViolation[]
 
   @@index([tenantId])
   @@index([plateNumber])
@@ -930,6 +960,8 @@ model FleetTrip {
   status        TripStatus @default(IN_PROGRESS)
   createdAt     DateTime  @default(now())
 
+  tripManifests TripManifest[]
+
   @@index([tenantId])
   @@index([vehicleId])
   @@index([driverId])
@@ -952,6 +984,9 @@ model Driver {
   status        DriverStatus @default(ACTIVE)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+
+  compliances   DriverCompliance[]
+  fleetViolations FleetViolation[]
 
   @@index([tenantId])
   @@map("drivers")
@@ -1002,6 +1037,336 @@ model FleetFuelLog {
   @@index([tenantId])
   @@index([vehicleId])
   @@map("fleet_fuel_logs")
+}
+
+// ─── TGA / Wassl Compliance Extensions ────────────────────────────────
+
+model VehicleGpsLog {
+  id            String    @id @default(cuid())
+  tenantId      String
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  vehicleId     String
+  vehicle       Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  latitude      Decimal   @db.Decimal(10, 8)
+  longitude     Decimal   @db.Decimal(11, 8)
+  speed         Decimal?  @db.Decimal(5, 2) // km/h
+  heading       Decimal?  @db.Decimal(5, 2) // degrees
+  altitude      Decimal?  @db.Decimal(8, 2)
+  accuracy      Decimal?  @db.Decimal(6, 2)
+
+  ignitionOn    Boolean   @default(true)
+  engineHours   Decimal?  @db.Decimal(8, 2)
+
+  deviceId      String?   // IMEI or device serial
+  recordedAt    DateTime  @default(now())
+
+  @@index([tenantId])
+  @@index([vehicleId])
+  @@index([recordedAt])
+  @@map("vehicle_gps_logs")
+}
+
+model DriverCompliance {
+  id            String    @id @default(cuid())
+  tenantId      String
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  driverId      String
+  driver        Driver    @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  // TGA Requirements
+  tasreehNumber String?   // تصريح الهيئة العامة للنقل
+  tasreehExpiry DateTime?
+  medicalFitnessExpiry DateTime?
+  trainingCertificateUrl String?
+  trainingCompletedAt DateTime?
+
+  // Driving hours (for HOS - Hours of Service)
+  dailyDrivingMinutes Int     @default(0)
+  weeklyDrivingMinutes Int    @default(0)
+  lastRestPeriodAt  DateTime?
+
+  status        String    @default("ACTIVE") // ACTIVE, EXPIRED, SUSPENDED
+  notes         String?
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@index([driverId])
+  @@index([tasreehNumber])
+  @@map("driver_compliances")
+}
+
+model FleetViolation {
+  id            String    @id @default(cuid())
+  tenantId      String
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  vehicleId     String
+  vehicle       Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  driverId      String?
+  driver        Driver?   @relation(fields: [driverId], references: [id], onDelete: SetNull)
+
+  type          String    // SPEEDING, ROUTE_DEVIATION, UNAUTHORIZED_STOP, FATIGUE, GEOFENCE
+  severity      String    @default("WARNING") // WARNING, MINOR, MAJOR, CRITICAL
+  description   String
+
+  // Location
+  latitude      Decimal?  @db.Decimal(10, 8)
+  longitude     Decimal?  @db.Decimal(11, 8)
+  speedAtViolation Decimal? @db.Decimal(5, 2)
+  speedLimit    Decimal?  @db.Decimal(5, 2)
+
+  // Evidence
+  photoUrl      String?
+  videoUrl      String?
+
+  // Resolution
+  acknowledged  Boolean   @default(false)
+  acknowledgedAt DateTime?
+  acknowledgedBy String?
+  resolution    String?
+
+  occurredAt    DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+
+  @@index([tenantId])
+  @@index([vehicleId])
+  @@index([driverId])
+  @@index([type])
+  @@index([occurredAt])
+  @@map("fleet_violations")
+}
+
+model TripManifest {
+  id            String    @id @default(cuid())
+  tenantId      String
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  tripId        String
+  trip          FleetTrip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  cargoType     String?
+  cargoWeight   Decimal?  @db.Decimal(10, 3)
+  cargoVolume   Decimal?  @db.Decimal(10, 3)
+  cargoDescription String?
+  senderName    String?
+  senderAddress String?
+  receiverName  String?
+  receiverAddress String?
+  deliveryInstructions String?
+
+  // Wassl tracking
+  wasslTrackingId String?
+  wasslStatus     String?   @default("PENDING")
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@index([tripId])
+  @@index([wasslTrackingId])
+  @@map("trip_manifests")
+}
+
+// ============================================================
+// Real Estate / Property Management (REGA)
+// ============================================================
+
+model Property {
+  id            String    @id @default(cuid())
+  tenantId      String
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name          String
+  description   String?
+  propertyType  PropertyType @default(RESIDENTIAL)
+  status        PropertyStatus @default(ACTIVE)
+
+  address       String?
+  city          String?
+  district      String?
+  buildingNumber String?
+  latitude      Decimal?  @db.Decimal(10, 8)
+  longitude     Decimal?  @db.Decimal(11, 8)
+
+  deedNumber    String?
+  deedFileUrl   String?
+  ownerName     String?
+  ownerIdNumber String?
+  ownerPhone    String?
+  regaLicenseNumber String?
+
+  acquisitionDate   DateTime?
+  acquisitionCost   Decimal?  @db.Decimal(18, 2)
+  totalAreaSqm      Decimal?  @db.Decimal(10, 2)
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  units         Unit[]
+  contracts     LeaseContract[]
+  expenses      PropertyExpense[]
+
+  @@index([tenantId])
+  @@index([status])
+  @@index([propertyType])
+  @@index([city])
+  @@map("properties")
+}
+
+model Unit {
+  id            String    @id @default(cuid())
+  tenantId      String
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  propertyId    String
+  property      Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  unitNumber    String
+  floor         Int?
+  unitType      UnitType  @default(APARTMENT)
+  status        UnitStatus @default(VACANT)
+
+  areaSqm       Decimal?  @db.Decimal(10, 2)
+  bedrooms      Int?
+  bathrooms     Int?
+  rentAmountMonthly Decimal? @db.Decimal(18, 2)
+  currentLeaseId String?
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  leases        LeaseContract[]
+
+  @@index([tenantId])
+  @@index([propertyId])
+  @@index([status])
+  @@map("units")
+}
+
+model LeaseContract {
+  id            String    @id @default(cuid())
+  tenantId      String
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  propertyId    String
+  property      Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  unitId        String
+  unit          Unit      @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  ejarContractNumber String?   @unique
+  contractType  LeaseType @default(RESIDENTIAL)
+
+  lessorId      String?
+  lesseeId      String?
+  lessorName    String
+  lessorIdNumber String
+  lessorPhone   String?
+  lesseeName    String
+  lesseeIdNumber String
+  lesseePhone   String?
+
+  startDate     DateTime
+  endDate       DateTime
+  rentAmount    Decimal   @db.Decimal(18, 2)
+  paymentFrequency PaymentFrequency @default(MONTHLY)
+  securityDeposit Decimal?  @db.Decimal(18, 2)
+  paymentMethod String?   @default("BANK_TRANSFER")
+  bankAccount   String?
+
+  status        LeaseStatus @default(DRAFT)
+  ejarStatus    String?   @default("PENDING")
+  ejarSyncedAt  DateTime?
+  autoRenew     Boolean   @default(false)
+  renewalNoticeDays Int   @default(60)
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  payments      RentPayment[]
+  documents     ContractDocument[]
+
+  @@index([tenantId])
+  @@index([propertyId])
+  @@index([unitId])
+  @@index([status])
+  @@index([ejarStatus])
+  @@index([endDate])
+  @@map("lease_contracts")
+}
+
+model RentPayment {
+  id            String    @id @default(cuid())
+  tenantId      String
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  contractId    String
+  contract      LeaseContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  propertyId    String
+  unitId        String
+
+  dueDate       DateTime
+  paidDate      DateTime?
+  amount        Decimal   @db.Decimal(18, 2)
+  status        PaymentStatus @default(PENDING)
+  paymentMethod String?
+  transactionRef String?
+  bankReference String?
+  ejarPaymentRef String?
+  invoiceId     String?
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@index([contractId])
+  @@index([status])
+  @@index([dueDate])
+  @@map("rent_payments")
+}
+
+model ContractDocument {
+  id            String    @id @default(cuid())
+  tenantId      String
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  contractId    String
+  contract      LeaseContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  type          ContractDocumentType @default(OTHER)
+  fileUrl       String
+  fileName      String?
+
+  createdAt     DateTime  @default(now())
+
+  @@index([tenantId])
+  @@index([contractId])
+  @@map("contract_documents")
+}
+
+model PropertyExpense {
+  id            String    @id @default(cuid())
+  tenantId      String
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  propertyId    String
+  property      Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  type          PropertyExpenseType @default(OTHER)
+  amount        Decimal   @db.Decimal(18, 2)
+  paidDate      DateTime?
+  description   String?
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@index([propertyId])
+  @@map("property_expenses")
 }
 
 // ============================================================
@@ -1332,6 +1697,7 @@ enum InvoiceStatus {
   PARTIAL
   OVERDUE
   CANCELLED
+  ARCHIVED
 }
 
 enum ZatcaStatus {
@@ -2070,6 +2436,94 @@ enum AssetStatus {
   DISPOSED
   SOLD
   FULLY_DEPRECIATED
+}
+
+// ─── Real Estate Enums ─────────────────────────────────────
+
+enum PropertyType {
+  RESIDENTIAL
+  COMMERCIAL
+  INDUSTRIAL
+  MIXED_USE
+  LAND
+}
+
+enum PropertyStatus {
+  ACTIVE
+  INACTIVE
+  UNDER_CONSTRUCTION
+  SOLD
+}
+
+enum UnitType {
+  APARTMENT
+  VILLA
+  OFFICE
+  SHOP
+  WAREHOUSE
+  LAND_PLOT
+  STUDIO
+  DUPLEX
+  PENTHOUSE
+}
+
+enum UnitStatus {
+  VACANT
+  OCCUPIED
+  RESERVED
+  UNDER_MAINTENANCE
+  SOLD
+}
+
+enum LeaseType {
+  RESIDENTIAL
+  COMMERCIAL
+}
+
+enum LeaseStatus {
+  DRAFT
+  ACTIVE
+  EXPIRED
+  TERMINATED
+  RENEWED
+}
+
+enum PaymentFrequency {
+  MONTHLY
+  QUARTERLY
+  SEMI_ANNUAL
+  ANNUAL
+  WEEKLY
+}
+
+enum RentPaymentStatus {
+  PENDING
+  PAID
+  OVERDUE
+  PARTIAL
+  WAIVED
+}
+
+enum ContractDocumentType {
+  DEED
+  ID_COPY
+  COMMERCIAL_REGISTER
+  POWER_OF_ATTORNEY
+  INSPECTION_REPORT
+  CONTRACT_COPY
+  OTHER
+}
+
+enum PropertyExpenseType {
+  MAINTENANCE
+  INSURANCE
+  TAX
+  UTILITY
+  MANAGEMENT_FEE
+  RENOVATION
+  CLEANING
+  SECURITY
+  OTHER
 }
 
 // ============================================================

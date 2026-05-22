@@ -41,7 +41,7 @@ export class AutoJournalService {
     });
 
     // 3. Credit: VAT Payable (ضريبة القيمة المضافة)
-    if (invoice.taxAmount > 0) {
+    if (invoice.taxAmount.toNumber() > 0) {
       entries.push({
         entryNumber: generateEntryNumber(),
         description: `ضريبة فاتورة #${invoice.invoiceNumber}`,
@@ -149,13 +149,13 @@ export class AutoJournalService {
       description: `إيراد مبيعات كاشير #${order.orderNumber}`,
       reference: order.orderNumber,
       debitAmount: 0,
-      creditAmount: order.subtotal - order.discount,
+      creditAmount: order.subtotal.toNumber() - order.discount.toNumber(),
       tenantId,
       date: order.createdAt,
     });
 
     // 3. Credit: VAT
-    if (order.taxAmount > 0) {
+    if (order.taxAmount.toNumber() > 0) {
       entries.push({
         entryNumber: generateEntryNumber(),
         description: `ضريبة مبيعات كاشير #${order.orderNumber}`,

@@ -10,7 +10,7 @@ export const RolePermissions = {
 } as const;
 
 export function hasPermission(role: UserRole, permission: string): boolean {
-  const permissions = RolePermissions[role] || [];
+  const permissions = (RolePermissions[role] || []) as unknown as string[];
   if (permissions.includes('*')) return true;
   if (permissions.includes(permission)) return true;
   if (permissions.includes(`${permission.split(':')[0]}:*`)) return true;

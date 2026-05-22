@@ -242,7 +242,7 @@ export class AuthService {
     }
 
     // Link OAuth account
-    await prisma.oauthAccount.upsert({
+    await prisma.oAuthAccount.upsert({
       where: {
         provider_providerAccountId: { provider: 'google', providerAccountId: googleId },
       },

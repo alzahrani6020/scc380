@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { prisma, tenantWhere } from '@scc/database';
+import { PayrollStatus } from '@prisma/client';
 
 @Injectable()
 export class AnalyticsService {
@@ -82,7 +83,7 @@ export class AnalyticsService {
       prisma.employee.aggregate({ _avg: { basicSalary: true }, where: tw }),
       prisma.payroll.aggregate({
         _sum: { netSalary: true },
-        where: { ...tw, status: 'COMPLETED' },
+        where: { ...tw, status: PayrollStatus.PAID },
       }),
       prisma.leave.count({ where: { ...tw, status: 'PENDING' } }),
     ]);
@@ -155,7 +156,7 @@ export class AnalyticsService {
     return {
       byCategory: byCategory.map(c => ({ category: c.category, amount: c._sum.amount || 0 })),
       monthlyPayments: Object.entries(monthlyData).map(([month, amount]) => ({ month, amount })).sort((a, b) => a.month.localeCompare(b.month)),
-      totalBankBalance: totalBankBalance._sum.currentBalance || 0,
+      totalBankBalance: totalBankBalance._sum.balance || 0,
       totalExpenses: totalExpenses._sum.amount || 0,
       totalPayments: totalPayments._sum.amount || 0,
     };

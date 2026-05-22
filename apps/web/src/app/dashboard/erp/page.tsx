@@ -115,11 +115,17 @@ export default function ErpPage() {
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: string, zatcaStatus?: string) => {
+    if (zatcaStatus === 'CLEARED' || zatcaStatus === 'REPORTED') {
+      alert('الفاتورة مُبلَّغة لـ ZATCA — لا يمكن الحذف');
+      return;
+    }
     if (!confirm('هل أنت متأكد؟')) return;
     await api.delete(`/erp/invoices/${id}`);
     fetchData();
   };
+
+  const isZatcaLocked = (zatcaStatus?: string) => zatcaStatus === 'CLEARED' || zatcaStatus === 'REPORTED';
 
   const filtered = invoices.filter((i) => i.invoiceNumber?.includes(search) || i.contact?.firstName?.includes(search));
 
@@ -200,8 +206,12 @@ export default function ErpPage() {
                   <button onClick={() => setPrintInvoice(inv)} className="p-1.5 rounded-lg hover:bg-blue-500/10 text-blue-400" title="طباعة / تصدير PDF"><Printer className="h-4 w-4" /></button>
                   <button onClick={() => { setZatcaModal({ type: 'xml', invoice: inv }); api.get(`/zatca/invoices/${inv.id}/xml`).then(r => setZatcaData(r.data?.xml || '')); }} className="p-1.5 rounded-lg hover:bg-emerald-500/10 text-emerald-400" title="ZATCA XML"><FileJson className="h-4 w-4" /></button>
                   <button onClick={() => { setZatcaModal({ type: 'qr', invoice: inv }); api.get(`/zatca/invoices/${inv.id}/qr`).then(r => setZatcaData(r.data?.qrData || '')); }} className="p-1.5 rounded-lg hover:bg-purple-500/10 text-purple-400" title="ZATCA QR"><QrCode className="h-4 w-4" /></button>
-                  <button onClick={() => openEdit(inv)} className="p-1.5 rounded-lg hover:bg-primary-500/10 text-primary-400"><Pencil className="h-4 w-4" /></button>
-                  <button onClick={() => handleDelete(inv.id)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-400"><Trash2 className="h-4 w-4" /></button>
+                  {!isZatcaLocked(inv.zatcaStatus) && (
+                    <button onClick={() => openEdit(inv)} className="p-1.5 rounded-lg hover:bg-primary-500/10 text-primary-400"><Pencil className="h-4 w-4" /></button>
+                  )}
+                  {!isZatcaLocked(inv.zatcaStatus) && (
+                    <button onClick={() => handleDelete(inv.id, inv.zatcaStatus)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-400"><Trash2 className="h-4 w-4" /></button>
+                  )}
                 </div>
               </div>
             </div>
@@ -246,7 +256,7 @@ export default function ErpPage() {
             <Select label="العميل" required options={contactOptions} value={formData.contactId || ''} onChange={(e) => setFormData({ ...formData, contactId: e.target.value })} />
             <Select label="النوع" options={invoiceTypes} value={formData.type || 'STANDARD'} onChange={(e) => setFormData({ ...formData, type: e.target.value })} />
             <Select label="الحالة" options={invoiceStatuses} value={formData.status || 'DRAFT'} onChange={(e) => setFormData({ ...formData, status: e.target.value })} />
-            <Input label="تاريخ الإصدار" type="date" value={formData.issueDate || ''} onChange={(e) => setFormData({ ...formData, issueDate: e.target.value })} />
+            <Input label="تاريخ الإصدار" type="date" value={formData.issueDate || ''} readOnly disabled className="opacity-70 cursor-not-allowed" />
             <Input label="تاريخ الاستحقاق" type="date" value={formData.dueDate || ''} onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })} />
             <Input label="نسبة الضريبة %" type="number" value={formData.taxRate || 15} onChange={(e) => setFormData({ ...formData, taxRate: e.target.value })} />
           </div>

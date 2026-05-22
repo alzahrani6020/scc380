@@ -9,6 +9,8 @@ import { FleetMaintenanceController } from './fleet-maintenance.controller';
 import { FleetMaintenanceService } from './fleet-maintenance.service';
 import { FleetFuelLogsController } from './fleet-fuel-logs.controller';
 import { FleetFuelLogsService } from './fleet-fuel-logs.service';
+import { TelemetryController } from './telemetry.controller';
+import { WasslService } from './wassl.service';
 
 @Module({
   controllers: [
@@ -17,6 +19,7 @@ import { FleetFuelLogsService } from './fleet-fuel-logs.service';
     DriversController,
     FleetMaintenanceController,
     FleetFuelLogsController,
+    TelemetryController,
   ],
   providers: [
     VehiclesService,
@@ -24,6 +27,8 @@ import { FleetFuelLogsService } from './fleet-fuel-logs.service';
     DriversService,
     FleetMaintenanceService,
     FleetFuelLogsService,
+    WasslService,
   ],
+  exports: [WasslService],
 })
 export class FleetModule {}

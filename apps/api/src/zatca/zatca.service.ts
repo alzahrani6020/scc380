@@ -1,10 +1,11 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { prisma } from '@scc/database';
 import { createHash, createSign, randomUUID } from 'crypto';
 import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
 import { PDFDocument } from 'pdf-lib';
 import * as QRCode from 'qrcode';
+import { ZatcaApiClient } from './zatca-api.client';
 
 // ZATCA UBL 2.1 Invoice structure
 interface ZatcaInvoiceData {
@@ -38,7 +39,11 @@ interface ZatcaInvoiceData {
 
 @Injectable()
 export class ZatcaService {
-  constructor(private config: ConfigService) {}
+  private readonly logger = new Logger(ZatcaService.name);
+  constructor(
+    private config: ConfigService,
+    private apiClient: ZatcaApiClient,
+  ) {}
 
   private async getTenantCredential(tenantId: string) {
     const credential = await prisma.zatcaCredential.findUnique({
@@ -60,7 +65,7 @@ export class ZatcaService {
 
     const invoice = await prisma.invoice.findFirst({
       where: { id: invoiceId, tenantId },
-      include: { items: true, contact: true, tenant: true },
+      include: { items: true },
     });
 
     if (!invoice) throw new NotFoundException('الفاتورة غير موجودة');
@@ -68,7 +73,8 @@ export class ZatcaService {
       throw new BadRequestException('نوع الفاتورة غير مدعوم للفوترة الإلكترونية');
     }
 
-    const tenant = invoice.tenant;
+    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+    const contact = invoice.contactId ? await prisma.contact.findUnique({ where: { id: invoice.contactId } }) : null;
 
     // Get previous invoice hash (PIH)
     const previousInvoice = await prisma.invoice.findFirst({
@@ -92,8 +98,8 @@ export class ZatcaService {
       sellerStreet: 'الرياض، المملكة العربية السعودية',
       sellerCity: 'الرياض',
       sellerCountry: 'SA',
-      buyerName: invoice.contact?.companyName || invoice.contact?.firstName + ' ' + invoice.contact?.lastName,
-      buyerVat: invoice.contact?.vatNumber,
+      buyerName: contact?.companyName || contact?.firstName + ' ' + contact?.lastName,
+      buyerVat: contact?.vatNumber,
       total: Number(invoice.total),
       subtotal: Number(invoice.subtotal),
       vatTotal: Number(invoice.taxAmount),
@@ -153,38 +159,60 @@ export class ZatcaService {
 
   // ─── Clearance (B2B) ─────────────────────────────────────────────────
   async clearanceInvoice(invoiceId: string, tenantId: string) {
-    // B2B invoices require ZATCA approval before sharing with buyer
     const result = await this.signInvoice(invoiceId, tenantId);
 
-    // TODO: Send to ZATCA Clearance API (requires real certificate)
-    // For demo, mark as CLEARED
+    const apiResult = await this.apiClient.sendClearance(tenantId, result.xml);
+
+    if (!apiResult.success) {
+      await prisma.invoice.update({
+        where: { id: invoiceId },
+        data: { zatcaStatus: 'PENDING', clearanceStatus: 'PENDING' },
+      });
+      throw new BadRequestException(`فشل الاعتماد من ZATCA: ${apiResult.error}`);
+    }
+
     await prisma.invoice.update({
       where: { id: invoiceId },
-      data: { zatcaStatus: 'CLEARED', clearanceStatus: 'CLEARED' },
+      data: {
+        zatcaStatus: 'CLEARED',
+        clearanceStatus: 'CLEARED',
+        zatcaSignedXml: apiResult.clearedXml || result.xml,
+      },
     });
 
-    return { ...result, status: 'CLEARED', message: 'تم اعتماد الفاتورة (وضع التجربة)' };
+    return { ...result, status: 'CLEARED', message: 'تم اعتماد الفاتورة من ZATCA بنجاح' };
   }
 
   // ─── Reporting (B2C) ─────────────────────────────────────────────────
   async reportInvoice(invoiceId: string, tenantId: string) {
-    // B2C simplified invoices: report within 24h
     const result = await this.signInvoice(invoiceId, tenantId);
 
-    // TODO: Send to ZATCA Reporting API
+    const apiResult = await this.apiClient.sendReporting(tenantId, result.xml);
+
+    if (!apiResult.success) {
+      await prisma.invoice.update({
+        where: { id: invoiceId },
+        data: { zatcaStatus: 'PENDING', reportingStatus: 'PENDING' },
+      });
+      throw new BadRequestException(`فشل الإبلاغ لـ ZATCA: ${apiResult.error}`);
+    }
+
     await prisma.invoice.update({
       where: { id: invoiceId },
-      data: { zatcaStatus: 'REPORTED', reportingStatus: 'REPORTED' },
+      data: {
+        zatcaStatus: 'REPORTED',
+        reportingStatus: 'REPORTED',
+      },
     });
 
-    return { ...result, status: 'REPORTED', message: 'تم الإبلاغ عن الفاتورة (وضع التجربة)' };
+    return { ...result, status: 'REPORTED', message: 'تم الإبلاغ عن الفاتورة لـ ZATCA بنجاح' };
   }
 
   // ─── Credit Note ─────────────────────────────────────────────────────
   async createCreditNote(originalInvoiceId: string, tenantId: string, reason: string) {
     const original = await prisma.invoice.findFirst({
       where: { id: originalInvoiceId, tenantId },
-      include: { items: true, contact: true },
+      include: { items: true },
     });
 
     if (!original) throw new NotFoundException('الفاتورة الأصلية غير موجودة');
@@ -228,7 +256,7 @@ export class ZatcaService {
   async createDebitNote(originalInvoiceId: string, tenantId: string, reason: string, additionalAmount: number) {
     const original = await prisma.invoice.findFirst({
       where: { id: originalInvoiceId, tenantId },
-      include: { items: true, contact: true },
+      include: { items: true },
     });
 
     if (!original) throw new NotFoundException('الفاتورة الأصلية غير موجودة');
