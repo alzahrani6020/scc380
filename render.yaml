@@ -3,8 +3,6 @@ databases:
     databaseName: scc_main
     user: postgres
     plan: free
-    region: frankfurt
-    ipAllowList: []
 
 services:
   # Redis cache
