@@ -1,9 +1,11 @@
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
+import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { TenantMiddleware } from './common/middleware/tenant.middleware';
+import { AuditLogInterceptor } from './common/interceptors/audit-log.interceptor';
 
 import { AuthModule } from './auth/auth.module';
 import { TenantModule } from './tenant/tenant.module';
@@ -32,6 +34,7 @@ import { BranchModule } from './branch/branch.module';
 import { SupplierInvoiceModule } from './supplier-invoice/supplier-invoice.module';
 import { StockTransferModule } from './stock-transfer/stock-transfer.module';
 import { AlertsModule } from './alerts/alerts.module';
+import { ComplianceModule } from './compliance/compliance.module';
 
 @Module({
   imports: [
@@ -75,9 +78,16 @@ import { AlertsModule } from './alerts/alerts.module';
     SupplierInvoiceModule,
     StockTransferModule,
     AlertsModule,
+    ComplianceModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: AuditLogInterceptor,
+    },
+  ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {

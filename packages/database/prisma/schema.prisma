@@ -85,6 +85,7 @@ model Tenant {
   costCenters   CostCenter[]
   financialPeriods FinancialPeriod[]
   zatcaCredential ZatcaCredential?
+  dataSubjectConsents DataSubjectConsent[]
 
   @@map("tenants")
 }
@@ -156,6 +157,7 @@ model User {
   subscriptions Subscription[]
   oauthAccounts OAuthAccount[]
   passwordResets PasswordResetToken[]
+  auditLogs     AuditLog[]
 
   @@index([tenantId])
   @@map("users")
@@ -166,6 +168,7 @@ model AuditLog {
   tenantId      String?
   tenant        Tenant?   @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   userId        String?
+  user          User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
   action        String
   entityType    String
   entityId      String?
@@ -173,12 +176,53 @@ model AuditLog {
   newValues     Json?
   ipAddress     String?
   userAgent     String?
+  httpMethod    String?
+  httpPath      String?
+  requestBody   Json?
+  responseStatus Int?
   createdAt     DateTime  @default(now())
 
   @@index([tenantId])
   @@index([userId])
+  @@index([entityType])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+model DataSubjectConsent {
+  id            String    @id @default(cuid())
+  tenantId      String?
+  tenant        Tenant?   @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  
+  // The person whose data is being processed
+  subjectType   String    // EMPLOYEE, CUSTOMER, CONTACT
+  subjectId     String
+  subjectName   String
+  subjectEmail  String?
+  subjectPhone  String?
+  
+  // Consent details
+  purpose       String    // HR, CRM, MARKETING, PAYROLL
+  purposeAr     String?
+  description   String?
+  granted       Boolean   @default(true)
+  grantedAt     DateTime  @default(now())
+  withdrawnAt   DateTime?
+  withdrawnBy   String?
+  
+  // PDPL requirements
+  ipAddress     String?
+  userAgent     String?
+  documentUrl   String?   // URL to signed consent form if applicable
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@index([subjectType, subjectId])
+  @@index([purpose])
+  @@index([granted])
+  @@map("data_subject_consents")
 }
 
 model PasswordResetToken {
