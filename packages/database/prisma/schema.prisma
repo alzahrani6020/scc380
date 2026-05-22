@@ -101,7 +101,10 @@ model User {
   phoneVerified Boolean   @default(false)
   lastLoginAt   DateTime?
   keycloakId    String?   @unique
-  preferences   Json?     @default("{}")
+  preferences       Json?     @default("{}")
+  twoFactorSecret   String?
+  twoFactorEnabled  Boolean   @default(false)
+  twoFactorBackupCodes String[] @default([])
 
   tenantId      String?
   tenant        Tenant?   @relation(fields: [tenantId], references: [id], onDelete: SetNull)
@@ -115,6 +118,8 @@ model User {
   loginAttempts LoginAttempt[]
   notifications Notification[]
   subscriptions Subscription[]
+  oauthAccounts OAuthAccount[]
+  passwordResets PasswordResetToken[]
 
   @@index([tenantId])
   @@map("users")
@@ -138,6 +143,35 @@ model AuditLog {
   @@index([userId])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  email     String
+  token     String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([email])
+  @@index([token])
+  @@map("password_reset_tokens")
+}
+
+model OAuthAccount {
+  id                String   @id @default(cuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider          String   // google, github, etc.
+  providerAccountId String
+  accessToken       String?
+  refreshToken      String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("oauth_accounts")
 }
 
 // ============================================================

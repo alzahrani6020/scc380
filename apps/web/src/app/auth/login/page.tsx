@@ -3,35 +3,13 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
+import { setAuth } from '@/lib/auth';
+import { GoogleLogin, googleLogout } from '@react-oauth/google';
 import {
   Building2, Zap, Shield, Lock, Mail, ChevronLeft,
-  Eye, EyeOff, Chrome, ArrowRight,
+  Eye, EyeOff, ArrowRight,
 } from 'lucide-react';
-
-const STORAGE_KEY = 'scc_auth';
-
-function getStoredAuth() {
-  if (typeof window === 'undefined') return null;
-  const s = localStorage.getItem(STORAGE_KEY);
-  if (s) return JSON.parse(s);
-  const s2 = sessionStorage.getItem(STORAGE_KEY);
-  if (s2) return JSON.parse(s2);
-  return null;
-}
-
-function setStoredAuth(data: any, remember: boolean) {
-  const s = JSON.stringify(data);
-  if (remember) {
-    localStorage.setItem(STORAGE_KEY, s);
-  } else {
-    sessionStorage.setItem(STORAGE_KEY, s);
-  }
-}
-
-function clearStoredAuth() {
-  localStorage.removeItem(STORAGE_KEY);
-  sessionStorage.removeItem(STORAGE_KEY);
-}
+import Link from 'next/link';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -43,10 +21,8 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const stored = getStoredAuth();
-    if (stored?.accessToken) {
-      router.push('/dashboard');
-    }
+    const token = localStorage.getItem('accessToken') || sessionStorage.getItem('accessToken');
+    if (token) router.push('/dashboard');
   }, [router]);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -59,13 +35,14 @@ export default function LoginPage() {
         refreshToken: res.data.refreshToken,
         role: res.data.user.role,
         tenantSlug: res.data.user?.tenantSlug || null,
+        tenantId: res.data.user?.tenantId || null,
         user: {
           email: res.data.user.email,
           firstName: res.data.user.firstName,
           lastName: res.data.user.lastName,
         },
       };
-      setStoredAuth(authData, rememberMe);
+      setAuth(authData, rememberMe);
       router.push('/dashboard');
     } catch (err: any) {
       setError(err.response?.data?.message || 'فشل تسجيل الدخول');
@@ -81,30 +58,50 @@ export default function LoginPage() {
         refreshToken: res.data.refreshToken,
         role: res.data.user.role,
         tenantSlug: res.data.user?.tenantSlug || null,
+        tenantId: res.data.user?.tenantId || null,
         user: { email: res.data.user.email, firstName: res.data.user.firstName, lastName: res.data.user.lastName },
       };
-      setStoredAuth(authData, true);
+      setAuth(authData, true);
       router.push('/dashboard');
     } catch (err: any) {
       setError(err.response?.data?.message || 'فشل الدخول السريع');
     } finally { setLoading(false); }
   };
 
-  const handleGoogle = () => {
-    setError('تسجيل الدخول بـ Google قيد الإعداد — سيتوفر قريباً');
+  const handleGoogleSuccess = async (credentialResponse: any) => {
+    setLoading(true); setError('');
+    try {
+      const res = await api.post('/auth/google', { credential: credentialResponse.credential });
+      const authData = {
+        accessToken: res.data.accessToken,
+        refreshToken: res.data.refreshToken,
+        role: res.data.user.role,
+        tenantSlug: res.data.user?.tenantSlug || null,
+        tenantId: res.data.user?.tenantId || null,
+        user: { email: res.data.user.email, firstName: res.data.user.firstName, lastName: res.data.user.lastName },
+      };
+      setAuth(authData, true);
+      router.push('/dashboard');
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'فشل تسجيل الدخول بـ Google');
+      googleLogout();
+    } finally { setLoading(false); }
   };
+
+  const handleGoogleError = () => {
+    setError('فشل تسجيل الدخول بـ Google — حاول مرة أخرى');
+  };
+
+  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center relative overflow-hidden">
-      {/* Background Effects */}
       <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-primary-600/10 rounded-full blur-[120px] -translate-y-1/2 translate-x-1/3" />
       <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-purple-600/10 rounded-full blur-[100px] translate-y-1/3 -translate-x-1/4" />
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-amber-500/5 rounded-full blur-[150px]" />
 
       <div className="relative z-10 w-full max-w-md mx-4">
-        {/* Card */}
         <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-8 shadow-2xl shadow-black/50 animate-fade-in-up">
-          {/* Header */}
           <div className="text-center mb-6">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-700 mb-4 shadow-lg shadow-primary-500/30">
               <Building2 className="h-8 w-8 text-white" />
@@ -131,14 +128,20 @@ export default function LoginPage() {
           </button>
 
           {/* Google OAuth */}
-          <button
-            onClick={handleGoogle}
-            disabled={loading}
-            className="w-full flex items-center justify-center gap-2 bg-white hover:bg-slate-100 text-slate-900 font-bold py-3 px-4 rounded-xl transition-all mb-4 border border-slate-200"
-          >
-            <Chrome className="h-5 w-5 text-blue-500" />
-            تسجيل الدخول بـ Google
-          </button>
+          {googleClientId ? (
+            <div className="mb-4 flex justify-center">
+              <GoogleLogin
+                onSuccess={handleGoogleSuccess}
+                onError={handleGoogleError}
+                text="signin_with"
+                shape="pill"
+              />
+            </div>
+          ) : (
+            <div className="mb-4 p-3 bg-slate-800/50 rounded-xl text-center text-slate-400 text-xs">
+              تسجيل الدخول بـ Google غير مفعل — أضف NEXT_PUBLIC_GOOGLE_CLIENT_ID في الإعدادات
+            </div>
+          )}
 
           <div className="relative my-5">
             <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-700" /></div>
@@ -191,9 +194,9 @@ export default function LoginPage() {
                 />
                 <span className="text-slate-400 text-sm">تذكرني</span>
               </label>
-              <a href="#" className="text-primary-400 hover:text-primary-300 text-sm transition-colors">
+              <Link href="/auth/forgot-password" className="text-primary-400 hover:text-primary-300 text-sm transition-colors">
                 نسيت كلمة المرور؟
-              </a>
+              </Link>
             </div>
 
             <button type="submit" disabled={loading} className="w-full bg-primary-600 hover:bg-primary-500 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-lg shadow-primary-600/20 flex items-center justify-center gap-2">
@@ -203,14 +206,13 @@ export default function LoginPage() {
           </form>
 
           <div className="mt-6 text-center">
-            <a href="/auth/register" className="text-sm text-primary-400 hover:text-primary-300 transition-colors flex items-center justify-center gap-1">
+            <Link href="/auth/register" className="text-sm text-primary-400 hover:text-primary-300 transition-colors flex items-center justify-center gap-1">
               ليس لديك حساب؟ سجل الآن
               <ArrowRight className="h-3 w-3" />
-            </a>
+            </Link>
           </div>
         </div>
 
-        {/* Footer */}
         <p className="text-center text-slate-600 text-xs mt-6">
           © 2026 Smart Command Center 380 — جميع الحقوق محفوظة
         </p>

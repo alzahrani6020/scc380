@@ -3,13 +3,24 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { prisma } from '@scc/database';
 import { hashPassword, verifyPassword } from '@scc/auth';
+import * as speakeasy from 'speakeasy';
+import * as QRCode from 'qrcode';
+import { randomBytes } from 'crypto';
+import { OAuth2Client } from 'google-auth-library';
 
 @Injectable()
 export class AuthService {
+  private googleClient: OAuth2Client;
+
   constructor(
     private jwt: JwtService,
     private config: ConfigService,
-  ) {}
+  ) {
+    const googleClientId = this.config.get('GOOGLE_CLIENT_ID');
+    if (googleClientId) {
+      this.googleClient = new OAuth2Client(googleClientId);
+    }
+  }
 
   async validateUser(email: string, password: string, tenantId?: string) {
     const where: any = { email };
@@ -56,7 +67,6 @@ export class AuthService {
 
     let tenantId: string | undefined;
 
-    // If creating a new tenant
     if (data.tenantName && data.tenantSlug) {
       const slugExists = await prisma.tenant.findUnique({ where: { slug: data.tenantSlug } });
       if (slugExists) throw new ConflictException('Tenant slug already exists / اسم المنشأة مستخدم');
@@ -100,5 +110,196 @@ export class AuthService {
     });
     if (!user) throw new UnauthorizedException('User not found');
     return user;
+  }
+
+  // ─── Forgot Password ───────────────────────────────────────────────
+  async forgotPassword(email: string) {
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      // Don't reveal if user exists
+      return { message: 'If this email exists, a reset link has been sent.' };
+    }
+
+    const token = randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 1000 * 60 * 60); // 1 hour
+
+    await prisma.passwordResetToken.create({
+      data: { email, token, expiresAt },
+    });
+
+    // TODO: Send actual email here
+    // For now, return the token in the response for demo purposes
+    return {
+      message: 'Password reset link generated',
+      resetToken: token, // In production, send this via email only
+      resetUrl: `${this.config.get('WEB_URL', 'http://localhost:3000')}/auth/reset-password?token=${token}`,
+    };
+  }
+
+  async resetPassword(token: string, newPassword: string) {
+    const record = await prisma.passwordResetToken.findUnique({ where: { token } });
+    if (!record || record.usedAt || record.expiresAt < new Date()) {
+      throw new BadRequestException('Invalid or expired reset token');
+    }
+
+    const user = await prisma.user.findUnique({ where: { email: record.email } });
+    if (!user) throw new BadRequestException('User not found');
+
+    const passwordHash = await hashPassword(newPassword);
+    await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+    await prisma.passwordResetToken.update({ where: { id: record.id }, data: { usedAt: new Date() } });
+
+    return { message: 'Password reset successfully' };
+  }
+
+  // ─── Google OAuth ──────────────────────────────────────────────────
+  async googleAuth(credential: string) {
+    if (!this.googleClient) {
+      throw new BadRequestException('Google OAuth not configured');
+    }
+
+    const ticket = await this.googleClient.verifyIdToken({
+      idToken: credential,
+      audience: this.config.get('GOOGLE_CLIENT_ID'),
+    });
+
+    const payload = ticket.getPayload();
+    if (!payload || !payload.email) {
+      throw new UnauthorizedException('Invalid Google token');
+    }
+
+    const { email, given_name, family_name, sub: googleId } = payload;
+
+    let user = await prisma.user.findUnique({ where: { email } });
+
+    if (!user) {
+      // Auto-register Google user
+      user = await prisma.user.create({
+        data: {
+          email,
+          firstName: given_name || email.split('@')[0],
+          lastName: family_name || '',
+          emailVerified: true,
+          role: 'USER',
+        },
+      });
+    }
+
+    // Link OAuth account
+    await prisma.oauthAccount.upsert({
+      where: {
+        provider_providerAccountId: { provider: 'google', providerAccountId: googleId },
+      },
+      update: {},
+      create: {
+        userId: user.id,
+        provider: 'google',
+        providerAccountId: googleId,
+      },
+    });
+
+    return this.login(user.id, user.email, user.role, user.tenantId || undefined, undefined);
+  }
+
+  // ─── 2FA / TOTP ────────────────────────────────────────────────────
+  async setup2FA(userId: string) {
+    const secret = speakeasy.generateSecret({
+      name: `SCC380 (${userId})`,
+      length: 32,
+    });
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { twoFactorSecret: secret.base32 },
+    });
+
+    const qrCodeUrl = await QRCode.toDataURL(secret.otpauth_url || '');
+
+    return {
+      secret: secret.base32,
+      qrCode: qrCodeUrl,
+    };
+  }
+
+  async verify2FASetup(userId: string, code: string) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { twoFactorSecret: true },
+    });
+    if (!user?.twoFactorSecret) throw new BadRequestException('2FA not set up');
+
+    const verified = speakeasy.totp.verify({
+      secret: user.twoFactorSecret,
+      encoding: 'base32',
+      token: code,
+      window: 2,
+    });
+
+    if (!verified) throw new UnauthorizedException('Invalid 2FA code');
+
+    // Generate backup codes
+    const backupCodes = Array.from({ length: 8 }, () => randomBytes(4).toString('hex').toUpperCase());
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { twoFactorEnabled: true, twoFactorBackupCodes: backupCodes },
+    });
+
+    return { message: '2FA enabled successfully', backupCodes };
+  }
+
+  async verify2FALogin(userId: string, code: string) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { twoFactorSecret: true, twoFactorEnabled: true, twoFactorBackupCodes: true },
+    });
+    if (!user?.twoFactorEnabled || !user.twoFactorSecret) {
+      throw new BadRequestException('2FA not enabled');
+    }
+
+    // Check backup codes
+    if (user.twoFactorBackupCodes.includes(code)) {
+      await prisma.user.update({
+        where: { id: userId },
+        data: { twoFactorBackupCodes: { set: user.twoFactorBackupCodes.filter((c) => c !== code) } },
+      });
+      return { verified: true, usedBackupCode: true };
+    }
+
+    const verified = speakeasy.totp.verify({
+      secret: user.twoFactorSecret,
+      encoding: 'base32',
+      token: code,
+      window: 2,
+    });
+
+    if (!verified) throw new UnauthorizedException('Invalid 2FA code');
+    return { verified: true };
+  }
+
+  async disable2FA(userId: string, code: string) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { twoFactorSecret: true, twoFactorEnabled: true },
+    });
+    if (!user?.twoFactorEnabled || !user.twoFactorSecret) {
+      throw new BadRequestException('2FA not enabled');
+    }
+
+    const verified = speakeasy.totp.verify({
+      secret: user.twoFactorSecret,
+      encoding: 'base32',
+      token: code,
+      window: 2,
+    });
+
+    if (!verified) throw new UnauthorizedException('Invalid 2FA code');
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { twoFactorEnabled: false, twoFactorSecret: null, twoFactorBackupCodes: [] },
+    });
+
+    return { message: '2FA disabled successfully' };
   }
 }
