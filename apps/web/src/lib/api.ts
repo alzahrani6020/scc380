@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getToken, getTenantSlug, clearAuth } from './auth';
 
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api',
@@ -9,8 +10,8 @@ const api = axios.create({
 
 api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
-    const token = localStorage.getItem('accessToken');
-    const tenantSlug = localStorage.getItem('tenantSlug');
+    const token = getToken();
+    const tenantSlug = getTenantSlug();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -29,7 +30,7 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401 && typeof window !== 'undefined') {
-      localStorage.clear();
+      clearAuth();
       window.location.href = '/auth/login';
     }
     return Promise.reject(error);

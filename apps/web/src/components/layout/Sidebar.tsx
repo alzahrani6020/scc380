@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import api from '@/lib/api';
+import { clearAuth } from '@/lib/auth';
 import { cn } from '@scc/utils';
 import {
   LayoutDashboard, Users, FileText, Briefcase, Truck,
@@ -92,7 +93,7 @@ export default function Sidebar() {
       {/* Logout */}
       <div className="p-4 border-t border-slate-800">
         <button
-          onClick={() => { localStorage.clear(); window.location.href = '/auth/login'; }}
+          onClick={() => { clearAuth(); window.location.href = '/auth/login'; }}
           className="flex items-center gap-3 w-full px-4 py-3 rounded-xl text-sm font-medium text-red-400 hover:bg-red-500/10 transition-all"
         >
           <LogOut className="h-5 w-5" />

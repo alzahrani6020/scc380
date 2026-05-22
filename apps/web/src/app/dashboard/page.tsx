@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import api from '@/lib/api';
+import { isVIP } from '@/lib/auth';
 import AlertsWidget from '@/components/AlertsWidget';
 import {
   Users, Briefcase, Truck, FileText, TrendingUp,
@@ -40,7 +41,7 @@ export default function DashboardPage() {
   const [erpData, setErpData] = useState<any>(null);
   const [fleetData, setFleetData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const isVIP = typeof window !== 'undefined' && localStorage.getItem('role') === 'SUPER_ADMIN';
+  const vip = typeof window !== 'undefined' && isVIP();
 
   useEffect(() => {
     Promise.all([
@@ -101,17 +102,17 @@ export default function DashboardPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-white mb-2">
-            {isVIP ? (
+            {vip ? (
               <span className="flex items-center gap-2">
                 مرحباً <Crown className="h-8 w-8 text-amber-400" /> VIP
               </span>
             ) : 'لوحة التحكم'}
           </h1>
           <p className="text-slate-400">
-            {isVIP ? 'وضع المالك - صلاحيات كاملة بدون قيود' : 'نظرة عامة على أداء منشأتك'}
+            {vip ? 'وضع المالك - صلاحيات كاملة بدون قيود' : 'نظرة عامة على أداء منشأتك'}
           </p>
         </div>
-        {isVIP && (
+        {vip && (
           <span className="badge-vip">
             <Crown className="h-3 w-3" /> SUPER ADMIN MODE
           </span>

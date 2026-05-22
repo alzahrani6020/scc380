@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import api from '@/lib/api';
+import { getTenantId } from '@/lib/auth';
 import { io, Socket } from 'socket.io-client';
 import { Bell, Check, Trash2, Mail, MessageSquare, Smartphone, Plus, X, AlertTriangle, AlertCircle, Info, Package, FileText, Clock, CreditCard, UserCheck, ExternalLink, Eye } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
@@ -60,7 +61,7 @@ export default function NotificationsPage() {
 
     socket.on('connect', () => {
       setWsConnected(true);
-      const tenantId = localStorage.getItem('tenantId') || 'default';
+      const tenantId = getTenantId() || 'default';
       socket.emit('subscribe', tenantId);
     });
 

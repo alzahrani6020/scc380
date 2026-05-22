@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import api from '@/lib/api';
+import { getToken, clearAuth } from '@/lib/auth';
 import { Building2, FileText, FolderKanban, MessageSquare, LogOut, ArrowLeft, TrendingUp, CheckCircle2, Clock } from 'lucide-react';
 
 export default function ClientPortal() {
@@ -12,7 +13,7 @@ export default function ClientPortal() {
   const [user, setUser] = useState<any>(null);
 
   useEffect(() => {
-    const token = localStorage.getItem('accessToken');
+    const token = getToken();
     if (!token) { window.location.href = '/auth/login'; return; }
     api.get('/auth/me').then((r) => setUser(r.data)).catch(() => { window.location.href = '/auth/login'; });
     Promise.all([
@@ -45,7 +46,7 @@ export default function ClientPortal() {
         </div>
         <div className="flex items-center gap-4">
           <span className="text-slate-400 text-sm">{user?.email}</span>
-          <button onClick={() => { localStorage.clear(); window.location.href = '/auth/login'; }} className="text-red-400 text-sm hover:underline flex items-center gap-1">
+          <button onClick={() => { clearAuth(); window.location.href = '/auth/login'; }} className="text-red-400 text-sm hover:underline flex items-center gap-1">
             <LogOut className="h-4 w-4" /> خروج
           </button>
         </div>

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { getTenantId } from '@/lib/auth';
 
 interface UseSocketReturn {
   socket: Socket | null;
@@ -18,7 +19,7 @@ export function useSocket(): UseSocketReturn {
 
     socket.on('connect', () => {
       setConnected(true);
-      const tenantId = localStorage.getItem('tenantId');
+      const tenantId = getTenantId();
       if (tenantId) socket.emit('join-tenant', tenantId);
     });
 
