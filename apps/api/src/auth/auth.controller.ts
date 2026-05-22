@@ -82,12 +82,13 @@ export class AuthController {
     return this.authService.verify2FASetup(req.user.userId, code);
   }
 
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @Post('2fa/verify')
-  async verify2FALogin(@Request() req, @Body('code') code: string) {
-    if (!code) throw new BadRequestException('Code is required');
-    return this.authService.verify2FALogin(req.user.userId, code);
+  @Post('verify-2fa-login')
+  async verify2FALoginAndIssueToken(
+    @Body('tempToken') tempToken: string,
+    @Body('code') code: string,
+  ) {
+    if (!tempToken || !code) throw new BadRequestException('tempToken and code are required');
+    return this.authService.verify2FALoginAndIssueToken(tempToken, code);
   }
 
   @UseGuards(JwtAuthGuard)

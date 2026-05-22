@@ -34,9 +34,65 @@ export class AuthService {
   }
 
   async login(userId: string, email: string, role: string, tenantId?: string, tenantSlug?: string) {
+    // Check if 2FA is enabled
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { twoFactorEnabled: true },
+    });
+
+    if (user?.twoFactorEnabled) {
+      // Issue a temporary token for 2FA verification
+      const tempToken = this.jwt.sign(
+        { sub: userId, email, role, tenantId, tenantSlug, type: '2fa_pending' },
+        { expiresIn: '5m' },
+      );
+      return {
+        requires2FA: true,
+        tempToken,
+        user: { id: userId, email, role, tenantId, tenantSlug },
+      };
+    }
+
     const payload = { sub: userId, email, role, tenantId, tenantSlug };
     const accessToken = this.jwt.sign(payload);
     const refreshToken = this.jwt.sign(payload, {
+      secret: this.config.get('JWT_SECRET'),
+      expiresIn: this.config.get('REFRESH_TOKEN_EXPIRES_IN') || '7d',
+    });
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { lastLoginAt: new Date() },
+    });
+
+    return {
+      accessToken,
+      refreshToken,
+      user: { id: userId, email, role, tenantId, tenantSlug },
+    };
+  }
+
+  async verify2FALoginAndIssueToken(tempToken: string, code: string) {
+    let payload: any;
+    try {
+      payload = this.jwt.verify(tempToken);
+    } catch {
+      throw new UnauthorizedException('Invalid or expired temporary token');
+    }
+
+    if (payload.type !== '2fa_pending') {
+      throw new UnauthorizedException('Invalid token type');
+    }
+
+    const verifyResult = await this.verify2FALogin(payload.sub, code);
+    if (!verifyResult.verified) {
+      throw new UnauthorizedException('Invalid 2FA code');
+    }
+
+    const { sub: userId, email, role, tenantId, tenantSlug } = payload;
+    const accessPayload = { sub: userId, email, role, tenantId, tenantSlug };
+    const accessToken = this.jwt.sign(accessPayload);
+    const refreshToken = this.jwt.sign(accessPayload, {
       secret: this.config.get('JWT_SECRET'),
       expiresIn: this.config.get('REFRESH_TOKEN_EXPIRES_IN') || '7d',
     });

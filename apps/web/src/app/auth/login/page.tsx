@@ -30,6 +30,12 @@ export default function LoginPage() {
     setLoading(true); setError('');
     try {
       const res = await api.post('/auth/login', { email, password });
+
+      if (res.data.requires2FA) {
+        router.push(`/auth/verify-2fa?token=${encodeURIComponent(res.data.tempToken)}`);
+        return;
+      }
+
       const authData = {
         accessToken: res.data.accessToken,
         refreshToken: res.data.refreshToken,
