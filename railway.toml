@@ -1,0 +1,7 @@
+[build]
+dockerfilePath = "apps/api/Dockerfile"
+
+[deploy]
+startCommand = "cd packages/database && npx prisma db push && cd ../../apps/api && node dist/main.js"
+healthcheckPath = "/"
+restartPolicyType = "on_failure"
