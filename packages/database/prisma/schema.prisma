@@ -153,8 +153,12 @@ model PasswordResetToken {
   usedAt    DateTime?
   createdAt DateTime @default(now())
 
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String?
+
   @@index([email])
   @@index([token])
+  @@index([userId])
   @@map("password_reset_tokens")
 }
 
@@ -293,9 +297,15 @@ model Invoice {
   dueDate       DateTime
   paidAt        DateTime?
   paidAmount    Decimal?  @default(0) @db.Decimal(18, 2)
-  zatcaUuid     String?   @unique
-  zatcaXmlUrl   String?
-  zatcaStatus   ZatcaStatus?
+  zatcaUuid           String?   @unique
+  zatcaXmlUrl         String?
+  zatcaStatus         ZatcaStatus?
+  zatcaSignedXml      String?   @db.Text
+  previousInvoiceHash String?   // PIH - Previous Invoice Hash
+  digitalSignature    String?   @db.Text
+  qrCodeData          String?   @db.Text
+  clearanceStatus     String?   // PENDING, CLEARED, REJECTED
+  reportingStatus     String?   // PENDING, REPORTED, REJECTED
   notes         String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -1229,6 +1239,7 @@ enum ActivityType {
 enum InvoiceType {
   STANDARD
   CREDIT_NOTE
+  DEBIT_NOTE
   PROFORMA
   QUOTE
 }
