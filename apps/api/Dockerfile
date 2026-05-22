@@ -28,6 +28,7 @@ RUN pnpm --filter @scc/api build
 # Production image
 FROM node:20-alpine AS runner
 
+RUN apk add --no-cache openssl
 RUN npm install -g pnpm
 
 WORKDIR /app
@@ -42,4 +43,4 @@ COPY --from=builder /app/node_modules ./node_modules
 
 EXPOSE 3001
 
-CMD ["node", "apps/api/dist/main"]
+CMD ["node", "apps/api/dist/main.js"]

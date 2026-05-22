@@ -25,6 +25,8 @@ RUN pnpm --filter @scc/web build
 # Production stage
 FROM node:20-alpine AS runner
 
+RUN npm install -g pnpm
+
 WORKDIR /app
 
 ENV NODE_ENV=production

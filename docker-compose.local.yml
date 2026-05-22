@@ -1,0 +1,42 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: ./apps/api/Dockerfile
+    container_name: scc-api
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: postgresql://postgres:postgres@scc-postgres:5432/scc_main
+      REDIS_URL: redis://scc-redis:6379
+      JWT_SECRET: local-dev-secret-change-in-production
+      JWT_EXPIRES_IN: 1h
+      CORS_ORIGINS: http://localhost:3000
+    networks:
+      - dev_default
+
+  web:
+    build:
+      context: .
+      dockerfile: ./apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:3001
+    container_name: scc-web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+    networks:
+      - dev_default
+    depends_on:
+      - api
+
+networks:
+  dev_default:
+    external: true
