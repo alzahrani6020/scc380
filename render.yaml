@@ -5,14 +5,6 @@ databases:
     plan: free
 
 services:
-  # Redis cache
-  - type: pserv
-    name: scc-redis
-    runtime: docker
-    plan: free
-    image: redis:7-alpine
-
-  # Backend API
   - type: web
     name: scc-api
     runtime: docker
@@ -27,22 +19,10 @@ services:
         fromDatabase:
           name: scc-postgres
           property: connectionString
-      - key: REDIS_URL
-        value: redis://scc-redis:6379
       - key: JWT_SECRET
         generateValue: true
       - key: JWT_EXPIRES_IN
         value: 1h
       - key: CORS_ORIGINS
-        value: "https://*.onrender.com,https://*.vercel.app,https://scc380-web.vercel.app"
-      - key: MINIO_ENDPOINT
-        value: localhost
-      - key: MINIO_PORT
-        value: 9000
-      - key: MINIO_ACCESS_KEY
-        value: minioadmin
-      - key: MINIO_SECRET_KEY
-        value: minioadmin
-      - key: OLLAMA_URL
-        value: http://localhost:11434
+        value: "https://scc380-web.vercel.app"
     healthCheckPath: /
