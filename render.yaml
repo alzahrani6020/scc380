@@ -3,13 +3,16 @@ databases:
     databaseName: scc_main
     user: sccuser
     plan: free
+    region: frankfurt
 
 services:
   - type: web
     name: scc-api
-    runtime: docker
+    runtime: node
     plan: free
-    dockerfilePath: ./apps/api/Dockerfile
+    region: frankfurt
+    buildCommand: pnpm install --frozen-lockfile && cd packages/database && npx prisma generate && pnpm --filter @scc/database build && pnpm --filter @scc/auth build && pnpm --filter @scc/types build && pnpm --filter @scc/utils build && pnpm --filter @scc/api build
+    startCommand: node apps/api/dist/main.js
     envVars:
       - key: NODE_ENV
         value: production
@@ -24,5 +27,15 @@ services:
       - key: JWT_EXPIRES_IN
         value: 1h
       - key: CORS_ORIGINS
-        value: "https://scc380-web.vercel.app"
+        value: "https://*.onrender.com,https://*.vercel.app,https://scc380-web.vercel.app"
+      - key: MINIO_ENDPOINT
+        value: localhost
+      - key: MINIO_PORT
+        value: 9000
+      - key: MINIO_ACCESS_KEY
+        value: minioadmin
+      - key: MINIO_SECRET_KEY
+        value: minioadmin
+      - key: OLLAMA_URL
+        value: http://localhost:11434
     healthCheckPath: /
