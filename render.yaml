@@ -29,16 +29,13 @@ services:
           name: scc-postgres
           property: connectionString
       - key: REDIS_URL
-        fromService:
-          type: pserv
-          name: scc-redis
-          property: host
+        value: redis://scc-redis:6379
       - key: JWT_SECRET
         generateValue: true
       - key: JWT_EXPIRES_IN
         value: 1h
       - key: CORS_ORIGINS
-        value: https://*.onrender.com
+        value: "https://*.onrender.com,https://*.vercel.app,https://scc380-web.vercel.app"
       - key: MINIO_ENDPOINT
         value: localhost
       - key: MINIO_PORT
@@ -51,9 +48,9 @@ services:
         value: http://localhost:11434
     healthCheckPath: /
 
-  # Frontend Web
+  # Frontend Web (mirror on Render)
   - type: web
-    name: scc-web
+    name: scc-web-render
     runtime: docker
     plan: free
     dockerfilePath: ./apps/web/Dockerfile
