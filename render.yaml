@@ -4,9 +4,10 @@ databases:
     user: postgres
     plan: free
     region: frankfurt
+    ipAllowList: []
 
 services:
-  # Redis
+  # Redis cache
   - type: pserv
     name: scc-redis
     runtime: docker
@@ -47,20 +48,3 @@ services:
       - key: OLLAMA_URL
         value: http://localhost:11434
     healthCheckPath: /
-
-  # Frontend Web (mirror on Render)
-  - type: web
-    name: scc-web-render
-    runtime: docker
-    plan: free
-    dockerfilePath: ./apps/web/Dockerfile
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: PORT
-        value: 3000
-      - key: NEXT_PUBLIC_API_URL
-        fromService:
-          type: web
-          name: scc-api
-          property: url
