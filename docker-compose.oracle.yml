@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  api:
+    build:
+      context: .
+      dockerfile: ./apps/api/Dockerfile
+    restart: always
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: ${DATABASE_URL}
+      DIRECT_URL: ${DIRECT_URL}
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1h}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://scc380-web.vercel.app}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-}
+      MINIO_PORT: ${MINIO_PORT:-9000}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-}
+      OLLAMA_URL: ${OLLAMA_URL:-}
+    depends_on:
+      - redis
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+volumes:
+  redis_data:
