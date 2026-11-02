@@ -20,8 +20,9 @@ export function middleware(request: NextRequest) {
   const demoToken = request.nextUrl.searchParams.get('demo');
   const demoUsed = request.cookies.get('demo_used')?.value;
 
-  // السماح بالوصول لـ API routes وصفحة expired و admin و landing و preview
+  // السماح بالوصول لـ API routes وصفحة expired و admin و landing و preview والجذر (يحوّله page.tsx إلى /landing)
   if (
+    path === '/' ||
     path.startsWith('/api/') ||
     path === '/expired' ||
     path.startsWith('/admin/') ||
@@ -31,10 +32,14 @@ export function middleware(request: NextRequest) {
     // بالنسبة لـ preview: إذا جاء مع demo token نتحقق منه ونضع cookie
     if (path === '/preview' && demoToken) {
       if (!verifyToken(demoToken)) {
-        return NextResponse.redirect(new URL('/expired', request.url));
+        const r = NextResponse.redirect(new URL('/expired', request.url));
+        r.headers.set('Cache-Control', 'no-store');
+        return r;
       }
       if (demoUsed === demoToken) {
-        return NextResponse.redirect(new URL('/expired', request.url));
+        const r = NextResponse.redirect(new URL('/expired', request.url));
+        r.headers.set('Cache-Control', 'no-store');
+        return r;
       }
       const response = NextResponse.next();
       response.cookies.set('demo_used', demoToken, {
@@ -52,10 +57,14 @@ export function middleware(request: NextRequest) {
   // إذا كان هناك token في الرابط
   if (demoToken) {
     if (!verifyToken(demoToken)) {
-      return NextResponse.redirect(new URL('/expired', request.url));
+      const r = NextResponse.redirect(new URL('/expired', request.url));
+      r.headers.set('Cache-Control', 'no-store');
+      return r;
     }
     if (demoUsed === demoToken) {
-      return NextResponse.redirect(new URL('/expired', request.url));
+      const r = NextResponse.redirect(new URL('/expired', request.url));
+      r.headers.set('Cache-Control', 'no-store');
+      return r;
     }
     const response = NextResponse.next();
     response.cookies.set('demo_used', demoToken, {
@@ -68,8 +77,10 @@ export function middleware(request: NextRequest) {
     return response;
   }
 
-  // إذا ما فيه token → expired
-  return NextResponse.redirect(new URL('/expired', request.url));
+  // إذا ما فيه token → expired (بدون تخزين في الـ cache لتفادي الردود القديمة)
+  const expiredRedirect = NextResponse.redirect(new URL('/expired', request.url));
+  expiredRedirect.headers.set('Cache-Control', 'no-store');
+  return expiredRedirect;
 }
 
 export const config = {
