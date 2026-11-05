@@ -20,48 +20,9 @@ export function middleware(request: NextRequest) {
   const demoToken = request.nextUrl.searchParams.get('demo');
   const demoUsed = request.cookies.get('demo_used')?.value;
 
-  // السماح بالوصول لـ API routes وصفحة expired و admin و landing و preview والجذر (يحوّله page.tsx إلى /landing)
-  if (
-    path === '/' ||
-    path.startsWith('/api/') ||
-    path === '/expired' ||
-    path.startsWith('/admin/') ||
-    path === '/landing' ||
-    path === '/preview'
-  ) {
-    // بالنسبة لـ preview: إذا جاء مع demo token نتحقق منه ونضع cookie
-    if (path === '/preview' && demoToken) {
-      if (!verifyToken(demoToken)) {
-        const r = NextResponse.redirect(new URL('/expired', request.url));
-        r.headers.set('Cache-Control', 'no-store');
-        return r;
-      }
-      if (demoUsed === demoToken) {
-        const r = NextResponse.redirect(new URL('/expired', request.url));
-        r.headers.set('Cache-Control', 'no-store');
-        return r;
-      }
-      const response = NextResponse.next();
-      response.cookies.set('demo_used', demoToken, {
-        httpOnly: true,
-        secure: true,
-        sameSite: 'strict',
-        path: '/',
-        maxAge: 60 * 60 * 24,
-      });
-      return response;
-    }
-    return NextResponse.next();
-  }
-
-  // إذا كان هناك token في الرابط
-  if (demoToken) {
-    if (!verifyToken(demoToken)) {
-      const r = NextResponse.redirect(new URL('/expired', request.url));
-      r.headers.set('Cache-Control', 'no-store');
-      return r;
-    }
-    if (demoUsed === demoToken) {
+  // بوابة الديمو التسويقية: صفحة العرض فقط (اختياري — الرابط التجريبي لمرة واحدة)
+  if (path === '/preview' && demoToken) {
+    if (!verifyToken(demoToken) || demoUsed === demoToken) {
       const r = NextResponse.redirect(new URL('/expired', request.url));
       r.headers.set('Cache-Control', 'no-store');
       return r;
@@ -77,10 +38,28 @@ export function middleware(request: NextRequest) {
     return response;
   }
 
-  // إذا ما فيه token → expired (بدون تخزين في الـ cache لتفادي الردود القديمة)
-  const expiredRedirect = NextResponse.redirect(new URL('/expired', request.url));
-  expiredRedirect.headers.set('Cache-Control', 'no-store');
-  return expiredRedirect;
+  // مسارات عامة لا تحتاج جلسة
+  if (
+    path === '/' ||
+    path.startsWith('/api/') ||
+    path.startsWith('/auth') ||
+    path === '/landing' ||
+    path === '/expired' ||
+    path === '/preview' ||
+    path.startsWith('/admin/')
+  ) {
+    return NextResponse.next();
+  }
+
+  // حارس الجلسة الحقيقي: لا رمز دخول ← صفحة الدخول.
+  // التحقق الفعلي من الصلاحيات يتم في الـ API على كل طلب (هذا حارس تجربة فقط).
+  const accessToken = request.cookies.get('accessToken')?.value;
+  if (!accessToken) {
+    const login = NextResponse.redirect(new URL('/auth/login', request.url));
+    login.headers.set('Cache-Control', 'no-store');
+    return login;
+  }
+  return NextResponse.next();
 }
 
 export const config = {
