@@ -18,6 +18,12 @@
     "docker:prod": "docker compose -f infrastructure/docker/prod/docker-compose.yml up -d",
     "setup": "pnpm install && pnpm db:generate && pnpm docker:up"
   },
+  "pnpm": {
+    "overrides": {
+      "react": "18.3.1",
+      "react-dom": "18.3.1"
+    }
+  },
   "devDependencies": {
     "prettier": "^3.2.0",
     "tsup": "^8.0.0",
