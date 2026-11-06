@@ -69,6 +69,18 @@ export function setAuth(data: AuthData, remember: boolean = true) {
   clear.remove('role');
   clear.remove('tenantSlug');
   clear.remove('tenantId');
+
+  // كوكي accessToken يقرأها middleware (حارس الجلسة) — دونها يُحوَّل المتصفح
+  // إلى صفحة الدخول حتى بعد تسجيل الدخول الناجح
+  setAccessCookie(remember);
+}
+
+function setAccessCookie(remember: boolean) {
+  try {
+    if (typeof document === 'undefined') return;
+    const base = 'accessToken=1; path=/; SameSite=lax';
+    document.cookie = remember ? `${base}; max-age=${60 * 60 * 24 * 7}` : base;
+  } catch {}
 }
 
 export function clearAuth() {
@@ -77,4 +89,7 @@ export function clearAuth() {
     LS.remove(k);
     SS.remove(k);
   });
+  try {
+    if (typeof document !== 'undefined') document.cookie = 'accessToken=; path=/; max-age=0';
+  } catch {}
 }
