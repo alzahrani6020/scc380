@@ -7,6 +7,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { TenantMiddleware } from './common/middleware/tenant.middleware';
 import { AuditLogInterceptor } from './common/interceptors/audit-log.interceptor';
+import { SanitizeIdentityHeadersInterceptor } from './common/sanitize-identity-headers.interceptor';
 import { RetentionService } from './compliance/retention.service';
 
 import { AuthModule } from './auth/auth.module';

@@ -25,7 +25,10 @@ async function bootstrap() {
     .addBearerAuth()
     .build();
   const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('api/docs', app, document);
+    // إخفاء Swagger في الإنتاج إلا إذا فُعّل صراحة (ENABLE_SWAGGER=1)
+  if (process.env.NODE_ENV !== 'production' || process.env.ENABLE_SWAGGER === '1') {
+    SwaggerModule.setup('api/docs', app, document);
+  }
 
   const port = process.env.PORT || 3001;
   await app.listen(port, '0.0.0.0');

@@ -51,10 +51,19 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // حارس الجلسة الحقيقي: لا رمز دخول ← صفحة الدخول.
-  // التحقق الفعلي من الصلاحيات يتم في الـ API على كل طلب (هذا حارس تجربة فقط).
+  // حارس الجلسة: الكوكي يجب أن تحمل JWT حقيقياً غير منتهٍ (تُضبط عند تسجيل الدخول).
+  // المصادرة الكاملة بالتوقيع تتم دائماً في الـ API على كل طلب بيانات — هذا حارس مسارات UX.
   const accessToken = request.cookies.get('accessToken')?.value;
-  if (!accessToken) {
+  let sessionValid = false;
+  if (accessToken && accessToken.split('.').length === 3) {
+    try {
+      const payload = JSON.parse(Buffer.from(accessToken.split('.')[1], 'base64url').toString('utf-8'));
+      sessionValid = !payload.exp || Date.now() < payload.exp * 1000;
+    } catch {
+      sessionValid = false;
+    }
+  }
+  if (!sessionValid) {
     const login = NextResponse.redirect(new URL('/auth/login', request.url));
     login.headers.set('Cache-Control', 'no-store');
     return login;

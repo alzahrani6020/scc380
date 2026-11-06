@@ -121,38 +121,40 @@ export class AuthService {
     const existing = await prisma.user.findUnique({ where: { email: data.email } });
     if (existing) throw new ConflictException('Email already registered / البريد مسجل مسبقاً');
 
-    let tenantId: string | undefined;
-
-    if (data.tenantName && data.tenantSlug) {
-      const slugExists = await prisma.tenant.findUnique({ where: { slug: data.tenantSlug } });
-      if (slugExists) throw new ConflictException('Tenant slug already exists / اسم المنشأة مستخدم');
-
-      const tenant = await prisma.tenant.create({
-        data: {
-          name: data.tenantName,
-          slug: data.tenantSlug,
-          status: 'ACTIVE',
-          plan: 'BASIC',
-        },
-      });
-      tenantId = tenant.id;
-    }
-
     const passwordHash = await hashPassword(data.password);
-    const user = await prisma.user.create({
-      data: {
-        email: data.email,
-        passwordHash,
-        firstName: data.firstName,
-        lastName: data.lastName,
-        phone: data.phone,
-        tenantId,
-        role: tenantId ? 'ADMIN' : 'USER',
-      },
-      select: { id: true, email: true, firstName: true, lastName: true, role: true, status: true, tenantId: true },
-    });
 
-    return user;
+    // معاملة ذرّية: إنشاء المنشأة والمستخدم معاً أو لا شيء (يمنع tenant يتيم بدون مالك)
+    return prisma.$transaction(async (tx) => {
+      let tenantId: string | undefined;
+
+      if (data.tenantName && data.tenantSlug) {
+        const slugExists = await tx.tenant.findUnique({ where: { slug: data.tenantSlug } });
+        if (slugExists) throw new ConflictException('Tenant slug already exists / اسم المنشأة مستخدم');
+
+        const tenant = await tx.tenant.create({
+          data: {
+            name: data.tenantName,
+            slug: data.tenantSlug,
+            status: 'ACTIVE',
+            plan: 'BASIC',
+          },
+        });
+        tenantId = tenant.id;
+      }
+
+      return tx.user.create({
+        data: {
+          email: data.email,
+          passwordHash,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          phone: data.phone,
+          tenantId,
+          role: tenantId ? 'ADMIN' : 'USER',
+        },
+        select: { id: true, email: true, firstName: true, lastName: true, role: true, status: true, tenantId: true },
+      });
+    });
   }
 
   async me(userId: string) {

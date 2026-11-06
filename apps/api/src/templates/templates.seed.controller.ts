@@ -1,8 +1,10 @@
-import { Controller, Post, Headers } from '@nestjs/common';
+import {UseGuards,  Controller, Post, Headers } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { TemplatesService } from './templates.service';
 import { seedTemplates } from './data/templates.seed';
 
 @Controller('templates/seed')
+@UseGuards(JwtAuthGuard)
 export class TemplatesSeedController {
   constructor(private readonly templatesService: TemplatesService) {}
 

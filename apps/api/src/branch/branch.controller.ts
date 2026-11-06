@@ -1,7 +1,9 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Headers } from '@nestjs/common';
+import {UseGuards,  Controller, Get, Post, Patch, Delete, Body, Param, Headers } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { BranchService } from './branch.service';
 
 @Controller('branches')
+@UseGuards(JwtAuthGuard)
 export class BranchController {
   constructor(private readonly service: BranchService) {}
 

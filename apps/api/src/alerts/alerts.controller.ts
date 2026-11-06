@@ -1,7 +1,9 @@
-import { Controller, Get, Post, Delete, Headers, Param } from '@nestjs/common';
+import {UseGuards,  Controller, Get, Post, Delete, Headers, Param } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { SmartAlertsService } from './alerts.service';
 
 @Controller('alerts')
+@UseGuards(JwtAuthGuard)
 export class AlertsController {
   constructor(private readonly service: SmartAlertsService) {}
 

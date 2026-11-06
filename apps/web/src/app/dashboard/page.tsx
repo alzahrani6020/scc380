@@ -6,7 +6,7 @@ import { isVIP } from '@/lib/auth';
 import AlertsWidget from '@/components/AlertsWidget';
 import {
   Users, Briefcase, Truck, FileText, TrendingUp,
-  Crown, Activity, ArrowUpRight, Wallet,
+  Crown, Activity, Wallet,
 } from 'lucide-react';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis,
@@ -127,9 +127,6 @@ export default function DashboardPage() {
               <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${card.color} flex items-center justify-center shadow-lg`}>
                 <card.icon className="h-6 w-6 text-white" />
               </div>
-              <span className={`inline-flex items-center gap-1 text-xs font-medium ${card.text}`}>
-                <ArrowUpRight className="h-3 w-3" /> +12%
-              </span>
             </div>
             <p className="text-slate-400 text-sm mb-1">{card.label}</p>
             <p className="text-2xl font-bold text-white">{card.value}</p>
@@ -308,7 +305,7 @@ export default function DashboardPage() {
 
 function translateStage(stage: string): string {
   const map: Record<string, string> = {
-    LEAD: ' prospect',
+    LEAD: 'عميل محتمل',
     QUALIFIED: 'مؤهل',
     PROPOSAL: 'عرض',
     NEGOTIATION: 'تفاوض',

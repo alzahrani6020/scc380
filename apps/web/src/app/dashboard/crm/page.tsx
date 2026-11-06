@@ -12,7 +12,7 @@ import Textarea from '@/components/ui/Textarea';
 const contactTypes = [
   { value: 'CUSTOMER', label: 'عميل' },
   { value: 'LEAD', label: 'محتمل' },
-  { value: 'PROSPECT', label: ' prospect' },
+  { value: 'PROSPECT', label: 'عميل محتمل' },
   { value: 'PARTNER', label: 'شريك' },
   { value: 'SUPPLIER', label: 'مورد' },
   { value: 'VENDOR', label: 'بائع' },

@@ -25,41 +25,57 @@ export class AnalyticsController {
   }
 
   @Get('crm')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   async getCrmStats(@Request() req: any, @Query('from') from?: string, @Query('to') to?: string) {
     return this.service.getCrmStats(req.user.tenantId, req.user.role, from, to);
   }
 
   @Get('erp')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   async getErpStats(@Request() req: any, @Query('from') from?: string, @Query('to') to?: string) {
     return this.service.getErpStats(req.user.tenantId, req.user.role, from, to);
   }
 
   @Get('fleet')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   async getFleetStats(@Request() req: any) {
     return this.service.getFleetStats(req.user.tenantId, req.user.role);
   }
 
   @Get('hr')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   async getHrStats(@Request() req: any) {
     return this.service.getHrStats(req.user.tenantId, req.user.role);
   }
 
   @Get('projects')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   async getProjectStats(@Request() req: any) {
     return this.service.getProjectStats(req.user.tenantId, req.user.role);
   }
 
   @Get('finance')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   async getFinanceStats(@Request() req: any) {
     return this.service.getFinanceStats(req.user.tenantId, req.user.role);
   }
 
   @Get('revenue-trend')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   async getRevenueTrend(@Request() req: any) {
     return this.service.getInvoiceRevenueTrend(req.user.tenantId, req.user.role);
   }
 
   @Get('alerts')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   async getAlerts(@Request() req: any) {
     return this.alertsService.getAlerts(req.user.tenantId, req.user.role);
   }

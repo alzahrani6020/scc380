@@ -1,4 +1,4 @@
-import {
+import {UseGuards, 
   Controller,
   Get,
   Post,
@@ -9,12 +9,14 @@ import {
   Query,
   Headers,
 } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { TemplatesService } from './templates.service';
 import { CreateTemplateDto } from './dto/create-template.dto';
 import { UpdateTemplateDto } from './dto/update-template.dto';
 import { TemplateFilterDto } from './dto/template-filter.dto';
 
 @Controller('templates')
+@UseGuards(JwtAuthGuard)
 export class TemplatesController {
   constructor(private readonly templatesService: TemplatesService) {}
 

@@ -70,15 +70,15 @@ export function setAuth(data: AuthData, remember: boolean = true) {
   clear.remove('tenantSlug');
   clear.remove('tenantId');
 
-  // كوكي accessToken يقرأها middleware (حارس الجلسة) — دونها يُحوَّل المتصفح
-  // إلى صفحة الدخول حتى بعد تسجيل الدخول الناجح
-  setAccessCookie(remember);
+  // كوكي accessToken تحمل JWT الحقيقي — يقرأها middleware ويتحقق من صلاحيتها،
+  // فلا يمكن تجاوز حارس الصفحات بكوكي مزيف (المعرفة الحقيقية تبقى في API بالتوقيع الكامل)
+  setAccessCookie(data.accessToken, remember);
 }
 
-function setAccessCookie(remember: boolean) {
+function setAccessCookie(token: string, remember: boolean) {
   try {
     if (typeof document === 'undefined') return;
-    const base = 'accessToken=1; path=/; SameSite=lax';
+    const base = `accessToken=${encodeURIComponent(token)}; path=/; SameSite=lax`;
     document.cookie = remember ? `${base}; max-age=${60 * 60 * 24 * 7}` : base;
   } catch {}
 }
