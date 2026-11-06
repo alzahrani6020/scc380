@@ -92,6 +92,12 @@ import { ComplianceModule } from './compliance/compliance.module';
       provide: APP_INTERCEPTOR,
       useClass: AuditLogInterceptor,
     },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: SanitizeIdentityHeadersInterceptor,
+    },
+  
+    
   ],
 })
 export class AppModule implements NestModule {
