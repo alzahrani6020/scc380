@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { prisma, withTenant } from '@scc/database';
 import { CreateContactDto } from './dto/create-contact.dto';
@@ -46,8 +46,14 @@ function pickContactPayload(source: unknown): Record<string, unknown> {
 
 @Injectable()
 export class ContactsService {
-  // Injectable for tests (in-memory fake); Nest resolves the default in prod.
-  constructor(private readonly db: PrismaClient = prisma) {}
+  private readonly db: PrismaClient;
+
+  // Optional explicit token keeps Nest from trying to resolve the type-only
+  // PrismaClient metadata as Function, while still allowing tests to inject
+  // an in-memory fake by constructing ContactsService directly.
+  constructor(@Optional() @Inject('CONTACTS_DB') db?: PrismaClient) {
+    this.db = db ?? prisma;
+  }
 
   async findAll(tenantId: string | undefined, userRole: string, filters: ContactListQuery = {}) {
     const page = Math.max(1, Math.floor(filters.page ?? 1) || 1);
