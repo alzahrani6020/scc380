@@ -3,7 +3,7 @@ name: Web Build Verify
 on:
   push:
     branches:
-      - feat/crm-workspace-completion
+      - feat/hr-workspace-completion
     paths:
       - "apps/web/**"
       - "packages/types/**"

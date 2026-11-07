@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import api from '@/lib/api';
 import { Briefcase, Plus, Search, Pencil, Trash2, X, Phone, Mail, Calendar, FileText } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
@@ -120,7 +121,7 @@ export default function HrPage() {
                   {emp.firstName?.charAt(0)}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h3 className="font-bold text-white truncate">{emp.firstName} {emp.lastName}</h3>
+                  <Link href={`/dashboard/hr/employees/${emp.id}`} className="font-bold text-white truncate hover:text-primary-400 block">{emp.firstName} {emp.lastName}</Link>
                   <p className="text-slate-400 text-sm">{emp.jobTitle || '—'}</p>
                 </div>
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

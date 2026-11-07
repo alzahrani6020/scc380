@@ -11,7 +11,7 @@ import {
   BarChart3, Landmark, Bot, Settings, Building2, LogOut,
   ChevronLeft, FolderKanban, Receipt, Shield, CreditCard, Bell,
   FileStack, ShoppingCart, Package, BookOpen, ArrowLeftRight, Store,
-  Route, Wrench, Fuel,
+  Route, Wrench, Fuel, CalendarDays, ClipboardList, Wallet,
 } from 'lucide-react';
 
 const navigation = [
@@ -23,6 +23,11 @@ const navigation = [
   { name: 'ERP - الفواتير', href: '/dashboard/erp', icon: FileText },
   { name: 'المشاريع', href: '/dashboard/projects', icon: FolderKanban },
   { name: 'الموارد البشرية', href: '/dashboard/hr', icon: Briefcase },
+  { name: '├── الموظفون', href: '/dashboard/hr/employees', icon: Users },
+  { name: '├── الحضور', href: '/dashboard/hr/attendance', icon: ClipboardList },
+  { name: '├── الإجازات', href: '/dashboard/hr/leaves', icon: CalendarDays },
+  { name: '├── الرواتب', href: '/dashboard/hr/payroll', icon: Wallet },
+  { name: '├── الإدارات', href: '/dashboard/hr/departments', icon: Building2 },
   { name: 'إدارة الأسطول', href: '/dashboard/fleet', icon: Truck },
   { name: '├── الرحلات', href: '/dashboard/fleet/trips', icon: Route },
   { name: '├── السائقون', href: '/dashboard/fleet/drivers', icon: Users },
