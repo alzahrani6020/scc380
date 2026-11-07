@@ -66,3 +66,25 @@ jobs:
           }
           console.log('SERVERLESS_HANDLER_SMOKE_PASS');
           NODE
+
+      - name: Initialize Nest routes on Express 4
+        run: |
+          cd apps/api
+          node - <<'NODE'
+          const { NestFactory } = require('@nestjs/core');
+          const { ExpressAdapter } = require('@nestjs/platform-express');
+          const expressModule = require('express');
+          const express = expressModule.default || expressModule;
+          const { AppModule } = require('./dist/app.module.js');
+
+          (async () => {
+            const server = express();
+            const app = await NestFactory.create(AppModule, new ExpressAdapter(server), { logger: false });
+            await app.init();
+            await app.close();
+            console.log('NEST_ROUTE_INIT_PASS');
+          })().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
+          NODE
