@@ -137,6 +137,13 @@ export default function FinancePage() {
         </div>
       </div>
 
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <a href="/dashboard/finance/payments" className="scc-card-hover"><CreditCard className="h-5 w-5 text-emerald-400 mb-2" /><h3 className="text-white font-bold">المدفوعات</h3><p className="text-slate-400 text-sm">سجل عمليات التحصيل والدفع</p></a>
+        <a href="/dashboard/finance/expenses" className="scc-card-hover"><Receipt className="h-5 w-5 text-rose-400 mb-2" /><h3 className="text-white font-bold">المصروفات</h3><p className="text-slate-400 text-sm">إدارة واعتماد المصروفات</p></a>
+        <a href="/dashboard/finance/bank-accounts" className="scc-card-hover"><Landmark className="h-5 w-5 text-blue-400 mb-2" /><h3 className="text-white font-bold">الحسابات البنكية</h3><p className="text-slate-400 text-sm">الأرصدة والحساب الافتراضي</p></a>
+        <a href="/dashboard/finance/purchase-orders" className="scc-card-hover"><CreditCard className="h-5 w-5 text-amber-400 mb-2" /><h3 className="text-white font-bold">أوامر الشراء</h3><p className="text-slate-400 text-sm">متابعة دورة أوامر الشراء</p></a>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <a href="/dashboard/finance/journal-entries" className="scc-card-hover flex items-center gap-4 group">
           <div className="w-12 h-12 rounded-xl bg-primary-500/10 flex items-center justify-center group-hover:bg-primary-500/20 transition-colors">

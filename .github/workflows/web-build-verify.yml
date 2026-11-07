@@ -3,7 +3,7 @@ name: Web Build Verify
 on:
   push:
     branches:
-      - feat/hr-workspace-completion
+      - feat/finance-workspace-completion
     paths:
       - "apps/web/**"
       - "packages/types/**"
