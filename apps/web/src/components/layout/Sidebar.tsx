@@ -7,7 +7,7 @@ import api from '@/lib/api';
 import { clearAuth } from '@/lib/auth';
 import { cn } from '@scc/utils';
 import {
-  LayoutDashboard, Users, FileText, Briefcase, Truck,
+  LayoutDashboard, Users, FileText, Briefcase, Truck, Activity,
   BarChart3, Landmark, Bot, Settings, Building2, LogOut,
   ChevronLeft, FolderKanban, Receipt, Shield, CreditCard, Bell,
   FileStack, ShoppingCart, Package, BookOpen, ArrowLeftRight, Store,
@@ -17,6 +17,9 @@ import {
 const navigation = [
   { name: 'لوحة التحكم', href: '/dashboard', icon: LayoutDashboard },
   { name: 'CRM', href: '/dashboard/crm', icon: Users },
+  { name: '├── جهات الاتصال', href: '/dashboard/crm/contacts', icon: Users },
+  { name: '├── الصفقات', href: '/dashboard/crm/deals', icon: Briefcase },
+  { name: '├── الأنشطة', href: '/dashboard/crm/activities', icon: Activity },
   { name: 'ERP - الفواتير', href: '/dashboard/erp', icon: FileText },
   { name: 'المشاريع', href: '/dashboard/projects', icon: FolderKanban },
   { name: 'الموارد البشرية', href: '/dashboard/hr', icon: Briefcase },
