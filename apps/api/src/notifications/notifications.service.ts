@@ -4,7 +4,7 @@ import { prisma, tenantWhere } from '@scc/database';
 @Injectable()
 export class NotificationsService {
   async findAll(req: any, query: any) {
-    const where: any = { ...tenantWhere(req) };
+    const where: any = { ...tenantWhere(req.user?.tenantId) };
     if (req.user?.role !== 'SUPER_ADMIN') where.userId = req.user?.userId;
     else if (query.userId) where.userId = query.userId;
     if (query.unread === 'true') where.readAt = null;
@@ -21,7 +21,7 @@ export class NotificationsService {
   }
 
   async getUnreadCount(req: any) {
-    const where: any = { ...tenantWhere(req), userId: req.user?.userId, readAt: null };
+    const where: any = { ...tenantWhere(req.user?.tenantId), userId: req.user?.userId, readAt: null };
     const count = await prisma.notification.count({ where });
     return { count };
   }
@@ -30,7 +30,7 @@ export class NotificationsService {
     return prisma.notification.create({
       data: {
         ...dto,
-        tenantId: req.tenantId || req.user?.tenantId,
+        tenantId: req.user?.tenantId,
         channel: dto.channel || 'IN_APP',
         status: 'PENDING',
       },

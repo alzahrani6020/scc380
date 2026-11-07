@@ -4,7 +4,7 @@ import { prisma, tenantWhere } from '@scc/database';
 @Injectable()
 export class FleetMaintenanceService {
   async findAll(req: any, query: any) {
-    const where: any = { ...tenantWhere(req) };
+    const where: any = { ...tenantWhere(req.user?.tenantId) };
     if (query.vehicleId) where.vehicleId = query.vehicleId;
     if (query.status) where.status = query.status;
     if (query.type) where.type = query.type;
@@ -21,21 +21,21 @@ export class FleetMaintenanceService {
   }
 
   async findOne(req: any, id: string) {
-    const where = { ...tenantWhere(req), id };
+    const where = { ...tenantWhere(req.user?.tenantId), id };
     const item = await prisma.fleetMaintenance.findFirst({ where });
     if (!item) throw new NotFoundException('Maintenance record not found');
     return item;
   }
 
   async create(req: any, dto: any) {
-    const data: any = { ...dto, tenantId: req.tenantId || req.user?.tenantId };
+    const data: any = { ...dto, tenantId: req.user?.tenantId };
     if (dto.serviceDate) data.serviceDate = new Date(dto.serviceDate);
     if (dto.nextServiceDate) data.nextServiceDate = new Date(dto.nextServiceDate);
     return prisma.fleetMaintenance.create({ data });
   }
 
   async update(req: any, id: string, dto: any) {
-    const where = { ...tenantWhere(req), id };
+    const where = { ...tenantWhere(req.user?.tenantId), id };
     const existing = await prisma.fleetMaintenance.findFirst({ where });
     if (!existing) throw new NotFoundException('Maintenance record not found');
     const data: any = { ...dto };
@@ -44,7 +44,7 @@ export class FleetMaintenanceService {
   }
 
   async remove(req: any, id: string) {
-    const where = { ...tenantWhere(req), id };
+    const where = { ...tenantWhere(req.user?.tenantId), id };
     const existing = await prisma.fleetMaintenance.findFirst({ where });
     if (!existing) throw new NotFoundException('Maintenance record not found');
     return prisma.fleetMaintenance.delete({ where: { id } });

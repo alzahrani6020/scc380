@@ -4,7 +4,7 @@ import { prisma, tenantWhere } from '@scc/database';
 @Injectable()
 export class ActivitiesService {
   async findAll(req: any, query: any) {
-    const where: any = { ...tenantWhere(req) };
+    const where: any = { ...tenantWhere(req.user?.tenantId) };
     if (query.type) where.type = query.type;
     if (query.contactId) where.contactId = query.contactId;
     if (query.dealId) where.dealId = query.dealId;
@@ -17,20 +17,20 @@ export class ActivitiesService {
   }
 
   async findOne(req: any, id: string) {
-    const where = { ...tenantWhere(req), id };
+    const where = { ...tenantWhere(req.user?.tenantId), id };
     const activity = await prisma.activity.findFirst({ where });
     if (!activity) throw new NotFoundException('Activity not found');
     return activity;
   }
 
   async create(req: any, dto: any) {
-    const data = { ...dto, tenantId: req.tenantId || req.user?.tenantId };
+    const data = { ...dto, tenantId: req.user?.tenantId };
     if (dto.scheduledAt) data.scheduledAt = new Date(dto.scheduledAt);
     return prisma.activity.create({ data });
   }
 
   async update(req: any, id: string, dto: any) {
-    const where = { ...tenantWhere(req), id };
+    const where = { ...tenantWhere(req.user?.tenantId), id };
     const existing = await prisma.activity.findFirst({ where });
     if (!existing) throw new NotFoundException('Activity not found');
     const data = { ...dto };
@@ -40,7 +40,7 @@ export class ActivitiesService {
   }
 
   async remove(req: any, id: string) {
-    const where = { ...tenantWhere(req), id };
+    const where = { ...tenantWhere(req.user?.tenantId), id };
     const existing = await prisma.activity.findFirst({ where });
     if (!existing) throw new NotFoundException('Activity not found');
     return prisma.activity.delete({ where: { id } });

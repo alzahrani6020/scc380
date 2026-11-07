@@ -4,7 +4,7 @@ import { prisma, tenantWhere } from '@scc/database';
 @Injectable()
 export class DealsService {
   async findAll(req: any, query: any) {
-    const where: any = { ...tenantWhere(req) };
+    const where: any = { ...tenantWhere(req.user?.tenantId) };
     if (query.stage) where.stage = query.stage;
     if (query.assignedToId) where.assignedToId = query.assignedToId;
     if (query.search) {
@@ -21,20 +21,20 @@ export class DealsService {
   }
 
   async findOne(req: any, id: string) {
-    const where = { ...tenantWhere(req), id };
+    const where = { ...tenantWhere(req.user?.tenantId), id };
     const deal = await prisma.deal.findFirst({ where });
     if (!deal) throw new NotFoundException('Deal not found');
     return deal;
   }
 
   async create(req: any, dto: any) {
-    const data = { ...dto, tenantId: req.tenantId || req.user?.tenantId };
+    const data = { ...dto, tenantId: req.user?.tenantId };
     if (dto.expectedClose) data.expectedClose = new Date(dto.expectedClose);
     return prisma.deal.create({ data });
   }
 
   async update(req: any, id: string, dto: any) {
-    const where = { ...tenantWhere(req), id };
+    const where = { ...tenantWhere(req.user?.tenantId), id };
     const existing = await prisma.deal.findFirst({ where });
     if (!existing) throw new NotFoundException('Deal not found');
     const data = { ...dto };
@@ -47,7 +47,7 @@ export class DealsService {
   }
 
   async remove(req: any, id: string) {
-    const where = { ...tenantWhere(req), id };
+    const where = { ...tenantWhere(req.user?.tenantId), id };
     const existing = await prisma.deal.findFirst({ where });
     if (!existing) throw new NotFoundException('Deal not found');
     return prisma.deal.delete({ where: { id } });
