@@ -1,15 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import axios from 'axios';
+import api from '@/lib/api';
 import { Shield, Search, Clock } from 'lucide-react';
 
-const api = axios.create({ baseURL: 'http://localhost:3001/api' });
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('accessToken');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
 
 export default function AuditLogsPage() {
   const [items, setItems] = useState<any[]>([]);
