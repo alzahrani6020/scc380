@@ -3,7 +3,7 @@ name: Web Build Verify
 on:
   push:
     branches:
-      - feat/navigation-admin-governance
+      - feat/supplier-invoice-workspace
     paths:
       - "apps/web/**"
       - "packages/types/**"

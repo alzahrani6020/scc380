@@ -51,6 +51,7 @@ const navigation = [
   { name: '🔄 تحويلات المخزون', href: '/dashboard/stock-transfers', icon: ArrowLeftRight },
   { name: '📊 التقارير المالية', href: '/dashboard/financial-reports', icon: BookOpen },
   { name: '🏢 الموردين', href: '/dashboard/suppliers', icon: Building2 },
+  { name: '├── فواتير الموردين', href: '/dashboard/supplier-invoices', icon: FileText },
   { name: '🏪 الفروع', href: '/dashboard/branches', icon: Store },
   { name: 'التحليلات', href: '/dashboard/analytics', icon: BarChart3 },
   { name: 'التكاملات الحكومية', href: '/dashboard/government', icon: Landmark },
