@@ -2,6 +2,9 @@ import { Controller, Get, Post, Patch, Delete, Body, Param, Query, Request, UseG
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ContactsService } from './contacts.service';
+import { CreateContactDto } from './dto/create-contact.dto';
+import { UpdateContactDto } from './dto/update-contact.dto';
+import { ListContactsQueryDto } from './dto/list-contacts-query.dto';
 
 @ApiTags('CRM - Contacts')
 @UseGuards(JwtAuthGuard)
@@ -11,8 +14,8 @@ export class ContactsController {
   constructor(private readonly contactsService: ContactsService) {}
 
   @Get()
-  findAll(@Request() req, @Query('type') type?: string, @Query('search') search?: string, @Query('status') status?: string) {
-    return this.contactsService.findAll(req.user.tenantId, req.user.role, { type, search, status });
+  findAll(@Request() req, @Query() query: ListContactsQueryDto) {
+    return this.contactsService.findAll(req.user.tenantId, req.user.role, query);
   }
 
   @Get(':id')
@@ -21,12 +24,12 @@ export class ContactsController {
   }
 
   @Post()
-  create(@Request() req, @Body() body: any) {
+  create(@Request() req, @Body() body: CreateContactDto) {
     return this.contactsService.create(req.user.tenantId, req.user.role, body);
   }
 
   @Patch(':id')
-  update(@Request() req, @Param('id') id: string, @Body() body: any) {
+  update(@Request() req, @Param('id') id: string, @Body() body: UpdateContactDto) {
     return this.contactsService.update(req.user.tenantId, req.user.role, id, body);
   }
 
