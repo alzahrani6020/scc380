@@ -1,15 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import axios from 'axios';
+import api from '@/lib/api';
 import { BarChart3, TrendingUp, Users, FileText, Truck, Briefcase } from 'lucide-react';
 
-const api = axios.create({ baseURL: 'http://localhost:3001/api' });
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('accessToken');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
 
 export default function AdminAnalyticsPage() {
   const [stats, setStats] = useState<any>(null);
