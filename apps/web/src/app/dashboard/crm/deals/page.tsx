@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import api from '@/lib/api';
-import { Briefcase, Plus, Search, TrendingUp, Pencil, Trash2, X } from 'lucide-react';
+import { Activity, Briefcase, Plus, Search, TrendingUp, Pencil, Trash2, X } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
 import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
@@ -132,9 +133,14 @@ export default function DealsPage() {
                   <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium ${stageColors[d.stage]}`}>{stages.find(s => s.value === d.stage)?.label || d.stage}</span>
                   {d.probability !== null && <p className="text-slate-500 text-xs mt-1">{d.probability}% احتمالية</p>}
                 </div>
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => openEdit(d)} className="p-1.5 rounded-lg hover:bg-primary-500/10 text-primary-400"><Pencil className="h-4 w-4" /></button>
-                  <button onClick={() => handleDelete(d.id)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-400"><Trash2 className="h-4 w-4" /></button>
+                <div className="flex items-center gap-1">
+                  <Link href={`/dashboard/crm/activities?dealId=${d.id}`} className="p-1.5 rounded-lg hover:bg-emerald-500/10 text-emerald-400" title="أنشطة الصفقة">
+                    <Activity className="h-4 w-4" />
+                  </Link>
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => openEdit(d)} className="p-1.5 rounded-lg hover:bg-primary-500/10 text-primary-400"><Pencil className="h-4 w-4" /></button>
+                    <button onClick={() => handleDelete(d.id)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-400"><Trash2 className="h-4 w-4" /></button>
+                  </div>
                 </div>
               </div>
             </div>
