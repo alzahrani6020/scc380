@@ -1,15 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import axios from 'axios';
+import api from '@/lib/api';
 import { Building2, Search, Plus, Crown, CheckCircle2, XCircle, Pencil, Trash2, X } from 'lucide-react';
 
-const api = axios.create({ baseURL: 'http://localhost:3001/api' });
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('accessToken');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
 
 const plans = [
   { value: 'BASIC', label: 'أساسي' },
