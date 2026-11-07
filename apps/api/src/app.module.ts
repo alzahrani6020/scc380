@@ -38,6 +38,7 @@ import { SupplierInvoiceModule } from './supplier-invoice/supplier-invoice.modul
 import { StockTransferModule } from './stock-transfer/stock-transfer.module';
 import { AlertsModule } from './alerts/alerts.module';
 import { ComplianceModule } from './compliance/compliance.module';
+import { RealEstateModule } from './real-estate/real-estate.module';
 
 @Module({
   imports: [
@@ -82,6 +83,7 @@ import { ComplianceModule } from './compliance/compliance.module';
     StockTransferModule,
     AlertsModule,
     ComplianceModule,
+    RealEstateModule,
     ScheduleModule.forRoot(),
   ],
   controllers: [AppController],

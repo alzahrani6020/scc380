@@ -3,7 +3,7 @@ name: Web Build Verify
 on:
   push:
     branches:
-      - feat/finance-workspace-completion
+      - feat/real-estate-activation
     paths:
       - "apps/web/**"
       - "packages/types/**"

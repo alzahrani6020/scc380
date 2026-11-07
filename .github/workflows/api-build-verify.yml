@@ -14,7 +14,7 @@ on:
       - ".github/workflows/api-build-verify.yml"
   push:
     branches:
-      - fix/api-build-baseline
+      - feat/real-estate-activation
     paths:
       - "apps/api/**"
       - "packages/database/**"
