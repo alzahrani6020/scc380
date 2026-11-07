@@ -29,15 +29,18 @@ export default function PayrollPage() {
   }, []);
 
   const fetchData = () => {
+    const employeeId = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('employeeId') : null;
+    const listUrl = employeeId ? '/hr/payrolls?employeeId=' + encodeURIComponent(employeeId) : '/hr/payrolls';
     Promise.all([
-      api.get('/hr/payrolls').then(r => setItems(r.data.data || [])),
+      api.get(listUrl).then(r => setItems(r.data.data || [])),
       api.get('/hr/employees').then(r => setEmployees(r.data.data || [])),
     ]).catch(console.error).finally(() => setLoading(false));
   };
 
   const openCreate = () => {
     setEditing(null);
-    setFormData({ month: new Date().getMonth() + 1, year: new Date().getFullYear(), status: 'DRAFT' });
+    const employeeId = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('employeeId') : null;
+    setFormData({ employeeId: employeeId || undefined, month: new Date().getMonth() + 1, year: new Date().getFullYear(), status: 'DRAFT' });
     setIsModalOpen(true);
   };
 
