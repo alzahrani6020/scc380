@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { AnalyticsService } from '../analytics/analytics.service';
+import { AlertsService } from '../analytics/alerts.service';
 
 export type SccDomain =
   | 'dashboard'
@@ -9,11 +10,15 @@ export type SccDomain =
   | 'crm'
   | 'erp'
   | 'projects'
+  | 'alerts'
   | 'general';
 
 @Injectable()
 export class SccIntelligenceService {
-  constructor(private analytics: AnalyticsService) {}
+  constructor(
+    private analytics: AnalyticsService,
+    private alerts: AlertsService,
+  ) {}
 
   private normalize(input: string) {
     return (input || '').trim().toLowerCase();
@@ -23,6 +28,7 @@ export class SccIntelligenceService {
     const text = this.normalize(message);
 
     const rules: Array<[SccDomain, string[]]> = [
+      ['alerts', ['تنبيه', 'تنبيهات', 'مخاطر', 'خطر', 'متأخر', 'متأخرة', 'alerts', 'risk', 'warning']],
       ['finance', ['مالية', 'المالية', 'مصروف', 'مصروفات', 'دفعات', 'دفع', 'بنك', 'رصيد', 'finance', 'payment', 'expense', 'bank']],
       ['fleet', ['أسطول', 'مركبات', 'مركبة', 'سيارات', 'صيانة', 'رحلات', 'fleet', 'vehicle', 'maintenance', 'trip']],
       ['hr', ['موظف', 'موظفين', 'رواتب', 'إجازات', 'حضور', 'موارد بشرية', 'hr', 'employee', 'payroll', 'leave', 'attendance']],
@@ -45,6 +51,8 @@ export class SccIntelligenceService {
     const role = user?.role || 'USER';
 
     switch (domain) {
+      case 'alerts':
+        return this.wrap(domain, await this.alerts.getAlerts(tenantId, role));
       case 'finance':
         return this.wrap(domain, await this.analytics.getFinanceStats(tenantId, role));
       case 'fleet':
@@ -109,6 +117,7 @@ export class SccIntelligenceService {
         'crm_snapshot',
         'erp_snapshot',
         'projects_snapshot',
+        'operational_alerts',
         'local_extractive_summary',
         'domain_routing',
       ],
