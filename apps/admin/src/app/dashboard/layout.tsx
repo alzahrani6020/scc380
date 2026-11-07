@@ -13,7 +13,7 @@ const nav = [
   { name: 'العملاء (Tenants)', href: '/dashboard/tenants', icon: Building2 },
   { name: 'المستخدمون', href: '/dashboard/users', icon: Users },
   { name: 'التحليلات', href: '/dashboard/analytics', icon: BarChart3 },
-  { name: 'سجل العمليات', href: '/dashboard/audit-logs', icon: Shield },
+  { name: 'محاولات تسجيل الدخول', href: '/dashboard/audit-logs', icon: Shield },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -21,8 +21,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const pathname = usePathname();
 
   useEffect(() => {
-    const token = localStorage.getItem('accessToken');
-    const role = localStorage.getItem('role');
+    const token = localStorage.getItem('accessToken') || sessionStorage.getItem('accessToken');
+    const role = localStorage.getItem('role') || sessionStorage.getItem('role');
     if (!token || role !== 'SUPER_ADMIN') {
       router.push('/auth/login');
     }
@@ -57,7 +57,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           })}
         </nav>
         <div className="p-4 border-t border-slate-800">
-          <button onClick={() => { localStorage.clear(); window.location.href = '/auth/login'; }}
+          <button onClick={() => { ['accessToken','refreshToken','role','tenantSlug','tenantId'].forEach((key) => { localStorage.removeItem(key); sessionStorage.removeItem(key); }); window.location.href = '/auth/login'; }}
             className="flex items-center gap-3 w-full px-4 py-3 rounded-xl text-sm font-medium text-red-400 hover:bg-red-500/10 transition-all">
             <LogOut className="h-5 w-5" /> تسجيل الخروج
           </button>

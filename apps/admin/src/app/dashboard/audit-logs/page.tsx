@@ -1,15 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import axios from 'axios';
+import api from '@/lib/api';
 import { Shield, Search, Clock } from 'lucide-react';
 
-const api = axios.create({ baseURL: 'http://localhost:3001/api' });
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('accessToken');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
 
 export default function AuditLogsPage() {
   const [items, setItems] = useState<any[]>([]);
@@ -30,7 +24,7 @@ export default function AuditLogsPage() {
         <div>
           <h1 className="text-2xl font-bold text-white flex items-center gap-2">
             <Shield className="h-6 w-6 text-primary-400" />
-            سجل العمليات
+            محاولات تسجيل الدخول
           </h1>
           <p className="text-slate-400 text-sm mt-1">{items.length} عملية</p>
         </div>

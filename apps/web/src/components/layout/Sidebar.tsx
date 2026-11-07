@@ -55,6 +55,8 @@ const navigation = [
   { name: 'التحليلات', href: '/dashboard/analytics', icon: BarChart3 },
   { name: 'التكاملات الحكومية', href: '/dashboard/government', icon: Landmark },
   { name: 'المساعد الذكي', href: '/dashboard/ai', icon: Bot },
+  { name: 'طلبات الموافقة', href: '/dashboard/approvals', icon: ClipboardList },
+  { name: 'الامتثال', href: '/dashboard/compliance', icon: Shield },
   { name: 'التنبيهات والإشعارات', href: '/dashboard/notifications', icon: Bell, badge: 'alerts' },
   { name: 'الأمان', href: '/dashboard/security', icon: Shield },
   { name: 'الاشتراكات', href: '/dashboard/billing', icon: CreditCard },

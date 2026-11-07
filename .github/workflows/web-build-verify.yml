@@ -3,7 +3,7 @@ name: Web Build Verify
 on:
   push:
     branches:
-      - feat/real-estate-activation
+      - feat/navigation-admin-governance
     paths:
       - "apps/web/**"
       - "packages/types/**"

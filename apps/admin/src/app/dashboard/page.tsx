@@ -1,18 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import axios from 'axios';
-import { Building2, Users, Wallet, Activity, TrendingUp } from 'lucide-react';
-
-const api = axios.create({
-  baseURL: 'http://localhost:3001/api',
-});
-
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('accessToken');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
+import api from '@/lib/api';
+import { Building2, Users, Wallet, Activity } from 'lucide-react';
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState<any>(null);
@@ -57,7 +47,7 @@ export default function AdminDashboard() {
               <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${c.color} flex items-center justify-center shadow-lg`}>
                 <c.icon className="h-6 w-6 text-white" />
               </div>
-              <span className="text-emerald-400 text-xs flex items-center gap-1"><TrendingUp className="h-3 w-3" /> +5%</span>
+              <span className="text-slate-500 text-xs">بيانات حالية</span>
             </div>
             <p className="text-slate-400 text-sm mb-1">{c.label}</p>
             <p className="text-2xl font-bold text-white">{c.value}</p>
