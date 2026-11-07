@@ -5,6 +5,7 @@ import { SccIntelligenceService } from './scc-intelligence.service';
 @Injectable()
 export class AiService {
   private ollamaUrl?: string;
+  private readonly llmTimeoutMs = 4000;
 
   constructor(
     private config: ConfigService,
@@ -29,13 +30,16 @@ export class AiService {
 
     if (!this.ollamaUrl) {
       return {
-        response: 'يمكنني حالياً تنفيذ الملخصات التشغيلية للمالية والأسطول والموارد البشرية والعملاء والفواتير والمشاريع ولوحة المؤشرات. اطلب المجال المطلوب مباشرة.',
+        response: 'يمكنني حالياً تنفيذ الملخصات التشغيلية والتنبيهات للمالية والأسطول والموارد البشرية والعملاء والفواتير والمشاريع ولوحة المؤشرات. اطلب المجال المطلوب مباشرة.',
         model: 'scc-intelligence-core',
         engine: 'scc-intelligence-core',
         mode: 'deterministic',
         fallback: true,
       };
     }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.llmTimeoutMs);
 
     try {
       const systemPrompt = context === 'crm'
@@ -45,6 +49,7 @@ export class AiService {
       const response = await fetch(`${this.ollamaUrl}/api/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           model: 'tinyllama',
           prompt: `${systemPrompt}\n\nUser: ${message}\nAssistant:`,
@@ -73,6 +78,8 @@ export class AiService {
         mode: 'deterministic',
         fallback: true,
       };
+    } finally {
+      clearTimeout(timeout);
     }
   }
 
@@ -101,6 +108,11 @@ export class AiService {
   }
 
   private describeLocalResult(domain: string, data: any) {
+    if (domain === 'alerts') {
+      const count = Array.isArray(data) ? data.length : 0;
+      const critical = Array.isArray(data) ? data.filter((item: any) => item.severity === 'danger').length : 0;
+      return `تم العثور على ${count} تنبيه تشغيلي، منها ${critical} عالي الخطورة.`;
+    }
     if (domain === 'finance') {
       return `الملخص المالي الحالي: الرصيد البنكي ${Number(data?.totalBankBalance || 0)}، المصروفات ${Number(data?.totalExpenses || 0)}، والمدفوعات المكتملة ${Number(data?.totalPayments || 0)}.`;
     }
