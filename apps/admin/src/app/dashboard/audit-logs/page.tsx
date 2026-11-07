@@ -24,7 +24,7 @@ export default function AuditLogsPage() {
         <div>
           <h1 className="text-2xl font-bold text-white flex items-center gap-2">
             <Shield className="h-6 w-6 text-primary-400" />
-            سجل العمليات
+            محاولات تسجيل الدخول
           </h1>
           <p className="text-slate-400 text-sm mt-1">{items.length} عملية</p>
         </div>
