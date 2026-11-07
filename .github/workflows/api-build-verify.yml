@@ -1,0 +1,79 @@
+name: API Build Verify
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/**"
+      - "packages/database/**"
+      - "packages/auth/**"
+      - "packages/types/**"
+      - "packages/utils/**"
+      - "pnpm-lock.yaml"
+      - "package.json"
+      - "turbo.json"
+      - ".github/workflows/api-build-verify.yml"
+  push:
+    branches:
+      - fix/api-build-baseline
+    paths:
+      - "apps/api/**"
+      - "packages/database/**"
+      - "packages/auth/**"
+      - "packages/types/**"
+      - "packages/utils/**"
+      - "pnpm-lock.yaml"
+      - "package.json"
+      - "turbo.json"
+      - ".github/workflows/api-build-verify.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify-api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "pnpm"
+
+      - name: Enable pnpm 8.15.0
+        run: |
+          corepack enable
+          corepack prepare pnpm@8.15.0 --activate
+          pnpm --version
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @scc/database db:generate
+
+      - name: Build API dependency graph
+        run: pnpm turbo run build --filter=@scc/api...
+
+      - name: Verify serverless handler export
+        run: |
+          node - <<'NODE'
+          const handler = require('./apps/api/api/index.js');
+          if (typeof handler !== 'function') {
+            throw new Error('SERVERLESS_HANDLER_NOT_FUNCTION');
+          }
+          const expressModule = require('express');
+          const express = expressModule.default || expressModule;
+          if (typeof express !== 'function') {
+            throw new Error('EXPRESS_NOT_CALLABLE');
+          }
+          const serverlessModule = require('serverless-http');
+          const serverless = serverlessModule.default || serverlessModule;
+          if (typeof serverless !== 'function') {
+            throw new Error('SERVERLESS_HTTP_NOT_CALLABLE');
+          }
+          console.log('SERVERLESS_HANDLER_SMOKE_PASS');
+          NODE
