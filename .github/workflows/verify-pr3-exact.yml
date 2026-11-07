@@ -1,0 +1,27 @@
+name: Verify PR3 exact SHA
+
+on:
+  push:
+    branches:
+      - ci/verify-pr3-c6a5b5c
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: c6a5b5cfb5f500385443cd773ff72fc6a5944fb7
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 8.15.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @scc/database db:generate
+      - run: pnpm turbo run build --filter=@scc/api...
