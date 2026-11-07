@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import axios from 'axios';
+import api from '@/lib/api';
 import { Building2, Users, Wallet, Activity, TrendingUp } from 'lucide-react';
 
 const api = axios.create({
