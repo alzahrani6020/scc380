@@ -1,8 +1,11 @@
 const { NestFactory } = require('@nestjs/core');
 const { ExpressAdapter } = require('@nestjs/platform-express');
-const express = require('express');
-const serverless = require('serverless-http');
+const expressModule = require('express');
+const serverlessModule = require('serverless-http');
 const { AppModule } = require('../dist/app.module.js');
+
+const express = expressModule.default || expressModule;
+const serverless = serverlessModule.default || serverlessModule;
 
 let cachedHandler;
 
