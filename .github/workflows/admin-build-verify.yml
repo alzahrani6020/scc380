@@ -1,6 +1,7 @@
 name: Admin Build Verify
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - feat/navigation-admin-governance
