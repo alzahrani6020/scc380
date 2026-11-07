@@ -42,15 +42,18 @@ export default function LeavesPage() {
   }, []);
 
   const fetchData = () => {
+    const employeeId = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('employeeId') : null;
+    const listUrl = employeeId ? '/hr/leaves?employeeId=' + encodeURIComponent(employeeId) : '/hr/leaves';
     Promise.all([
-      api.get('/hr/leaves').then(r => setItems(r.data.data || [])),
+      api.get(listUrl).then(r => setItems(r.data.data || [])),
       api.get('/hr/employees').then(r => setEmployees(r.data.data || [])),
     ]).catch(console.error).finally(() => setLoading(false));
   };
 
   const openCreate = () => {
     setEditing(null);
-    setFormData({ type: 'ANNUAL', status: 'PENDING', days: 1 });
+    const employeeId = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('employeeId') : null;
+    setFormData({ employeeId: employeeId || undefined, type: 'ANNUAL', status: 'PENDING', days: 1 });
     setIsModalOpen(true);
   };
 
