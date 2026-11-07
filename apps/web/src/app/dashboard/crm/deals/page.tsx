@@ -44,7 +44,7 @@ export default function DealsPage() {
   const fetchData = () => {
     Promise.all([
       api.get('/crm/deals').then(r => setItems(r.data.data || [])),
-      api.get('/crm/contacts').then(r => setContacts(r.data.data || [])),
+      api.get('/crm/contacts?limit=100').then(r => setContacts(r.data.data || [])),
     ]).catch(console.error).finally(() => setLoading(false));
   };
 
