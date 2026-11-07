@@ -19,7 +19,7 @@ jobs:
           cache: 'pnpm'
       - run: pnpm install
       - run: pnpm --filter @scc/database db:generate
-      - run: pnpm --filter @scc/api build
+      - run: pnpm exec turbo run build --filter=@scc/api
       - name: Deploy to Render
         env:
           RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
