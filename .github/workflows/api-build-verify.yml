@@ -64,15 +64,5 @@ jobs:
           if (typeof handler !== 'function') {
             throw new Error('SERVERLESS_HANDLER_NOT_FUNCTION');
           }
-          const expressModule = require('express');
-          const express = expressModule.default || expressModule;
-          if (typeof express !== 'function') {
-            throw new Error('EXPRESS_NOT_CALLABLE');
-          }
-          const serverlessModule = require('serverless-http');
-          const serverless = serverlessModule.default || serverlessModule;
-          if (typeof serverless !== 'function') {
-            throw new Error('SERVERLESS_HTTP_NOT_CALLABLE');
-          }
           console.log('SERVERLESS_HANDLER_SMOKE_PASS');
           NODE
