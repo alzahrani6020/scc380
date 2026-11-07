@@ -1,0 +1,47 @@
+name: Build API Docker Artifact
+
+on:
+  push:
+    branches:
+      - ops/api-image-8ce52de2
+
+permissions:
+  contents: read
+
+jobs:
+  build-api-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact branch
+        uses: actions/checkout@v4
+
+      - name: Verify source commit ancestry
+        run: |
+          git rev-parse HEAD
+          git merge-base --is-ancestor 8ce52de2d6c6806a99433338ab139276d66e386a HEAD
+
+      - name: Build API image
+        run: |
+          docker build             --file apps/api/Dockerfile             --tag scc380-api:8ce52de2             .
+
+      - name: Verify image contents
+        run: |
+          docker run --rm --entrypoint node scc380-api:8ce52de2             -e "console.log('EXPRESS_VERSION=' + require('/app/apps/api/node_modules/express/package.json').version)"
+          docker run --rm --entrypoint node scc380-api:8ce52de2             -e "const h=require('/app/apps/api/api/index.js'); if(typeof h!=='function') process.exit(1); console.log('HANDLER_EXPORT_PASS')"
+
+      - name: Save compressed image
+        run: |
+          docker save scc380-api:8ce52de2 | gzip -1 > scc380-api-8ce52de2.tar.gz
+          sha256sum scc380-api-8ce52de2.tar.gz > scc380-api-8ce52de2.tar.gz.sha256
+          ls -lh scc380-api-8ce52de2.tar.gz
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: scc380-api-8ce52de2
+          path: |
+            scc380-api-8ce52de2.tar.gz
+            scc380-api-8ce52de2.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 3
