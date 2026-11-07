@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
 import api from '@/lib/api';
 import { Activity, CalendarClock, CheckCircle2, Pencil, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
@@ -23,14 +22,13 @@ const activityTypes = [
 ];
 
 export default function ActivitiesPage() {
-  const searchParams = useSearchParams();
   const [items, setItems] = useState<any[]>([]);
   const [contacts, setContacts] = useState<any[]>([]);
   const [deals, setDeals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [type, setType] = useState(searchParams.get('type') || '');
-  const [contactId, setContactId] = useState(searchParams.get('contactId') || '');
-  const [dealId, setDealId] = useState(searchParams.get('dealId') || '');
+  const [type, setType] = useState('');
+  const [contactId, setContactId] = useState('');
+  const [dealId, setDealId] = useState('');
   const [search, setSearch] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
@@ -57,6 +55,13 @@ export default function ActivitiesPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setType(params.get('type') || '');
+    setContactId(params.get('contactId') || '');
+    setDealId(params.get('dealId') || '');
+  }, []);
 
   useEffect(() => {
     fetchData().catch(console.error);
