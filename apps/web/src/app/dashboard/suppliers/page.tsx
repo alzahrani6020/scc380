@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import api from '@/lib/api';
 import {
   Building2, Plus, Search, Phone, Mail, MapPin, Package, FileText,
@@ -119,9 +120,12 @@ export default function SuppliersPage() {
           </h1>
           <p className="text-slate-400 text-sm mt-1">قاعدة بيانات الموردين والمقاولين</p>
         </div>
-        <Button size="sm" onClick={() => { setEditing(null); setForm(emptyForm); setModalOpen(true); }}>
-          <Plus className="h-4 w-4" /> إضافة مورد
-        </Button>
+        <div className="flex items-center gap-2">
+          <Link href="/dashboard/supplier-invoices" className="scc-btn-ghost text-sm"><FileText className="h-4 w-4" /> فواتير الموردين</Link>
+          <Button size="sm" onClick={() => { setEditing(null); setForm(emptyForm); setModalOpen(true); }}>
+            <Plus className="h-4 w-4" /> إضافة مورد
+          </Button>
+        </div>
       </div>
 
       {/* Stats */}
