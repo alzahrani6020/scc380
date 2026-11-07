@@ -1,13 +1,15 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import api from '@/lib/api';
-import { Users, Plus, Search, Phone, Mail, MapPin, Building2, Pencil, Trash2, X } from 'lucide-react';
+import { Users, Plus, Search, Phone, Mail, MapPin, Pencil, Trash2, X, AlertCircle, RefreshCw } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
 import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
 import Button from '@/components/ui/Button';
 import Textarea from '@/components/ui/Textarea';
+
+const PAGE_SIZE = 25;
 
 const contactTypes = [
   { value: 'CUSTOMER', label: 'عميل' },
@@ -25,22 +27,70 @@ const contactStatuses = [
   { value: 'BLACKLISTED', label: 'محظور' },
 ];
 
+const typeFilterOptions = [{ value: '', label: 'كل الأنواع' }, ...contactTypes];
+const statusFilterOptions = [{ value: '', label: 'كل الحالات' }, ...contactStatuses];
+
 export default function CrmPage() {
   const [contacts, setContacts] = useState<any[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<any>(null);
   const [formLoading, setFormLoading] = useState(false);
   const [formData, setFormData] = useState<any>({});
+  const abortRef = useRef<AbortController | null>(null);
 
-  useEffect(() => {
-    fetchContacts();
+  const fetchContacts = useCallback((p: number, s: string, t: string, st: string) => {
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    setLoading(true);
+    setError(null);
+    const params = new URLSearchParams({ page: String(p), limit: String(PAGE_SIZE) });
+    if (s) params.set('search', s);
+    if (t) params.set('type', t);
+    if (st) params.set('status', st);
+    api
+      .get(`/crm/contacts?${params.toString()}`, { signal: ctrl.signal })
+      .then((res) => {
+        const body = res.data as { data: any[]; count: number; page: number; limit: number };
+        setContacts(body.data);
+        setTotal(body.count);
+      })
+      .catch((err) => {
+        if (err?.code === 'ERR_CANCELED') return;
+        setError('تعذر تحميل جهات الاتصال. تحقق من الاتصال بالخادم.');
+      })
+      .finally(() => {
+        if (!ctrl.signal.aborted) setLoading(false);
+      });
   }, []);
 
-  const fetchContacts = () => {
-    api.get('/crm/contacts').then((res) => setContacts(res.data.data || [])).catch(console.error).finally(() => setLoading(false));
-  };
+  // Debounce the search box (400ms) before it becomes a server query.
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 400);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  // Any filter change restarts from page 1.
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, typeFilter, statusFilter]);
+
+  useEffect(() => {
+    fetchContacts(page, debouncedSearch, typeFilter, statusFilter);
+  }, [page, debouncedSearch, typeFilter, statusFilter, fetchContacts]);
+
+  // Cancel in-flight request on unmount.
+  useEffect(() => {
+    return () => abortRef.current?.abort();
+  }, []);
 
   const openCreate = () => {
     setEditingContact(null);
@@ -64,7 +114,7 @@ export default function CrmPage() {
         await api.post('/crm/contacts', formData);
       }
       setIsModalOpen(false);
-      fetchContacts();
+      fetchContacts(page, debouncedSearch, typeFilter, statusFilter);
     } catch (err) {
       console.error(err);
       alert('حدث خطأ');
@@ -77,17 +127,18 @@ export default function CrmPage() {
     if (!confirm('هل أنت متأكد من الحذف؟')) return;
     try {
       await api.delete(`/crm/contacts/${id}`);
-      fetchContacts();
+      if (contacts.length === 1 && page > 1) {
+        setPage(page - 1);
+      } else {
+        fetchContacts(page, debouncedSearch, typeFilter, statusFilter);
+      }
     } catch (err) {
       console.error(err);
     }
   };
 
-  const filtered = contacts.filter((c) =>
-    `${c.firstName} ${c.lastName}`.includes(search) ||
-    c.email?.includes(search) ||
-    c.phone?.includes(search)
-  );
+  const hasActiveFilters = Boolean(debouncedSearch || typeFilter || statusFilter);
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <div className="space-y-6 animate-fade-in-up">
@@ -97,50 +148,103 @@ export default function CrmPage() {
             <Users className="h-6 w-6 text-primary-400" />
             إدارة العملاء (CRM)
           </h1>
-          <p className="text-slate-400 text-sm mt-1">{contacts.length} جهة اتصال مسجلة</p>
+          <p className="text-slate-400 text-sm mt-1">{total} جهة اتصال مسجلة</p>
         </div>
         <Button onClick={openCreate}><Plus className="h-5 w-5" /> إضافة جهة اتصال</Button>
       </div>
 
-      <div className="relative">
-        <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-500" />
-        <input type="text" placeholder="البحث في العملاء..." className="scc-input pr-10" value={search} onChange={(e) => setSearch(e.target.value)} />
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div className="relative md:col-span-2">
+          <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-500" />
+          <input
+            type="text"
+            placeholder="البحث في العملاء..."
+            className="scc-input pr-10 w-full"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <Select
+          aria-label="تصفية حسب النوع"
+          options={typeFilterOptions}
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value)}
+        />
+        <Select
+          aria-label="تصفية حسب الحالة"
+          options={statusFilterOptions}
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+        />
       </div>
 
       {loading ? (
         <div className="flex items-center justify-center h-64">
           <div className="w-10 h-10 border-4 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
         </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map((contact) => (
-            <div key={contact.id} className="scc-card-hover group">
-              <div className="flex items-start gap-4">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center text-white font-bold text-lg shrink-0">
-                  {contact.firstName?.charAt(0)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-bold text-white truncate">{contact.firstName} {contact.lastName}</h3>
-                  <p className="text-slate-400 text-sm">{contact.companyName || '—'}</p>
-                </div>
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => openEdit(contact)} className="p-1.5 rounded-lg hover:bg-primary-500/10 text-primary-400"><Pencil className="h-4 w-4" /></button>
-                  <button onClick={() => handleDelete(contact.id)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-400"><Trash2 className="h-4 w-4" /></button>
-                </div>
-                <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
-                  contact.type === 'CUSTOMER' ? 'bg-emerald-500/20 text-emerald-400' :
-                  contact.type === 'LEAD' ? 'bg-amber-500/20 text-amber-400' :
-                  'bg-blue-500/20 text-blue-400'
-                }`}>{contact.type}</span>
-              </div>
-              <div className="mt-4 space-y-2 text-sm">
-                {contact.phone && <div className="flex items-center gap-2 text-slate-400"><Phone className="h-4 w-4" /><span>{contact.phone}</span></div>}
-                {contact.email && <div className="flex items-center gap-2 text-slate-400"><Mail className="h-4 w-4" /><span className="truncate">{contact.email}</span></div>}
-                {contact.city && <div className="flex items-center gap-2 text-slate-400"><MapPin className="h-4 w-4" /><span>{contact.city}</span></div>}
-              </div>
-            </div>
-          ))}
+      ) : error ? (
+        <div className="flex flex-col items-center justify-center h-64 gap-4">
+          <div className="flex items-center gap-2 text-red-400">
+            <AlertCircle className="h-5 w-5" />
+            <span>{error}</span>
+          </div>
+          <Button variant="ghost" onClick={() => fetchContacts(page, debouncedSearch, typeFilter, statusFilter)}>
+            <RefreshCw className="h-4 w-4" /> إعادة المحاولة
+          </Button>
         </div>
+      ) : contacts.length === 0 && !hasActiveFilters ? (
+        <div className="flex flex-col items-center justify-center h-64 gap-4 text-slate-400">
+          <Users className="h-12 w-12 text-slate-600" />
+          <p>لا توجد جهات اتصال بعد</p>
+          <Button onClick={openCreate}><Plus className="h-5 w-5" /> إضافة جهة اتصال</Button>
+        </div>
+      ) : contacts.length === 0 && hasActiveFilters ? (
+        <div className="flex flex-col items-center justify-center h-64 gap-2 text-slate-400">
+          <Search className="h-12 w-12 text-slate-600" />
+          <p>لا توجد نتائج مطابقة</p>
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {contacts.map((contact) => (
+              <div key={contact.id} className="scc-card-hover group">
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center text-white font-bold text-lg shrink-0">
+                    {contact.firstName?.charAt(0)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-bold text-white truncate">{contact.firstName} {contact.lastName}</h3>
+                    <p className="text-slate-400 text-sm">{contact.companyName || '—'}</p>
+                  </div>
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => openEdit(contact)} className="p-1.5 rounded-lg hover:bg-primary-500/10 text-primary-400"><Pencil className="h-4 w-4" /></button>
+                    <button onClick={() => handleDelete(contact.id)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-400"><Trash2 className="h-4 w-4" /></button>
+                  </div>
+                  <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
+                    contact.type === 'CUSTOMER' ? 'bg-emerald-500/20 text-emerald-400' :
+                    contact.type === 'LEAD' ? 'bg-amber-500/20 text-amber-400' :
+                    'bg-blue-500/20 text-blue-400'
+                  }`}>{contact.type}</span>
+                </div>
+                <div className="mt-4 space-y-2 text-sm">
+                  {contact.phone && <div className="flex items-center gap-2 text-slate-400"><Phone className="h-4 w-4" /><span>{contact.phone}</span></div>}
+                  {contact.email && <div className="flex items-center gap-2 text-slate-400"><Mail className="h-4 w-4" /><span className="truncate">{contact.email}</span></div>}
+                  {contact.city && <div className="flex items-center gap-2 text-slate-400"><MapPin className="h-4 w-4" /><span>{contact.city}</span></div>}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-center justify-between pt-2">
+            <p className="text-sm text-slate-400">
+              صفحة {page} من {totalPages} — إجمالي {total}
+            </p>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" disabled={page <= 1} onClick={() => setPage(page - 1)}>السابق</Button>
+              <Button variant="ghost" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>التالي</Button>
+            </div>
+          </div>
+        </>
       )}
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingContact ? 'تعديل جهة اتصال' : 'إضافة جهة اتصال'} size="lg">

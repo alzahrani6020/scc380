@@ -47,7 +47,7 @@ export default function ErpPage() {
   const fetchData = () => {
     Promise.all([
       api.get('/erp/invoices').then(r => setInvoices(r.data.data || [])),
-      api.get('/crm/contacts').then(r => setContacts(r.data.data || [])),
+      api.get('/crm/contacts?limit=100').then(r => setContacts(r.data.data || [])),
     ]).catch(console.error).finally(() => setLoading(false));
   };
 
