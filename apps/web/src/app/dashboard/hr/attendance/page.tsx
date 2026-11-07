@@ -32,15 +32,18 @@ export default function AttendancePage() {
   }, []);
 
   const fetchData = () => {
+    const employeeId = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('employeeId') : null;
+    const listUrl = employeeId ? '/hr/attendances?employeeId=' + encodeURIComponent(employeeId) : '/hr/attendances';
     Promise.all([
-      api.get('/hr/attendances').then(r => setItems(r.data.data || [])),
+      api.get(listUrl).then(r => setItems(r.data.data || [])),
       api.get('/hr/employees').then(r => setEmployees(r.data.data || [])),
     ]).catch(console.error).finally(() => setLoading(false));
   };
 
   const openCreate = () => {
     setEditing(null);
-    setFormData({ status: 'PRESENT', date: new Date().toISOString().split('T')[0] });
+    const employeeId = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('employeeId') : null;
+    setFormData({ employeeId: employeeId || undefined, status: 'PRESENT', date: new Date().toISOString().split('T')[0] });
     setIsModalOpen(true);
   };
 
