@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "cd ../../packages/database && npx prisma generate && cd ../../apps/api && nest build",
+  "buildCommand": "cd ../.. && pnpm --filter @scc/database db:generate && pnpm turbo run build --filter=@scc/api...",
   "outputDirectory": "dist",
   "framework": null,
   "rewrites": [
