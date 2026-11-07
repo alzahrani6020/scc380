@@ -1,0 +1,44 @@
+name: Admin Build Verify
+
+on:
+  push:
+    branches:
+      - feat/navigation-admin-governance
+    paths:
+      - "apps/admin/**"
+      - "packages/types/**"
+      - "packages/ui/**"
+      - "packages/utils/**"
+      - "pnpm-lock.yaml"
+      - "package.json"
+      - "turbo.json"
+      - ".github/workflows/admin-build-verify.yml"
+  pull_request:
+    paths:
+      - "apps/admin/**"
+      - "packages/types/**"
+      - "packages/ui/**"
+      - "packages/utils/**"
+      - "pnpm-lock.yaml"
+      - "package.json"
+      - "turbo.json"
+      - ".github/workflows/admin-build-verify.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify-admin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 8
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @scc/admin build
