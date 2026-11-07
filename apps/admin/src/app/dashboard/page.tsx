@@ -4,16 +4,6 @@ import { useEffect, useState } from 'react';
 import api from '@/lib/api';
 import { Building2, Users, Wallet, Activity, TrendingUp } from 'lucide-react';
 
-const api = axios.create({
-  baseURL: 'http://localhost:3001/api',
-});
-
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('accessToken');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
-
 export default function AdminDashboard() {
   const [stats, setStats] = useState<any>(null);
   const [tenants, setTenants] = useState<any[]>([]);
