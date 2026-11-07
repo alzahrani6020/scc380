@@ -26,6 +26,17 @@ function getEntityType(path: string): string {
   return idx >= 0 ? segments[idx].toUpperCase() : 'UNKNOWN';
 }
 
+// Enrich well-known entity mutations with specific action labels; everything
+// else keeps the raw HTTP method as the action (existing behavior).
+export function deriveAuditAction(method: string, path: string): string {
+  if (/\/crm\/contacts\b/.test(path)) {
+    if (method === 'POST') return 'CONTACT_CREATED';
+    if (method === 'PATCH' || method === 'PUT') return 'CONTACT_UPDATED';
+    if (method === 'DELETE') return 'CONTACT_DELETED';
+  }
+  return method;
+}
+
 @Injectable()
 export class AuditLogInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
@@ -50,7 +61,7 @@ export class AuditLogInterceptor implements NestInterceptor {
               data: {
                 tenantId,
                 userId,
-                action: method,
+                action: deriveAuditAction(method, path),
                 entityType,
                 entityId: request.params?.id || body?.id || null,
                 newValues: typeof data === 'object' ? sanitizeBody(data) : null,
@@ -73,7 +84,7 @@ export class AuditLogInterceptor implements NestInterceptor {
               data: {
                 tenantId,
                 userId,
-                action: `${method}_ERROR`,
+                action: `${deriveAuditAction(method, path)}_ERROR`,
                 entityType,
                 entityId: request.params?.id || body?.id || null,
                 oldValues: { error: error.message, statusCode: error.status },
