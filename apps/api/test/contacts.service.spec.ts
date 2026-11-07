@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { NotFoundException } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
 import { ContactsService } from '../src/crm/contacts.service';
 import { deriveAuditAction } from '../src/common/interceptors/audit-log.interceptor';
 
@@ -95,6 +96,15 @@ let service: ContactsService;
 beforeEach(() => {
   db = makeFakeDb(Array.from({ length: 30 }, (_, i) => seedRow(i)));
   service = new ContactsService(db as any);
+});
+
+test('Nest resolves ContactsService without a CONTACTS_DB provider', async () => {
+  const moduleRef = await Test.createTestingModule({
+    providers: [ContactsService],
+  }).compile();
+
+  assert.ok(moduleRef.get(ContactsService));
+  await moduleRef.close();
 });
 
 // ---------- contract shape ----------
