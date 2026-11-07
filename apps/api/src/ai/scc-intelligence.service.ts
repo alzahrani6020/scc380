@@ -73,6 +73,7 @@ export class SccIntelligenceService {
           engine: 'scc-intelligence-core',
           mode: 'deterministic',
           domain,
+          data: null,
         };
     }
   }
