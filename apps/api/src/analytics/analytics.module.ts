@@ -6,5 +6,6 @@ import { AlertsService } from './alerts.service';
 @Module({
   controllers: [AnalyticsController],
   providers: [AnalyticsService, AlertsService],
+  exports: [AnalyticsService, AlertsService],
 })
 export class AnalyticsModule {}
