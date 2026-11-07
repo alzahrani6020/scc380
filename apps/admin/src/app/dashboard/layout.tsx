@@ -13,7 +13,7 @@ const nav = [
   { name: 'العملاء (Tenants)', href: '/dashboard/tenants', icon: Building2 },
   { name: 'المستخدمون', href: '/dashboard/users', icon: Users },
   { name: 'التحليلات', href: '/dashboard/analytics', icon: BarChart3 },
-  { name: 'سجل العمليات', href: '/dashboard/audit-logs', icon: Shield },
+  { name: 'محاولات تسجيل الدخول', href: '/dashboard/audit-logs', icon: Shield },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
