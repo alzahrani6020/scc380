@@ -15,7 +15,7 @@ const statuses=[
 
 export default function PurchaseOrdersPage(){
  const [items,setItems]=useState<any[]>([]),[suppliers,setSuppliers]=useState<any[]>([]),[loading,setLoading]=useState(true),[open,setOpen]=useState(false),[editing,setEditing]=useState<any>(null),[saving,setSaving]=useState(false),[form,setForm]=useState<any>({});
- const load=()=>Promise.all([api.get('/finance/purchase-orders').then(r=>setItems(r.data.data||[])),api.get('/suppliers').then(r=>setSuppliers(r.data.data||[])).catch(()=>setSuppliers([]))]).finally(()=>setLoading(false));
+ const load=()=>Promise.all([api.get('/finance/purchase-orders').then(r=>setItems(r.data.data||[])),api.get('/suppliers').then(r=>setSuppliers(Array.isArray(r.data)?r.data:(r.data?.data||[]))).catch(()=>setSuppliers([]))]).finally(()=>setLoading(false));
  useEffect(()=>{load().catch(console.error)},[]);
  const create=()=>{setEditing(null);setForm({status:'DRAFT',taxAmount:0});setOpen(true)};
  const edit=(x:any)=>{setEditing(x);setForm({...x,expectedDelivery:x.expectedDelivery?new Date(x.expectedDelivery).toISOString().split('T')[0]:''});setOpen(true)};
