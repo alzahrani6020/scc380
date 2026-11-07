@@ -100,7 +100,7 @@ export class EjarService {
 
   async syncPayments(tenantId: string, contractId: string): Promise<any> {
     const payments = await prisma.rentPayment.findMany({
-      where: withTenant({ contractId, status: 'PAID' }, tenantId),
+      where: withTenant({ contractId, status: 'COMPLETED' }, tenantId),
     });
 
     if (!this.apiKey) {
