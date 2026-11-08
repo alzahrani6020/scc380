@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: scc380-api
+    name: scc380-api-image
     runtime: image
     plan: free
     region: frankfurt
