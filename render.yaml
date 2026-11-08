@@ -1,14 +1,12 @@
 services:
   - type: web
     name: scc380-api
-    runtime: docker
+    runtime: image
     plan: free
     region: frankfurt
-    branch: main
-    dockerfilePath: ./apps/api/Dockerfile
-    dockerContext: .
+    image:
+      url: ghcr.io/alzahrani6020/scc380-api:latest
     healthCheckPath: /
-    autoDeploy: true
     envVars:
       - key: DATABASE_URL
         fromDatabase:
