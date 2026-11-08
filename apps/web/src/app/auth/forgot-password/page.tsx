@@ -10,7 +10,6 @@ export default function ForgotPasswordPage() {
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [resetData, setResetData] = useState<any>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -18,7 +17,6 @@ export default function ForgotPasswordPage() {
     try {
       const res = await api.post('/auth/forgot-password', { email });
       setSent(true);
-      setResetData(res.data);
     } catch (err: any) {
       setError(err.response?.data?.message || 'فشل إرسال الرابط');
     } finally { setLoading(false); }
@@ -44,14 +42,8 @@ export default function ForgotPasswordPage() {
           {sent ? (
             <div className="text-center space-y-4">
               <CheckCircle2 className="h-16 w-16 text-emerald-400 mx-auto" />
-              <p className="text-white font-medium">تم إرسال رابط إعادة التعيين!</p>
-              <p className="text-slate-400 text-sm">تحقق من بريدك الإلكتروني (بما فيه مجلد الرسائل غير المرغوب فيها)</p>
-              {resetData?.resetUrl && (
-                <div className="bg-slate-800/50 rounded-xl p-4 text-left">
-                  <p className="text-slate-400 text-xs mb-2">رابط إعادة التعيين (للعرض فقط في Demo):</p>
-                  <a href={resetData.resetUrl} className="text-primary-400 text-xs break-all hover:underline">{resetData.resetUrl}</a>
-                </div>
-              )}
+              <p className="text-white font-medium">تم استلام الطلب.</p>
+              <p className="text-slate-400 text-sm">إذا كان البريد مسجلاً لدينا فسيصلك رابط إعادة التعيين. تحقق أيضاً من مجلد الرسائل غير المرغوب فيها.</p>
               <Link href="/auth/login" className="inline-flex items-center justify-center gap-2 text-primary-400 hover:text-primary-300 text-sm transition-colors">
                 <ArrowRight className="h-4 w-4" /> العودة لتسجيل الدخول
               </Link>
