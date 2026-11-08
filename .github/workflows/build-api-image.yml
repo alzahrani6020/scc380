@@ -40,6 +40,8 @@ jobs:
           context: .
           file: ./apps/api/Dockerfile
           push: true
+          build-args: |
+            NODE_MAX_HEAP=1536
           tags: |
             ghcr.io/alzahrani6020/scc380-api:latest
             ghcr.io/alzahrani6020/scc380-api:${{ github.sha }}
