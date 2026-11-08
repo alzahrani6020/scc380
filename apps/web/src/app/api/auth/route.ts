@@ -1,12 +1,18 @@
 import { NextResponse } from 'next/server';
 
-const PASSWORD = 'scc3802024'; // الباسورد — تقدر تغيره
-
 export async function POST(request: Request) {
   try {
     const { password } = await request.json();
+    const configuredPassword = process.env.SCC_GATE_PASSWORD;
 
-    if (password !== PASSWORD) {
+    if (!configuredPassword) {
+      return NextResponse.json(
+        { success: false, message: 'Authentication gate is not configured' },
+        { status: 503 }
+      );
+    }
+
+    if (password !== configuredPassword) {
       return NextResponse.json(
         { success: false, message: 'باسورد غلط' },
         { status: 401 }
