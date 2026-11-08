@@ -11,9 +11,13 @@ services:
     autoDeploy: true
     envVars:
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: scc380-db
+          property: connectionString
       - key: DIRECT_URL
-        sync: false
+        fromDatabase:
+          name: scc380-db
+          property: connectionString
       - key: REDIS_URL
         fromService:
           name: scc380-cache
@@ -37,3 +41,12 @@ services:
     ipAllowList: []
     maxmemoryPolicy: allkeys-lru
     persistenceMode: off
+
+databases:
+  - name: scc380-db
+    plan: free
+    region: frankfurt
+    postgresMajorVersion: "17"
+    databaseName: scc_main
+    user: scc_app
+    ipAllowList: []
