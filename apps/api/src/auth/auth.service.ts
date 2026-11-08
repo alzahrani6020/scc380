@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, ConflictException, BadRequestException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException, BadRequestException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { prisma } from '@scc/database';
@@ -10,6 +10,7 @@ import { OAuth2Client } from 'google-auth-library';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
   private googleClient: OAuth2Client;
 
   constructor(
@@ -172,26 +173,62 @@ export class AuthService {
 
   // ─── Forgot Password ───────────────────────────────────────────────
   async forgotPassword(email: string) {
+    const genericResponse = { message: 'If this email exists, a reset link has been sent.' };
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) {
-      // Don't reveal if user exists
-      return { message: 'If this email exists, a reset link has been sent.' };
+
+    // Always return the same response to avoid account enumeration.
+    if (!user) return genericResponse;
+
+    const brevoApiKey = this.config.get<string>('BREVO_API_KEY');
+    const senderEmail = this.config.get<string>('EMAIL_FROM');
+    const senderName = this.config.get<string>('EMAIL_FROM_NAME') || 'SCC380';
+
+    // Fail closed: never expose a reset token when email delivery is unavailable.
+    if (!brevoApiKey || !senderEmail) {
+      this.logger.error('Password reset email delivery is not configured');
+      return genericResponse;
     }
 
     const token = randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 1000 * 60 * 60); // 1 hour
+    const resetUrl = `${this.config.get('WEB_URL', 'http://localhost:3000')}/auth/reset-password?token=${token}`;
 
     await prisma.passwordResetToken.create({
       data: { email, token, expiresAt },
     });
 
-    // TODO: Send actual email here
-    // For now, return the token in the response for demo purposes
-    return {
-      message: 'Password reset link generated',
-      resetToken: token, // In production, send this via email only
-      resetUrl: `${this.config.get('WEB_URL', 'http://localhost:3000')}/auth/reset-password?token=${token}`,
-    };
+    try {
+      const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: {
+          accept: 'application/json',
+          'api-key': brevoApiKey,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          sender: { name: senderName, email: senderEmail },
+          to: [{ email }],
+          subject: 'إعادة تعيين كلمة المرور - SCC380',
+          htmlContent:
+            '<p>تم طلب إعادة تعيين كلمة المرور لحسابك.</p>' +
+            '<p><a href="' + resetUrl + '">إعادة تعيين كلمة المرور</a></p>' +
+            '<p>تنتهي صلاحية الرابط خلال ساعة واحدة. إذا لم تطلب ذلك فتجاهل الرسالة.</p>',
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Brevo returned HTTP ${response.status}`);
+      }
+    } catch (error) {
+      // The token must not remain usable when delivery failed.
+      await prisma.passwordResetToken.deleteMany({ where: { token } });
+      this.logger.error(
+        'Password reset email delivery failed',
+        error instanceof Error ? error.message : undefined,
+      );
+    }
+
+    return genericResponse;
   }
 
   async resetPassword(token: string, newPassword: string) {
