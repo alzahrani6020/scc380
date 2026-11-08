@@ -1,39 +1,52 @@
-databases:
-  - name: scc-postgres
-    databaseName: scc_main
-    user: sccuser
-    plan: free
-    region: frankfurt
-
 services:
   - type: web
-    name: scc-api
+    name: scc380-api
     runtime: docker
     plan: free
+    region: frankfurt
+    branch: main
     dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    healthCheckPath: /
+    autoDeploy: true
     envVars:
-      - key: NODE_ENV
-        value: production
-      - key: PORT
-        value: 3001
       - key: DATABASE_URL
         fromDatabase:
-          name: scc-postgres
+          name: scc380-db
+          property: connectionString
+      - key: DIRECT_URL
+        fromDatabase:
+          name: scc380-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: scc380-cache
+          type: keyvalue
           property: connectionString
       - key: JWT_SECRET
         generateValue: true
       - key: JWT_EXPIRES_IN
         value: 1h
       - key: CORS_ORIGINS
-        value: "https://*.onrender.com,https://*.vercel.app,https://scc380-web.vercel.app"
-      - key: MINIO_ENDPOINT
-        value: localhost
-      - key: MINIO_PORT
-        value: 9000
-      - key: MINIO_ACCESS_KEY
-        value: minioadmin
-      - key: MINIO_SECRET_KEY
-        value: minioadmin
-      - key: OLLAMA_URL
-        value: http://localhost:11434
-    healthCheckPath: /
+        value: https://scc380-web.vercel.app
+      - key: WEB_URL
+        value: https://scc380-web.vercel.app
+      - key: NODE_ENV
+        value: production
+
+  - type: keyvalue
+    name: scc380-cache
+    plan: free
+    region: frankfurt
+    ipAllowList: []
+    maxmemoryPolicy: allkeys-lru
+    persistenceMode: off
+
+databases:
+  - name: scc380-db
+    plan: free
+    region: frankfurt
+    postgresMajorVersion: "17"
+    databaseName: scc_main
+    user: scc_app
+    ipAllowList: []
