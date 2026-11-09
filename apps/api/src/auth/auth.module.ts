@@ -5,6 +5,7 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { LocalStrategy } from './strategies/local.strategy';
+import { AuthRateLimitGuard } from './guards/auth-rate-limit.guard';
 
 @Module({
   imports: [
@@ -14,7 +15,7 @@ import { LocalStrategy } from './strategies/local.strategy';
       signOptions: { expiresIn: '1h' },
     }),
   ],
-  providers: [AuthService, JwtStrategy, LocalStrategy],
+  providers: [AuthService, JwtStrategy, LocalStrategy, AuthRateLimitGuard],
   controllers: [AuthController],
   exports: [AuthService],
 })
