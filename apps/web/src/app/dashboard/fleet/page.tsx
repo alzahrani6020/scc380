@@ -151,7 +151,7 @@ export default function FleetPage() {
         </div>
       )}
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editing ? 'تعديل مركبة' : 'مركبة جديدة'} size="xl">
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editing ? 'تعديل مركبة' : 'مركبة جديدة'} size="lg">
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Input label="رقم اللوحة" required value={formData.plateNumber || ''} onChange={(e) => setFormData({ ...formData, plateNumber: e.target.value })} />
