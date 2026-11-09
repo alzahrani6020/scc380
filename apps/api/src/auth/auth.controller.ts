@@ -2,6 +2,7 @@ import { Controller, Post, Body, UseGuards, Request, Get, Headers, BadRequestExc
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { AuthRateLimitGuard } from './guards/auth-rate-limit.guard';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 
@@ -10,6 +11,7 @@ import { LoginDto } from './dto/login.dto';
 export class AuthController {
   constructor(private authService: AuthService) {}
 
+  @UseGuards(AuthRateLimitGuard)
   @Post('login')
   async login(@Body() body: LoginDto, @Headers('x-tenant-slug') tenantSlug?: string) {
     const user = await this.authService.authenticate(body.email, body.password, tenantSlug);
@@ -22,6 +24,7 @@ export class AuthController {
     );
   }
 
+  @UseGuards(AuthRateLimitGuard)
   @Post('register')
   async register(@Body() body: RegisterDto) {
     return this.authService.register(body);
@@ -35,12 +38,14 @@ export class AuthController {
   }
 
   // ─── Forgot / Reset Password ───────────────────────────────────────
+  @UseGuards(AuthRateLimitGuard)
   @Post('forgot-password')
   async forgotPassword(@Body('email') email: string) {
     if (!email) throw new BadRequestException('Email is required');
     return this.authService.forgotPassword(email);
   }
 
+  @UseGuards(AuthRateLimitGuard)
   @Post('reset-password')
   async resetPassword(
     @Body('token') token: string,
@@ -51,6 +56,7 @@ export class AuthController {
   }
 
   // ─── Google OAuth ──────────────────────────────────────────────────
+  @UseGuards(AuthRateLimitGuard)
   @Post('google')
   async googleAuth(@Body('credential') credential: string) {
     if (!credential) throw new BadRequestException('Google credential is required');
@@ -73,6 +79,7 @@ export class AuthController {
     return this.authService.verify2FASetup(req.user.userId, code);
   }
 
+  @UseGuards(AuthRateLimitGuard)
   @Post('verify-2fa-login')
   async verify2FALoginAndIssueToken(
     @Body('tempToken') tempToken: string,
