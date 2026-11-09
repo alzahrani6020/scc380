@@ -41,7 +41,8 @@ export default function LoginPage() {
       const res = await api.post('/auth/login', { email, password });
 
       if (res.data.requires2FA) {
-        router.push(`/auth/verify-2fa?token=${encodeURIComponent(res.data.tempToken)}`);
+        sessionStorage.setItem('scc_2fa_temp_token', res.data.tempToken);
+        window.location.href = '/auth/verify-2fa';
         return;
       }
 
