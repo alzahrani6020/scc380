@@ -24,8 +24,9 @@ jobs:
         env:
           RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
         run: |
-          if [ -n "$RENDER_DEPLOY_HOOK" ]; then
-            curl -X POST "$RENDER_DEPLOY_HOOK"
-          else
-            echo "RENDER_DEPLOY_HOOK not set. Add it in GitHub Settings > Secrets."
+          set -euo pipefail
+          if [ -z "${RENDER_DEPLOY_HOOK:-}" ]; then
+            echo "::error::RENDER_DEPLOY_HOOK is not configured; refusing false-positive deploy success."
+            exit 1
           fi
+          curl -fsS -X POST "$RENDER_DEPLOY_HOOK"
