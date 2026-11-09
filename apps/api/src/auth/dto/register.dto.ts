@@ -31,7 +31,7 @@ export class RegisterDto {
   phone?: string;
 
   @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
-  @IsOptional()
+  @ValidateIf((o) => o.tenantName != null || o.tenantSlug != null)
   @IsString()
   @MinLength(2)
   @MaxLength(120)
