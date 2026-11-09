@@ -324,19 +324,13 @@ export class AuthService {
 
     const { email, given_name, family_name, sub: googleId } = payload;
 
-    let user = await prisma.user.findUnique({ where: { email } });
+    const user = await prisma.user.findUnique({ where: { email } });
 
     if (!user) {
-      // Auto-register Google user
-      user = await prisma.user.create({
-        data: {
-          email,
-          firstName: given_name || email.split('@')[0],
-          lastName: family_name || '',
-          emailVerified: true,
-          role: 'USER',
-        },
-      });
+      throw new UnauthorizedException('Google account is not registered');
+    }
+    if (user.status !== 'ACTIVE' || !user.tenantId) {
+      throw new UnauthorizedException('Account is not active');
     }
 
     // Link OAuth account
