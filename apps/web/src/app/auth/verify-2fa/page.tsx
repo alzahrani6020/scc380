@@ -69,8 +69,8 @@ function Verify2FAForm() {
             <input
               type="text"
               required
-              placeholder="أدخل 6 أرقام أو رمز استرداد من 8 أحرف"
-              maxLength={8}
+              placeholder="أدخل 6 أرقام أو رمز استرداد"
+              maxLength={16}
               autoFocus
               className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl py-4 px-4 text-lg text-center tracking-[0.5em] font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all placeholder:text-slate-500 placeholder:tracking-normal placeholder:text-sm"
               value={code}
@@ -78,7 +78,7 @@ function Verify2FAForm() {
             />
             <button
               type="submit"
-              disabled={loading || !tempToken || !(/^\d{6}$/.test(code) || /^[0-9A-F]{8}$/.test(code))}
+              disabled={loading || !tempToken || !(/^\d{6}$/.test(code) || /^[0-9A-F]{8}$/.test(code) || /^[0-9A-F]{16}$/.test(code))}
               className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 disabled:opacity-50"
             >
               {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : 'تحقق وتسجيل الدخول'}
