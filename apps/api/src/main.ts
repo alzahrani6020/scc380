@@ -5,6 +5,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
   
   const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:3000')
     .split(',').map(o => o.trim()).filter(Boolean);
@@ -16,7 +17,7 @@ async function bootstrap() {
     allowedHeaders: 'Content-Type, Authorization, X-Requested-With',
   });
 
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('SCC 380 API')

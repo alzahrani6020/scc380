@@ -1,38 +1,32 @@
 import { Controller, Post, Body, UseGuards, Request, Get, Headers, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
-import { LocalAuthGuard } from './guards/local-auth.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { AuthRateLimitGuard } from './guards/auth-rate-limit.guard';
+import { RegisterDto } from './dto/register.dto';
+import { LoginDto } from './dto/login.dto';
 
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
   constructor(private authService: AuthService) {}
 
-  @UseGuards(LocalAuthGuard)
+  @UseGuards(AuthRateLimitGuard)
   @Post('login')
-  async login(@Request() req, @Headers('x-tenant-slug') tenantSlug?: string) {
+  async login(@Body() body: LoginDto, @Headers('x-tenant-slug') tenantSlug?: string) {
+    const user = await this.authService.authenticate(body.email, body.password, tenantSlug);
     return this.authService.login(
-      req.user.id,
-      req.user.email,
-      req.user.role,
-      req.user.tenantId,
+      user.id,
+      user.email,
+      user.role,
+      user.tenantId || undefined,
       tenantSlug,
     );
   }
 
+  @UseGuards(AuthRateLimitGuard)
   @Post('register')
-  async register(
-    @Body() body: {
-      email: string;
-      password: string;
-      firstName: string;
-      lastName: string;
-      phone?: string;
-      tenantName?: string;
-      tenantSlug?: string;
-    },
-  ) {
+  async register(@Body() body: RegisterDto) {
     return this.authService.register(body);
   }
 
@@ -44,12 +38,14 @@ export class AuthController {
   }
 
   // ─── Forgot / Reset Password ───────────────────────────────────────
+  @UseGuards(AuthRateLimitGuard)
   @Post('forgot-password')
   async forgotPassword(@Body('email') email: string) {
     if (!email) throw new BadRequestException('Email is required');
     return this.authService.forgotPassword(email);
   }
 
+  @UseGuards(AuthRateLimitGuard)
   @Post('reset-password')
   async resetPassword(
     @Body('token') token: string,
@@ -60,6 +56,7 @@ export class AuthController {
   }
 
   // ─── Google OAuth ──────────────────────────────────────────────────
+  @UseGuards(AuthRateLimitGuard)
   @Post('google')
   async googleAuth(@Body('credential') credential: string) {
     if (!credential) throw new BadRequestException('Google credential is required');
@@ -82,6 +79,7 @@ export class AuthController {
     return this.authService.verify2FASetup(req.user.userId, code);
   }
 
+  @UseGuards(AuthRateLimitGuard)
   @Post('verify-2fa-login')
   async verify2FALoginAndIssueToken(
     @Body('tempToken') tempToken: string,
