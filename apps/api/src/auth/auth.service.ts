@@ -95,9 +95,10 @@ export class AuthService {
       };
     }
 
-    const payload = { sub: userId, email, role, tenantId, tenantSlug };
-    const accessToken = this.jwt.sign(payload);
-    const refreshToken = this.jwt.sign(payload, {
+    const accessPayload = { sub: userId, email, role, tenantId, tenantSlug, type: 'access' };
+    const refreshPayload = { sub: userId, email, role, tenantId, tenantSlug, type: 'refresh' };
+    const accessToken = this.jwt.sign(accessPayload);
+    const refreshToken = this.jwt.sign(refreshPayload, {
       secret: this.config.get('JWT_SECRET'),
       expiresIn: this.config.get('REFRESH_TOKEN_EXPIRES_IN') || '7d',
     });
@@ -132,9 +133,10 @@ export class AuthService {
     }
 
     const { sub: userId, email, role, tenantId, tenantSlug } = payload;
-    const accessPayload = { sub: userId, email, role, tenantId, tenantSlug };
+    const accessPayload = { sub: userId, email, role, tenantId, tenantSlug, type: 'access' };
+    const refreshPayload = { sub: userId, email, role, tenantId, tenantSlug, type: 'refresh' };
     const accessToken = this.jwt.sign(accessPayload);
-    const refreshToken = this.jwt.sign(accessPayload, {
+    const refreshToken = this.jwt.sign(refreshPayload, {
       secret: this.config.get('JWT_SECRET'),
       expiresIn: this.config.get('REFRESH_TOKEN_EXPIRES_IN') || '7d',
     });
