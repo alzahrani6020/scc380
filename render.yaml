@@ -7,6 +7,14 @@ services:
     image:
       url: ghcr.io/alzahrani6020/scc380-api:latest
     envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: scc380-db
+          property: connectionString
+      - key: DIRECT_URL
+        fromDatabase:
+          name: scc380-db
+          property: connectionString
       - key: REDIS_URL
         fromService:
           name: scc380-cache
