@@ -6,7 +6,7 @@ import api from '@/lib/api';
 import { setAuth } from '@/lib/auth';
 import { GoogleLogin, googleLogout } from '@react-oauth/google';
 import {
-  Building2, Zap, Shield, Lock, Mail, ChevronLeft,
+  Building2, Lock, Mail, ChevronLeft,
   Eye, EyeOff, ArrowRight,
 } from 'lucide-react';
 import Link from 'next/link';
@@ -52,25 +52,6 @@ export default function LoginPage() {
       router.push('/dashboard');
     } catch (err: any) {
       setError(err.response?.data?.message || 'فشل تسجيل الدخول');
-    } finally { setLoading(false); }
-  };
-
-  const handleVIP = async () => {
-    setLoading(true); setError('');
-    try {
-      const res = await api.post('/auth/login', { email: 'vip@scc.sa', password: 'vip123456' });
-      const authData = {
-        accessToken: res.data.accessToken,
-        refreshToken: res.data.refreshToken,
-        role: res.data.user.role,
-        tenantSlug: res.data.user?.tenantSlug || null,
-        tenantId: res.data.user?.tenantId || null,
-        user: { email: res.data.user.email, firstName: res.data.user.firstName, lastName: res.data.user.lastName },
-      };
-      setAuth(authData, true);
-      router.push('/dashboard');
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'فشل الدخول السريع');
     } finally { setLoading(false); }
   };
 
@@ -121,17 +102,6 @@ export default function LoginPage() {
               {error}
             </div>
           )}
-
-          {/* VIP Quick Login */}
-          <button
-            onClick={handleVIP}
-            disabled={loading}
-            className="w-full flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-500 text-white font-bold py-3 px-4 rounded-xl transition-all mb-4 shadow-lg shadow-amber-600/20"
-          >
-            <Zap className="h-5 w-5" />
-            دخول سريع VIP
-            <Shield className="h-4 w-4 opacity-80" />
-          </button>
 
           {/* Google OAuth */}
           {googleClientId ? (
