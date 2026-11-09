@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { setAuth } from '@/lib/auth';
 import { Shield, ArrowRight, Loader2 } from 'lucide-react';
@@ -9,17 +9,18 @@ import Link from 'next/link';
 
 function Verify2FAForm() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const tempToken = searchParams.get('token');
+  const [tempToken, setTempToken] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!tempToken) {
-      setError('رابط غير صالح — جرب تسجيل الدخول مرة أخرى');
+    const token = sessionStorage.getItem('scc_2fa_temp_token');
+    setTempToken(token);
+    if (!token) {
+      setError('جلسة التحقق غير صالحة — جرب تسجيل الدخول مرة أخرى');
     }
-  }, [tempToken]);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,6 +41,7 @@ function Verify2FAForm() {
         },
       };
       setAuth(authData, true);
+      sessionStorage.removeItem('scc_2fa_temp_token');
       router.push('/dashboard');
     } catch (err: any) {
       setError(err.response?.data?.message || 'كود التحقق غير صحيح');
@@ -95,13 +97,5 @@ function Verify2FAForm() {
 }
 
 export default function Verify2FAPage() {
-  return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="w-12 h-12 border-4 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
-      </div>
-    }>
-      <Verify2FAForm />
-    </Suspense>
-  );
+  return <Verify2FAForm />;
 }
