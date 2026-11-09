@@ -98,9 +98,9 @@ export default function HrPage() {
         <div>
           <h1 className="text-2xl font-bold text-white flex items-center gap-2">
             <Briefcase className="h-6 w-6 text-primary-400" />
-            الموارد البشرية
+            مكين - الموارد البشرية
           </h1>
-          <p className="text-slate-400 text-sm mt-1">{employees.length} موظف</p>
+          <p className="text-slate-400 text-sm mt-1">منصة مكين لإدارة الموارد البشرية داخل SCC 380 — {employees.length} موظف</p>
         </div>
         <Button onClick={openCreate}><Plus className="h-5 w-5" /> إضافة موظف</Button>
       </div>
