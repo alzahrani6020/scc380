@@ -40,7 +40,7 @@ function sanitizeBody(body: any): any {
 function getEntityType(path: string): string {
   const segments = path.split('/').filter(Boolean);
   const idx = segments.findIndex((s) =>
-    ['auth', 'zatca', 'erp', 'crm', 'hr', 'finance', 'fleet', 'inventory', 'analytics', 'government', 'projects', 'notifications', 'alerts', 'templates', 'users', 'settings', 'billing'].includes(s),
+    ['auth', 'zatca', 'erp', 'crm', 'hr', 'finance', 'fleet', 'inventory', 'analytics', 'government', 'projects', 'notifications', 'alerts', 'templates', 'users', 'settings', 'billing', 'compliance'].includes(s),
   );
   return idx >= 0 ? segments[idx].toUpperCase() : 'UNKNOWN';
 }
