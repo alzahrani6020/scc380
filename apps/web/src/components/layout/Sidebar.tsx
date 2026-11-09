@@ -12,6 +12,10 @@ import {
   ChevronLeft, FolderKanban, Receipt, Shield, CreditCard, Bell,
   FileStack, ShoppingCart, Package, BookOpen, ArrowLeftRight, Store,
   Route, Wrench, Fuel, CalendarDays, ClipboardList, Wallet,
+  Contact, Handshake, LayoutGrid, FileSignature, Banknote,
+  ReceiptText, ListTree, PiggyBank, NotebookText, GitBranch,
+  PackagePlus, Gauge, Globe, ListChecks, Lock, Coins, CarFront,
+  Network, UserCog, FileInput, Building,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -19,59 +23,83 @@ interface NavItem {
   name: string;
   href: string;
   icon: LucideIcon;
-  sub?: boolean;
   badge?: string;
 }
 
-const navigation: NavItem[] = [
+type NavEntry = NavItem | { header: string };
+
+const navigation: NavEntry[] = [
+  { header: 'الرئيسية' },
   { name: 'لوحة التحكم', href: '/dashboard', icon: LayoutDashboard },
-  { name: 'CRM - إدارة العملاء', href: '/dashboard/crm', icon: Users },
-  { name: 'جهات الاتصال', href: '/dashboard/crm/contacts', icon: Users, sub: true },
-  { name: 'الصفقات', href: '/dashboard/crm/deals', icon: Briefcase, sub: true },
-  { name: 'الأنشطة', href: '/dashboard/crm/activities', icon: Activity, sub: true },
-  { name: 'ERP - الفواتير', href: '/dashboard/erp', icon: FileText },
-  { name: 'المشاريع', href: '/dashboard/projects', icon: FolderKanban },
-  { name: 'مكين - الموارد البشرية', href: '/dashboard/hr', icon: Briefcase },
-  { name: 'الموظفون', href: '/dashboard/hr/employees', icon: Users, sub: true },
-  { name: 'الحضور', href: '/dashboard/hr/attendance', icon: ClipboardList, sub: true },
-  { name: 'الإجازات', href: '/dashboard/hr/leaves', icon: CalendarDays, sub: true },
-  { name: 'الرواتب', href: '/dashboard/hr/payroll', icon: Wallet, sub: true },
-  { name: 'الإدارات', href: '/dashboard/hr/departments', icon: Building2, sub: true },
-  { name: 'إدارة العقارات', href: '/dashboard/real-estate', icon: Building2 },
-  { name: 'العقارات', href: '/dashboard/real-estate/properties', icon: Building2, sub: true },
-  { name: 'الوحدات', href: '/dashboard/real-estate/units', icon: Package, sub: true },
-  { name: 'العقود', href: '/dashboard/real-estate/contracts', icon: FileText, sub: true },
-  { name: 'دفعات الإيجار', href: '/dashboard/real-estate/payments', icon: CreditCard, sub: true },
-  { name: 'إدارة الأسطول', href: '/dashboard/fleet', icon: Truck },
-  { name: 'الرحلات', href: '/dashboard/fleet/trips', icon: Route, sub: true },
-  { name: 'السائقون', href: '/dashboard/fleet/drivers', icon: Users, sub: true },
-  { name: 'الصيانة', href: '/dashboard/fleet/maintenance', icon: Wrench, sub: true },
-  { name: 'الوقود', href: '/dashboard/fleet/fuel', icon: Fuel, sub: true },
-  { name: 'المالية', href: '/dashboard/finance', icon: Receipt },
-  { name: 'المدفوعات', href: '/dashboard/finance/payments', icon: CreditCard, sub: true },
-  { name: 'المصروفات', href: '/dashboard/finance/expenses', icon: Receipt, sub: true },
-  { name: 'الحسابات البنكية', href: '/dashboard/finance/bank-accounts', icon: Landmark, sub: true },
-  { name: 'أوامر الشراء', href: '/dashboard/finance/purchase-orders', icon: ShoppingCart, sub: true },
-  { name: 'القيود اليومية', href: '/dashboard/finance/journal-entries', icon: Receipt, sub: true },
-  { name: 'دفتر الأستاذ', href: '/dashboard/finance/general-ledger', icon: Receipt, sub: true },
-  { name: 'دليل الحسابات', href: '/dashboard/finance/chart-of-accounts', icon: Receipt, sub: true },
-  { name: 'الكاشير', href: '/dashboard/pos', icon: ShoppingCart },
-  { name: 'المخزون', href: '/dashboard/inventory', icon: Package },
-  { name: 'تحويلات المخزون', href: '/dashboard/stock-transfers', icon: ArrowLeftRight },
-  { name: 'التقارير المالية', href: '/dashboard/financial-reports', icon: BookOpen },
-  { name: 'الموردين', href: '/dashboard/suppliers', icon: Building2 },
-  { name: 'فواتير الموردين', href: '/dashboard/supplier-invoices', icon: FileText, sub: true },
-  { name: 'الفروع', href: '/dashboard/branches', icon: Store },
   { name: 'التحليلات', href: '/dashboard/analytics', icon: BarChart3 },
-  { name: 'التكاملات الحكومية', href: '/dashboard/government', icon: Landmark },
-  { name: 'المساعد الذكي', href: '/dashboard/ai', icon: Bot },
-  { name: 'طلبات الموافقة', href: '/dashboard/approvals', icon: ClipboardList },
-  { name: 'الامتثال', href: '/dashboard/compliance', icon: Shield },
   { name: 'التنبيهات والإشعارات', href: '/dashboard/notifications', icon: Bell, badge: 'alerts' },
-  { name: 'الأمان', href: '/dashboard/security', icon: Shield },
-  { name: 'الاشتراكات', href: '/dashboard/billing', icon: CreditCard },
+
+  { header: 'العملاء (CRM)' },
+  { name: 'نظرة عامة', href: '/dashboard/crm', icon: Gauge },
+  { name: 'جهات الاتصال', href: '/dashboard/crm/contacts', icon: Contact },
+  { name: 'الصفقات', href: '/dashboard/crm/deals', icon: Handshake },
+  { name: 'الأنشطة', href: '/dashboard/crm/activities', icon: Activity },
+  { name: 'المشاريع', href: '/dashboard/projects', icon: FolderKanban },
+
+  { header: 'الموارد البشرية (مكين)' },
+  { name: 'نظرة عامة', href: '/dashboard/hr', icon: Briefcase },
+  { name: 'الموظفون', href: '/dashboard/hr/employees', icon: UserCog },
+  { name: 'الحضور', href: '/dashboard/hr/attendance', icon: ClipboardList },
+  { name: 'الإجازات', href: '/dashboard/hr/leaves', icon: CalendarDays },
+  { name: 'الرواتب', href: '/dashboard/hr/payroll', icon: Wallet },
+  { name: 'الإدارات', href: '/dashboard/hr/departments', icon: Network },
+
+  { header: 'العقارات' },
+  { name: 'نظرة عامة', href: '/dashboard/real-estate', icon: Building2 },
+  { name: 'قائمة العقارات', href: '/dashboard/real-estate/properties', icon: Building },
+  { name: 'الوحدات', href: '/dashboard/real-estate/units', icon: LayoutGrid },
+  { name: 'العقود', href: '/dashboard/real-estate/contracts', icon: FileSignature },
+  { name: 'دفعات الإيجار', href: '/dashboard/real-estate/payments', icon: Banknote },
+
+  { header: 'الأسطول' },
+  { name: 'المركبات', href: '/dashboard/fleet', icon: Truck },
+  { name: 'الرحلات', href: '/dashboard/fleet/trips', icon: Route },
+  { name: 'السائقون', href: '/dashboard/fleet/drivers', icon: CarFront },
+  { name: 'الصيانة', href: '/dashboard/fleet/maintenance', icon: Wrench },
+  { name: 'الوقود', href: '/dashboard/fleet/fuel', icon: Fuel },
+
+  { header: 'المبيعات' },
+  { name: 'الفواتير', href: '/dashboard/erp', icon: FileText },
+  { name: 'الكاشير', href: '/dashboard/pos', icon: ShoppingCart },
+
+  { header: 'المشتريات والموردون' },
+  { name: 'الموردون', href: '/dashboard/suppliers', icon: Store },
+  { name: 'فواتير الموردين', href: '/dashboard/supplier-invoices', icon: FileInput },
+  { name: 'أوامر الشراء', href: '/dashboard/finance/purchase-orders', icon: PackagePlus },
+
+  { header: 'المخزون' },
+  { name: 'الأصناف والمخزون', href: '/dashboard/inventory', icon: Package },
+  { name: 'تحويلات المخزون', href: '/dashboard/stock-transfers', icon: ArrowLeftRight },
+
+  { header: 'المالية' },
+  { name: 'نظرة عامة', href: '/dashboard/finance', icon: Landmark },
+  { name: 'المدفوعات', href: '/dashboard/finance/payments', icon: Coins },
+  { name: 'المصروفات', href: '/dashboard/finance/expenses', icon: ReceiptText },
+  { name: 'الحسابات البنكية', href: '/dashboard/finance/bank-accounts', icon: PiggyBank },
+  { name: 'التقارير المالية', href: '/dashboard/financial-reports', icon: BookOpen },
+
+  { header: 'المحاسبة' },
+  { name: 'القيود اليومية', href: '/dashboard/finance/journal-entries', icon: Receipt },
+  { name: 'دفتر الأستاذ', href: '/dashboard/finance/general-ledger', icon: NotebookText },
+  { name: 'دليل الحسابات', href: '/dashboard/finance/chart-of-accounts', icon: ListTree },
+
+  { header: 'الفروع' },
+  { name: 'إدارة الفروع', href: '/dashboard/branches', icon: GitBranch },
+
+  { header: 'النظام' },
+  { name: 'التكاملات الحكومية', href: '/dashboard/government', icon: Globe },
+  { name: 'المساعد الذكي', href: '/dashboard/ai', icon: Bot },
+  { name: 'طلبات الموافقة', href: '/dashboard/approvals', icon: ListChecks },
+  { name: 'الامتثال', href: '/dashboard/compliance', icon: Shield },
+  { name: 'الأمان', href: '/dashboard/security', icon: Lock },
   { name: 'المستخدمون', href: '/dashboard/users', icon: Users },
   { name: 'النماذج الإلكترونية', href: '/dashboard/templates', icon: FileStack },
+  { name: 'الاشتراكات', href: '/dashboard/billing', icon: CreditCard },
   { name: 'الإعدادات', href: '/dashboard/settings', icon: Settings },
 ];
 
@@ -101,15 +129,27 @@ export default function Sidebar() {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
+      <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto">
         {navigation.map((item) => {
-          const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          if ('header' in item) {
+            return (
+              <div
+                key={item.header}
+                className="px-4 pt-5 pb-1.5 text-[11px] font-bold tracking-wide text-slate-600 first:pt-1"
+              >
+                {item.header}
+              </div>
+            );
+          }
+          const isActive = item.href === '/dashboard'
+            ? pathname === item.href
+            : pathname === item.href || pathname.startsWith(`${item.href}/`);
           const showBadge = item.badge === 'alerts' && alertCount > 0;
           return (
             <Link
-              key={item.name}
+              key={item.href}
               href={item.href}
-              className={cn('scc-sidebar-link', item.sub && 'pr-9', isActive && 'active')}
+              className={cn('scc-sidebar-link', isActive && 'active')}
             >
               <item.icon className={cn('h-5 w-5', isActive ? 'text-primary-400' : 'text-slate-500')} />
               <span className="flex-1">{item.name}</span>
