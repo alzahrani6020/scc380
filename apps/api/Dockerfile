@@ -1,7 +1,7 @@
 FROM node:20-alpine AS builder
 RUN npm install -g pnpm@9
 WORKDIR /app
-ARG NODE_MAX_HEAP=256
+ARG NODE_MAX_HEAP=512
 ENV NODE_OPTIONS=--max-old-space-size=${NODE_MAX_HEAP}
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml turbo.json ./
 COPY packages/ ./packages/
