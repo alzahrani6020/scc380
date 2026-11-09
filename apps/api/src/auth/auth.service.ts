@@ -401,7 +401,7 @@ export class AuthService {
     if (!verified) throw new UnauthorizedException('Invalid 2FA code');
 
     // Generate backup codes, return them once, and store only hashes.
-    const backupCodes = Array.from({ length: 8 }, () => randomBytes(4).toString('hex').toUpperCase());
+    const backupCodes = Array.from({ length: 8 }, () => randomBytes(8).toString('hex').toUpperCase());
     const backupCodeHashes = backupCodes.map((backupCode) =>
       createHash('sha256').update(backupCode).digest('hex'),
     );
