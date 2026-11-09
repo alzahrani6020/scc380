@@ -13,8 +13,15 @@ export class AuthController {
 
   @UseGuards(AuthRateLimitGuard)
   @Post('login')
-  async login(@Body() body: LoginDto, @Headers('x-tenant-slug') tenantSlug?: string) {
-    const user = await this.authService.authenticate(body.email, body.password, tenantSlug);
+  async login(
+    @Body() body: LoginDto,
+    @Request() req: any,
+    @Headers('x-tenant-slug') tenantSlug?: string,
+  ) {
+    const user = await this.authService.authenticate(body.email, body.password, tenantSlug, {
+      ipAddress: req.ip || req.socket?.remoteAddress || 'unknown',
+      userAgent: req.headers?.['user-agent'],
+    });
     return this.authService.login(
       user.id,
       user.email,
