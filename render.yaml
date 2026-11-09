@@ -7,10 +7,6 @@ services:
     image:
       url: ghcr.io/alzahrani6020/scc380-api:latest
     envVars:
-      - key: DATABASE_URL
-        sync: false
-      - key: DIRECT_URL
-        sync: false
       - key: REDIS_URL
         fromService:
           name: scc380-cache
