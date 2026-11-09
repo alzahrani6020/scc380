@@ -54,6 +54,9 @@ jobs:
       - name: Generate Prisma client
         run: pnpm --filter @scc/database db:generate
 
+      - name: Run API tests
+        run: pnpm --filter @scc/api test
+
       - name: Build API dependency graph
         run: pnpm turbo run build --filter=@scc/api...
 
