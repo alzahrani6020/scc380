@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { prisma, tenantWhere } from '@scc/database';
+import { prisma, tenantWhere, Prisma, InvoiceStatus } from '@scc/database';
 
 /**
  * Rule-based insights core: answers business questions directly from the
@@ -53,10 +53,10 @@ export class InsightsService {
   }
 
   private async overdueInvoices(tenantId: string | null): Promise<string> {
-    const where = {
+    const where: Prisma.InvoiceWhereInput = {
       ...tenantWhere(tenantId),
       dueDate: { lt: new Date() },
-      status: { notIn: ['PAID', 'CANCELLED', 'ARCHIVED'] },
+      status: { notIn: ['PAID', 'CANCELLED', 'ARCHIVED'] as InvoiceStatus[] },
     };
     const [count, agg, top] = await Promise.all([
       prisma.invoice.count({ where }),
@@ -84,15 +84,16 @@ export class InsightsService {
   private async fleetExpirations(tenantId: string | null): Promise<string> {
     const now = Date.now();
     const soon = new Date(now + 30 * 24 * 60 * 60 * 1000);
+    const where: Prisma.VehicleWhereInput = {
+      ...tenantWhere(tenantId),
+      OR: [
+        { istimaraExpiry: { lte: soon } },
+        { insuranceExpiry: { lte: soon } },
+        { periodicInspectionExpiry: { lte: soon } },
+      ],
+    };
     const vehicles = await prisma.vehicle.findMany({
-      where: {
-        ...tenantWhere(tenantId),
-        OR: [
-          { istimaraExpiry: { lte: soon, not: null } },
-          { insuranceExpiry: { lte: soon, not: null } },
-          { periodicInspectionExpiry: { lte: soon, not: null } },
-        ],
-      },
+      where,
       select: {
         plateNumber: true,
         istimaraExpiry: true,
@@ -101,7 +102,7 @@ export class InsightsService {
       },
       take: 100,
     });
-    const labels: Array<[keyof typeof vehicles[0], string]> = [
+    const labels: Array<[keyof typeof vehicles[number], string]> = [
       ['istimaraExpiry', 'الاستمارة'],
       ['insuranceExpiry', 'التأمين'],
       ['periodicInspectionExpiry', 'الفحص الدوري'],
@@ -136,7 +137,11 @@ export class InsightsService {
     const start = new Date();
     start.setDate(1);
     start.setHours(0, 0, 0, 0);
-    const where = { ...tenantWhere(tenantId), status: 'PAID', paidAt: { gte: start } };
+    const where: Prisma.InvoiceWhereInput = {
+      ...tenantWhere(tenantId),
+      status: 'PAID' as InvoiceStatus,
+      paidAt: { gte: start },
+    };
     const [count, agg] = await Promise.all([
       prisma.invoice.count({ where }),
       prisma.invoice.aggregate({ where, _sum: { total: true } }),
@@ -171,7 +176,7 @@ export class InsightsService {
   }
 
   private async alerts(tenantId: string | null): Promise<string> {
-    const where = { ...tenantWhere(tenantId), isRead: false };
+    const where: Prisma.AlertWhereInput = { ...tenantWhere(tenantId), isRead: false };
     const grouped = await prisma.alert.groupBy({
       by: ['severity'],
       where,
@@ -184,6 +189,8 @@ export class InsightsService {
   }
 
   private async countIntent(msg: string, tenantId: string | null): Promise<string | null> {
+    const wantsCount = /كم|عدد|كام|مقدار/.test(msg);
+    if (!wantsCount) return null;
     const intents: Array<[RegExp, 'contact' | 'deal' | 'employee' | 'vehicle' | 'property' | 'unit' | 'invoice', string]> = [
       [/جهات اتصال|عملاء|العملاء/, 'contact', 'جهة اتصال'],
       [/صفقات/, 'deal', 'صفقة'],
@@ -193,13 +200,12 @@ export class InsightsService {
       [/وحدات/, 'unit', 'وحدة'],
       [/فواتير/, 'invoice', 'فاتورة'],
     ];
-    const wantsCount = /كم|عدد|كام|مقدار/.test(msg);
     for (const [pattern, model, label] of intents) {
       if (!pattern.test(msg)) continue;
-      if (!wantsCount && !/عدد/.test(msg)) continue;
-      // @ts-expect-error dynamic prisma delegate
-      const count: number = await prisma[model].count({ where: tenantWhere(tenantId) });
-      return `لديك ${count} ${label}${count === 1 ? '' : ''} مسجلة في النظام.`;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const delegate = (prisma as any)[model];
+      const count: number = await delegate.count({ where: tenantWhere(tenantId) });
+      return `لديك ${count} ${label} مسجلة في النظام.`;
     }
     return null;
   }

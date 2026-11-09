@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Get, UseGuards, Req, TooManyRequestsException } from '@nestjs/common';
+import { Controller, Post, Body, Get, UseGuards, Req, HttpException, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { IsString, IsOptional, MaxLength, IsIn } from 'class-validator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -30,7 +30,7 @@ function enforceRateLimit(key: string) {
   const now = Date.now();
   const arr = (rateHits.get(key) || []).filter((t) => now - t < RATE_WINDOW_MS);
   if (arr.length >= RATE_MAX) {
-    throw new TooManyRequestsException('عدد المحاولات كبير — انتظر دقيقة وحاول مجدداً');
+    throw new HttpException('عدد المحاولات كبير — انتظر دقيقة وحاول مجدداً', HttpStatus.TOO_MANY_REQUESTS);
   }
   arr.push(now);
   rateHits.set(key, arr);
