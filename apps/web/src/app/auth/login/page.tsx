@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
-import { setAuth } from '@/lib/auth';
+import { clearAuth, getToken, setAuth } from '@/lib/auth';
 import { GoogleLogin, googleLogout } from '@react-oauth/google';
 import {
   Building2, Lock, Mail, ChevronLeft,
@@ -30,8 +30,12 @@ export default function LoginPage() {
   }, []);
 
   useEffect(() => {
-    const token = localStorage.getItem('accessToken') || sessionStorage.getItem('accessToken');
-    if (token) router.push('/dashboard');
+    const token = getToken();
+    if (!token) return;
+
+    api.get('/auth/me')
+      .then(() => router.replace('/dashboard'))
+      .catch(() => clearAuth());
   }, [router]);
 
   const handleLogin = async (e: React.FormEvent) => {
