@@ -51,7 +51,12 @@ export class AuthController {
     @Body('token') token: string,
     @Body('newPassword') newPassword: string,
   ) {
-    if (!token || !newPassword) throw new BadRequestException('Token and newPassword are required');
+    if (!token || typeof newPassword !== 'string') {
+      throw new BadRequestException('Token and newPassword are required');
+    }
+    if (newPassword.length < 12 || newPassword.length > 128) {
+      throw new BadRequestException('Password must be between 12 and 128 characters');
+    }
     return this.authService.resetPassword(token, newPassword);
   }
 
