@@ -30,8 +30,8 @@ function ResetPasswordForm() {
       setError('كلمتا المرور غير متطابقتين');
       return;
     }
-    if (password.length < 6) {
-      setError('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
+    if (password.length < 12) {
+      setError('كلمة المرور يجب أن تكون 12 حرفًا على الأقل');
       return;
     }
 
@@ -73,7 +73,7 @@ function ResetPasswordForm() {
               <div className="relative">
                 <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-500" />
                 <input
-                  type={showPassword ? 'text' : 'password'} required placeholder="كلمة المرور الجديدة"
+                  type={showPassword ? 'text' : 'password'} required minLength={12} maxLength={128} placeholder="كلمة المرور الجديدة"
                   className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl py-3 pr-10 pl-12 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 transition-all placeholder:text-slate-500"
                   value={password} onChange={(e) => setPassword(e.target.value)}
                 />
@@ -85,7 +85,7 @@ function ResetPasswordForm() {
               <div className="relative">
                 <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-500" />
                 <input
-                  type={showPassword ? 'text' : 'password'} required placeholder="تأكيد كلمة المرور"
+                  type={showPassword ? 'text' : 'password'} required minLength={12} maxLength={128} placeholder="تأكيد كلمة المرور"
                   className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl py-3 pr-10 pl-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 transition-all placeholder:text-slate-500"
                   value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
                 />
