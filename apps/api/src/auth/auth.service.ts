@@ -43,7 +43,13 @@ export class AuthService {
     return user;
   }
 
-  async authenticate(email: string, password: string, tenantSlug?: string) {
+  async authenticate(
+    email: string,
+    password: string,
+    tenantSlug?: string,
+    meta?: { ipAddress?: string; userAgent?: string },
+  ) {
+    const normalizedEmail = this.normalizeEmail(email);
     let tenantId: string | undefined;
 
     if (tenantSlug && tenantSlug !== 'all') {
@@ -52,16 +58,67 @@ export class AuthService {
         select: { id: true, status: true },
       });
       if (!tenant || tenant.status !== 'ACTIVE') {
+        await this.recordLoginAttempt({
+          email: normalizedEmail,
+          tenantId: tenant?.id,
+          success: false,
+          failureReason: 'INVALID_TENANT',
+          ...meta,
+        });
         throw new UnauthorizedException('Invalid credentials / بيانات الدخول غير صحيحة');
       }
       tenantId = tenant.id;
     }
 
-    const user = await this.validateUser(email, password, tenantId);
+    const user = await this.validateUser(normalizedEmail, password, tenantId);
     if (!user) {
+      await this.recordLoginAttempt({
+        email: normalizedEmail,
+        tenantId,
+        success: false,
+        failureReason: 'INVALID_CREDENTIALS_OR_ACCOUNT_STATE',
+        ...meta,
+      });
       throw new UnauthorizedException('Invalid credentials / بيانات الدخول غير صحيحة');
     }
+
+    await this.recordLoginAttempt({
+      email: normalizedEmail,
+      userId: user.id,
+      tenantId: user.tenantId || undefined,
+      success: true,
+      ...meta,
+    });
     return user;
+  }
+
+  private async recordLoginAttempt(data: {
+    email?: string;
+    userId?: string;
+    tenantId?: string;
+    ipAddress?: string;
+    userAgent?: string;
+    success: boolean;
+    failureReason?: string;
+  }) {
+    try {
+      await prisma.loginAttempt.create({
+        data: {
+          email: data.email,
+          userId: data.userId,
+          tenantId: data.tenantId,
+          ipAddress: data.ipAddress || 'unknown',
+          userAgent: data.userAgent,
+          success: data.success,
+          failureReason: data.failureReason,
+        },
+      });
+    } catch (error) {
+      this.logger.warn(
+        'Unable to record login attempt',
+        error instanceof Error ? error.message : undefined,
+      );
+    }
   }
 
   async login(userId: string, email: string, role: string, tenantId?: string, tenantSlug?: string) {
