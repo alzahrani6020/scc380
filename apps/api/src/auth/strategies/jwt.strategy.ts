@@ -41,6 +41,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (user.tenant && user.tenant.status !== 'ACTIVE') {
       throw new UnauthorizedException('Tenant is not active');
     }
+    if (user.role !== 'SUPER_ADMIN' && !user.tenantId) {
+      throw new UnauthorizedException('Tenant context is required');
+    }
 
     return {
       id: user.id,
