@@ -3,27 +3,47 @@ import type { NextRequest } from 'next/server';
 
 const SECRET = process.env.DEMO_TOKEN_SECRET;
 
-function verifyToken(token: string): boolean {
+async function verifyToken(token: string): Promise<boolean> {
   try {
-    const decoded = Buffer.from(token, 'base64url').toString('utf-8');
-    const data = JSON.parse(decoded);
     if (!SECRET) return false;
-    if (data.exp && Date.now() > data.exp) return false;
-    if (data.secret !== SECRET) return false;
-    return true;
+
+    const [payloadEncoded, signatureEncoded] = token.split('.');
+    if (!payloadEncoded || !signatureEncoded) return false;
+
+    const data = JSON.parse(Buffer.from(payloadEncoded, 'base64url').toString('utf-8'));
+    const expMs =
+      typeof data.exp === 'number'
+        ? (data.exp > 1_000_000_000_000 ? data.exp : data.exp * 1000)
+        : 0;
+    if (!expMs || Date.now() > expMs) return false;
+
+    const key = await crypto.subtle.importKey(
+      'raw',
+      new TextEncoder().encode(SECRET),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['verify'],
+    );
+
+    return crypto.subtle.verify(
+      'HMAC',
+      key,
+      Buffer.from(signatureEncoded, 'base64url'),
+      new TextEncoder().encode(payloadEncoded),
+    );
   } catch {
     return false;
   }
 }
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const demoToken = request.nextUrl.searchParams.get('demo');
   const demoUsed = request.cookies.get('demo_used')?.value;
 
   // بوابة الديمو التسويقية: صفحة العرض فقط (اختياري — الرابط التجريبي لمرة واحدة)
   if (path === '/preview' && demoToken) {
-    if (!verifyToken(demoToken) || demoUsed === demoToken) {
+    if (!(await verifyToken(demoToken)) || demoUsed === demoToken) {
       const r = NextResponse.redirect(new URL('/expired', request.url));
       r.headers.set('Cache-Control', 'no-store');
       return r;
