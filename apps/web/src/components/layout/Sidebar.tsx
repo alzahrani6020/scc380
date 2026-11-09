@@ -12,7 +12,7 @@ import {
   ChevronLeft, FolderKanban, Receipt, Shield, CreditCard, Bell,
   FileStack, ShoppingCart, Package, BookOpen, ArrowLeftRight, Store,
   Route, Wrench, Fuel, CalendarDays, ClipboardList, Wallet,
-  Contact, Handshake, LayoutGrid, FileSignature, Banknote, IdCard,
+  Contact, Handshake, LayoutGrid, FileSignature, Banknote,
   ReceiptText, ListTree, PiggyBank, NotebookText, GitBranch,
   PackagePlus, Gauge, Globe, ListChecks, Lock, Coins, CarFront,
   Network, UserCog, FileInput, Building,
