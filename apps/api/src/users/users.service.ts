@@ -59,8 +59,9 @@ export class UsersService {
     }
     const existing = await prisma.user.findFirst({ where });
     if (!existing) throw new NotFoundException('User not found');
-    if (dto.role && req.user?.role !== 'SUPER_ADMIN' && req.user?.role !== 'ADMIN') {
+    if (req.user?.role !== 'SUPER_ADMIN') {
       delete dto.role;
+      delete dto.status;
     }
     const data: any = { ...dto };
     if (dto.preferences) data.preferences = JSON.parse(dto.preferences);
