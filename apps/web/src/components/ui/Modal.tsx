@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 interface ModalProps {
@@ -13,6 +14,9 @@ interface ModalProps {
 
 export default function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -28,7 +32,9 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' }:
     };
   }, [isOpen, onClose]);
 
-  if (!isOpen) return null;
+  // mounted guard: document.body is unavailable during SSR, and rendering
+  // nothing until mount keeps hydration consistent
+  if (!isOpen || !mounted) return null;
 
   const sizes = {
     sm: 'max-w-md',
@@ -37,7 +43,10 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' }:
     xl: 'max-w-4xl',
   };
 
-  return (
+  // Portal: without it, an ancestor with a transform (e.g. animate-fade-in-up
+  // on a page wrapper) becomes the containing block for position:fixed, and
+  // the overlay stops covering the viewport — the dialog can render off-screen
+  return createPortal(
     <div
       ref={overlayRef}
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
@@ -54,6 +63,7 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' }:
         </div>
         <div className="px-6 py-5 max-h-[80vh] overflow-y-auto">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
