@@ -71,6 +71,22 @@ export class ComplianceController {
     return this.service.syncQiwaContracts(req.user.tenantId);
   }
 
+  // ─── Assurance Core ─────────────────────────────────────────────────
+  @Get('controls')
+  async getControls(@Request() req: any) {
+    return this.service.getControls(req.user.tenantId);
+  }
+
+  @Get('evidence')
+  async getEvidence(@Request() req: any) {
+    return this.service.getEvidence(req.user.tenantId);
+  }
+
+  @Get('findings')
+  async getFindings(@Request() req: any) {
+    return this.service.getFindings(req.user.tenantId);
+  }
+
   // ─── Compliance Report ───────────────────────────────────────────────
   @Get('report')
   async getReport(@Request() req: any) {
