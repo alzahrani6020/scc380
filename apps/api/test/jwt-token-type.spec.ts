@@ -98,3 +98,23 @@ test('web middleware requires an access token type and expiry', () => {
   assert.match(middlewareSource, /payload\?\.type === 'access'/);
   assert.match(middlewareSource, /typeof payload\.exp === 'number'/);
 });
+
+
+test('2FA setup refuses to overwrite an already-enabled secret', () => {
+  const source = readFileSync(
+    join(process.cwd(), 'src/auth/auth.service.ts'),
+    'utf8',
+  );
+  assert.match(source, /if \(existing\.twoFactorEnabled\)/);
+  assert.match(source, /disable it before setting up a new secret/);
+});
+
+test('2FA login UI accepts both TOTP and 8-character backup codes', () => {
+  const verifySource = readFileSync(
+    join(process.cwd(), '../web/src/app/auth/verify-2fa/page.tsx'),
+    'utf8',
+  );
+  assert.match(verifySource, /maxLength=\{8\}/);
+  assert.match(verifySource, /\^\\d\{6\}\$/);
+  assert.match(verifySource, /\^\[0-9A-F\]\{8\}\$/);
+});
