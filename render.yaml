@@ -26,9 +26,9 @@ services:
       - key: JWT_EXPIRES_IN
         value: 1h
       - key: CORS_ORIGINS
-        value: https://scc380-web.vercel.app
+        value: https://dr-talal-h-alzahrani.com,https://www.dr-talal-h-alzahrani.com,https://scc380-web.vercel.app
       - key: WEB_URL
-        value: https://scc380-web.vercel.app
+        value: https://dr-talal-h-alzahrani.com
       - key: NODE_ENV
         value: production
 

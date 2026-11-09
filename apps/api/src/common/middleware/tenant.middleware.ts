@@ -18,7 +18,17 @@ export class TenantMiddleware implements NestMiddleware {
       return next();
     }
 
-    const tenantSlug = (req.headers['x-tenant-slug'] as string) || req.subdomains[0] || null;
+    const explicitTenantSlug = req.headers['x-tenant-slug'] as string | undefined;
+    const hostname = (req.hostname || '').toLowerCase();
+    const isInfrastructureHost =
+      hostname.endsWith('.onrender.com') ||
+      hostname.endsWith('.vercel.app') ||
+      hostname === 'localhost' ||
+      hostname.startsWith('api.') ||
+      hostname.startsWith('www.');
+
+    const tenantSlug =
+      explicitTenantSlug || (!isInfrastructureHost ? req.subdomains[0] : null) || null;
 
     if (tenantSlug) {
       const tenant = await prisma.tenant.findUnique({
