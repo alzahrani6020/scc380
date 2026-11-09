@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { prisma } from '@scc/database';
 
 type AssuranceStatus =
@@ -68,38 +68,21 @@ export class ComplianceService {
 
   // ─── WPS Export (Wage Protection System) ─────────────────────────────
   async exportWpsFile(tenantId: string, month: number, year: number): Promise<string> {
-    const payrolls = await prisma.payroll.findMany({
+    const payrollCount = await prisma.payroll.count({
       where: { tenantId, month, year },
-      include: { employee: true },
     });
 
-    if (payrolls.length === 0) {
+    if (payrollCount === 0) {
       throw new NotFoundException('لا توجد كشوف رواتب لهذا الشهر');
     }
 
-    // NOTE: This generator remains available for legacy use, but the compliance
-    // dashboard deliberately reports WPS as NOT_VERIFIED because the current
-    // Employee model does not persist a per-employee payroll IBAN.
-    const lines: string[] = [];
-
-    const employer = await prisma.tenant.findUnique({ where: { id: tenantId } });
-    lines.push(
-      `H${(employer?.crNumber || '').padEnd(20, ' ')}${month.toString().padStart(2, '0')}${year}${payrolls.length.toString().padStart(6, '0')}${payrolls.reduce((s, p) => s + Number(p.netSalary), 0).toFixed(2).padStart(15, '0')}`,
+    // Safety gate: the current Employee schema has no per-employee payroll
+    // IBAN. Generating a SIF with the tenant/company account would be
+    // materially misleading, so production export is blocked until that
+    // data model and an official-format conformance test are implemented.
+    throw new BadRequestException(
+      'WPS_NOT_VERIFIED: التصدير متوقف لحين حفظ IBAN مستقل لكل موظف والتحقق من مطابقة صيغة SIF',
     );
-
-    for (const payroll of payrolls) {
-      const emp = payroll.employee;
-      const bankAccount = await prisma.bankAccount.findFirst({
-        where: { tenantId },
-      });
-      lines.push(
-        `D${(emp.idNumber || '').padEnd(20, ' ')}${(emp.firstName + ' ' + emp.lastName).substring(0, 50).padEnd(50, ' ')}${(bankAccount?.iban || '').padEnd(34, ' ')}${Number(payroll.netSalary).toFixed(2).padStart(15, '0')}${(emp.employeeCode || '').padEnd(20, ' ')}`,
-      );
-    }
-
-    lines.push(`F${payrolls.length.toString().padStart(6, '0')}${payrolls.reduce((s, p) => s + Number(p.netSalary), 0).toFixed(2).padStart(15, '0')}`);
-
-    return lines.join('\n');
   }
 
   // ─── Qiwa Mock Integration ───────────────────────────────────────────
