@@ -357,6 +357,15 @@ export class AuthService {
 
   // ─── 2FA / TOTP ────────────────────────────────────────────────────
   async setup2FA(userId: string) {
+    const existing = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { twoFactorEnabled: true },
+    });
+    if (!existing) throw new BadRequestException('User not found');
+    if (existing.twoFactorEnabled) {
+      throw new BadRequestException('2FA is already enabled; disable it before setting up a new secret');
+    }
+
     const secret = speakeasy.generateSecret({
       name: `SCC380 (${userId})`,
       length: 32,
