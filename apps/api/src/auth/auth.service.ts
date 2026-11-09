@@ -23,23 +23,64 @@ export class AuthService {
     }
   }
 
-  async validateUser(email: string, password: string, tenantId?: string) {
-    const where: any = { email };
-    if (tenantId) where.tenantId = tenantId;
+  private normalizeEmail(email: string) {
+    return email.trim().toLowerCase();
+  }
 
-    const user = await prisma.user.findUnique({ where });
-    if (!user || !user.passwordHash) return null;
+  async validateUser(email: string, password: string, tenantId?: string) {
+    const normalizedEmail = this.normalizeEmail(email);
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      include: { tenant: { select: { id: true, status: true } } },
+    });
+
+    if (!user || !user.passwordHash || user.status !== 'ACTIVE') return null;
+    if (tenantId && user.tenantId !== tenantId) return null;
+    if (user.tenant && user.tenant.status !== 'ACTIVE') return null;
+
     const valid = await verifyPassword(user.passwordHash, password);
     if (!valid) return null;
     return user;
   }
 
+  async authenticate(email: string, password: string, tenantSlug?: string) {
+    let tenantId: string | undefined;
+
+    if (tenantSlug && tenantSlug !== 'all') {
+      const tenant = await prisma.tenant.findUnique({
+        where: { slug: tenantSlug.trim().toLowerCase() },
+        select: { id: true, status: true },
+      });
+      if (!tenant || tenant.status !== 'ACTIVE') {
+        throw new UnauthorizedException('Invalid credentials / بيانات الدخول غير صحيحة');
+      }
+      tenantId = tenant.id;
+    }
+
+    const user = await this.validateUser(email, password, tenantId);
+    if (!user) {
+      throw new UnauthorizedException('Invalid credentials / بيانات الدخول غير صحيحة');
+    }
+    return user;
+  }
+
   async login(userId: string, email: string, role: string, tenantId?: string, tenantSlug?: string) {
-    // Check if 2FA is enabled
+    // Re-check account and tenant state at token issuance time.
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { twoFactorEnabled: true },
+      select: {
+        twoFactorEnabled: true,
+        status: true,
+        tenantId: true,
+        tenant: { select: { status: true } },
+      },
     });
+    if (!user || user.status !== 'ACTIVE' || (user.tenant && user.tenant.status !== 'ACTIVE')) {
+      throw new UnauthorizedException('Account is not active');
+    }
+    if (tenantId && user.tenantId !== tenantId) {
+      throw new UnauthorizedException('Invalid tenant');
+    }
 
     if (user?.twoFactorEnabled) {
       // Issue a temporary token for 2FA verification
@@ -119,7 +160,8 @@ export class AuthService {
     tenantName?: string;
     tenantSlug?: string;
   }) {
-    const existing = await prisma.user.findUnique({ where: { email: data.email } });
+    const email = this.normalizeEmail(data.email);
+    const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) throw new ConflictException('Email already registered / البريد مسجل مسبقاً');
 
     const passwordHash = await hashPassword(data.password);
@@ -145,7 +187,7 @@ export class AuthService {
 
       return tx.user.create({
         data: {
-          email: data.email,
+          email,
           passwordHash,
           firstName: data.firstName,
           lastName: data.lastName,
@@ -174,7 +216,8 @@ export class AuthService {
   // ─── Forgot Password ───────────────────────────────────────────────
   async forgotPassword(email: string) {
     const genericResponse = { message: 'If this email exists, a reset link has been sent.' };
-    const user = await prisma.user.findUnique({ where: { email } });
+    const normalizedEmail = this.normalizeEmail(email);
+    const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
 
     // Always return the same response to avoid account enumeration.
     if (!user) return genericResponse;
@@ -194,7 +237,7 @@ export class AuthService {
     const resetUrl = `${this.config.get('WEB_URL', 'http://localhost:3000')}/auth/reset-password?token=${token}`;
 
     await prisma.passwordResetToken.create({
-      data: { email, token, expiresAt },
+      data: { email: normalizedEmail, token, expiresAt },
     });
 
     try {
@@ -207,7 +250,7 @@ export class AuthService {
         },
         body: JSON.stringify({
           sender: { name: senderName, email: senderEmail },
-          to: [{ email }],
+          to: [{ email: normalizedEmail }],
           subject: 'إعادة تعيين كلمة المرور - SCC380',
           htmlContent:
             '<p>تم طلب إعادة تعيين كلمة المرور لحسابك.</p>' +
