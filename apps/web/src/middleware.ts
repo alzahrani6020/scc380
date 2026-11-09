@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-const SECRET = 'scc-demo-secret-2024';
+const SECRET = process.env.DEMO_TOKEN_SECRET;
 
 function verifyToken(token: string): boolean {
   try {
     const decoded = Buffer.from(token, 'base64url').toString('utf-8');
     const data = JSON.parse(decoded);
+    if (!SECRET) return false;
     if (data.exp && Date.now() > data.exp) return false;
     if (data.secret !== SECRET) return false;
     return true;
@@ -45,8 +46,7 @@ export function middleware(request: NextRequest) {
     path.startsWith('/auth') ||
     path === '/landing' ||
     path === '/expired' ||
-    path === '/preview' ||
-    path.startsWith('/admin/')
+    path === '/preview'
   ) {
     return NextResponse.next();
   }
