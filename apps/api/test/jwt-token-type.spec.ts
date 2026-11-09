@@ -55,3 +55,46 @@ test('2FA temporary token is not placed in a URL', () => {
   assert.match(verifySource, /sessionStorage\.getItem\('scc_2fa_temp_token'/);
   assert.match(verifySource, /sessionStorage\.removeItem\('scc_2fa_temp_token'/);
 });
+
+
+test('password reset tokens and 2FA backup codes are hashed at rest', () => {
+  const source = readFileSync(
+    join(process.cwd(), 'src/auth/auth.service.ts'),
+    'utf8',
+  );
+
+  assert.match(source, /createHash\('sha256'\)\.update\(token\)\.digest\('hex'\)/);
+  assert.match(source, /token:\s*tokenHash/);
+  assert.match(source, /backupCodeHashes/);
+  assert.match(source, /storedCode === backupCodeHash \|\| storedCode === code/);
+});
+
+test('login page validates an existing token with auth me before redirecting', () => {
+  const loginSource = readFileSync(
+    join(process.cwd(), '../web/src/app/auth/login/page.tsx'),
+    'utf8',
+  );
+
+  assert.match(loginSource, /api\.get\('\/auth\/me'\)/);
+  assert.doesNotMatch(loginSource, /if \(token\) router\.push\('\/dashboard'\)/);
+});
+
+test('public auth requests do not inherit stale tenant context', () => {
+  const apiSource = readFileSync(
+    join(process.cwd(), '../web/src/lib/api.ts'),
+    'utf8',
+  );
+
+  assert.match(apiSource, /publicAuthRequest/);
+  assert.match(apiSource, /tenantSlug && !publicAuthRequest/);
+});
+
+test('web middleware requires an access token type and expiry', () => {
+  const middlewareSource = readFileSync(
+    join(process.cwd(), '../web/src/middleware.ts'),
+    'utf8',
+  );
+
+  assert.match(middlewareSource, /payload\?\.type === 'access'/);
+  assert.match(middlewareSource, /typeof payload\.exp === 'number'/);
+});
