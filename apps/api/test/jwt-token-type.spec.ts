@@ -118,3 +118,22 @@ test('2FA login UI accepts both TOTP and 8-character backup codes', () => {
   assert.match(verifySource, /\^\\d\{6\}\$/);
   assert.match(verifySource, /\^\[0-9A-F\]\{8\}\$/);
 });
+
+
+test('tenantless non-super-admin users are rejected by JwtStrategy', () => {
+  const source = readFileSync(
+    join(process.cwd(), 'src/auth/strategies/jwt.strategy.ts'),
+    'utf8',
+  );
+  assert.match(source, /user\.role !== 'SUPER_ADMIN' && !user\.tenantId/);
+  assert.match(source, /Tenant context is required/);
+});
+
+test('CORS allows the custom tenant and branch headers used by the web client', () => {
+  const source = readFileSync(
+    join(process.cwd(), 'src/main.ts'),
+    'utf8',
+  );
+  assert.match(source, /X-Tenant-Slug/);
+  assert.match(source, /X-Branch-Id/);
+});
