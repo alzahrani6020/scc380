@@ -20,6 +20,15 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Prefill the remembered email when the user chose "تذكرني" previously
+  useEffect(() => {
+    const saved = localStorage.getItem('rememberedEmail');
+    if (saved) {
+      setEmail(saved);
+      setRememberMe(true);
+    }
+  }, []);
+
   useEffect(() => {
     const token = localStorage.getItem('accessToken') || sessionStorage.getItem('accessToken');
     if (token) router.push('/dashboard');
@@ -49,7 +58,15 @@ export default function LoginPage() {
         },
       };
       setAuth(authData, rememberMe);
-      router.push('/dashboard');
+      if (rememberMe) {
+        localStorage.setItem('rememberedEmail', email);
+      } else {
+        localStorage.removeItem('rememberedEmail');
+      }
+      // Full navigation (not client-side router.push) so the browser's
+      // password manager reliably detects the successful login and offers
+      // to save/fill the credentials on the next visit
+      window.location.href = '/dashboard';
     } catch (err: any) {
       setError(err.response?.data?.message || 'فشل تسجيل الدخول');
     } finally { setLoading(false); }
@@ -131,7 +148,7 @@ export default function LoginPage() {
               <input
                 type="email"
                 required
-                autoComplete="email"
+                autoComplete="username"
                 placeholder="البريد الإلكتروني"
                 className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl py-3 pr-10 pl-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 transition-all placeholder:text-slate-500"
                 value={email}
