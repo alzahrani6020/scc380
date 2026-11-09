@@ -70,6 +70,12 @@
   .badge-active {
     @apply inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30;
   }
+
+  /* Date inputs: keep LTR segment order inside RTL pages */
+  input[type="date"] {
+    direction: ltr;
+    text-align: right;
+  }
 }
 
 /* Animations */
