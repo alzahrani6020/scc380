@@ -43,7 +43,7 @@ jobs:
           build-args: |
             NODE_MAX_HEAP=1536
           tags: |
-            ghcr.io/alzahrani6020/scc380-api:latest
-            ghcr.io/alzahrani6020/scc380-api:${{ github.sha }}
+            ghcr.io/alzahrani6020/scc380-api-prod:latest
+            ghcr.io/alzahrani6020/scc380-api-prod:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
