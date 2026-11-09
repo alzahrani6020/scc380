@@ -3,13 +3,32 @@ import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { prisma } from '@scc/database';
 
-const SENSITIVE_FIELDS = ['password', 'passwordHash', 'token', 'secret', 'otp', 'csid', 'privateKey'];
+const SENSITIVE_FIELDS = new Set([
+  'password',
+  'passwordhash',
+  'accesstoken',
+  'refreshtoken',
+  'resettoken',
+  'token',
+  'authorization',
+  'twofactorsecret',
+  'twofactorbackupcodes',
+  'backupcodes',
+  'apikey',
+  'apikeys',
+  'secret',
+  'otp',
+  'csid',
+  'privatekey',
+  'cookie',
+  'cookies',
+]);
 
 function sanitizeBody(body: any): any {
   if (!body || typeof body !== 'object') return body;
   const sanitized: any = Array.isArray(body) ? [...body] : { ...body };
   for (const key of Object.keys(sanitized)) {
-    if (SENSITIVE_FIELDS.includes(key.toLowerCase())) {
+    if (SENSITIVE_FIELDS.has(key.toLowerCase())) {
       sanitized[key] = '***REDACTED***';
     } else if (typeof sanitized[key] === 'object') {
       sanitized[key] = sanitizeBody(sanitized[key]);
