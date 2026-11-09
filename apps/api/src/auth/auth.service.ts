@@ -5,7 +5,7 @@ import { prisma } from '@scc/database';
 import { hashPassword, verifyPassword } from '@scc/auth';
 import * as speakeasy from 'speakeasy';
 import * as QRCode from 'qrcode';
-import { randomBytes } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
 
 @Injectable()
@@ -95,9 +95,10 @@ export class AuthService {
       };
     }
 
-    const payload = { sub: userId, email, role, tenantId, tenantSlug };
-    const accessToken = this.jwt.sign(payload);
-    const refreshToken = this.jwt.sign(payload, {
+    const accessPayload = { sub: userId, email, role, tenantId, tenantSlug, type: 'access' };
+    const refreshPayload = { sub: userId, email, role, tenantId, tenantSlug, type: 'refresh' };
+    const accessToken = this.jwt.sign(accessPayload);
+    const refreshToken = this.jwt.sign(refreshPayload, {
       secret: this.config.get('JWT_SECRET'),
       expiresIn: this.config.get('REFRESH_TOKEN_EXPIRES_IN') || '7d',
     });
@@ -132,9 +133,10 @@ export class AuthService {
     }
 
     const { sub: userId, email, role, tenantId, tenantSlug } = payload;
-    const accessPayload = { sub: userId, email, role, tenantId, tenantSlug };
+    const accessPayload = { sub: userId, email, role, tenantId, tenantSlug, type: 'access' };
+    const refreshPayload = { sub: userId, email, role, tenantId, tenantSlug, type: 'refresh' };
     const accessToken = this.jwt.sign(accessPayload);
-    const refreshToken = this.jwt.sign(accessPayload, {
+    const refreshToken = this.jwt.sign(refreshPayload, {
       secret: this.config.get('JWT_SECRET'),
       expiresIn: this.config.get('REFRESH_TOKEN_EXPIRES_IN') || '7d',
     });
@@ -233,11 +235,16 @@ export class AuthService {
     }
 
     const token = randomBytes(32).toString('hex');
+    const tokenHash = createHash('sha256').update(token).digest('hex');
     const expiresAt = new Date(Date.now() + 1000 * 60 * 60); // 1 hour
     const resetUrl = `${this.config.get('WEB_URL', 'http://localhost:3000')}/auth/reset-password?token=${token}`;
 
+    // Keep only the newest reset request usable for this account.
+    await prisma.passwordResetToken.deleteMany({
+      where: { email: normalizedEmail, usedAt: null },
+    });
     await prisma.passwordResetToken.create({
-      data: { email: normalizedEmail, token, expiresAt },
+      data: { email: normalizedEmail, token: tokenHash, expiresAt },
     });
 
     try {
@@ -264,7 +271,7 @@ export class AuthService {
       }
     } catch (error) {
       // The token must not remain usable when delivery failed.
-      await prisma.passwordResetToken.deleteMany({ where: { token } });
+      await prisma.passwordResetToken.deleteMany({ where: { token: tokenHash } });
       this.logger.error(
         'Password reset email delivery failed',
         error instanceof Error ? error.message : undefined,
@@ -275,7 +282,10 @@ export class AuthService {
   }
 
   async resetPassword(token: string, newPassword: string) {
-    const record = await prisma.passwordResetToken.findUnique({ where: { token } });
+    const tokenHash = createHash('sha256').update(token).digest('hex');
+    const record = await prisma.passwordResetToken.findFirst({
+      where: { OR: [{ token: tokenHash }, { token }] }, // raw-token fallback for pre-hardening links
+    });
     if (!record || record.usedAt || record.expiresAt < new Date()) {
       throw new BadRequestException('Invalid or expired reset token');
     }
@@ -284,8 +294,14 @@ export class AuthService {
     if (!user) throw new BadRequestException('User not found');
 
     const passwordHash = await hashPassword(newPassword);
-    await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
-    await prisma.passwordResetToken.update({ where: { id: record.id }, data: { usedAt: new Date() } });
+    const usedAt = new Date();
+    await prisma.$transaction([
+      prisma.user.update({ where: { id: user.id }, data: { passwordHash } }),
+      prisma.passwordResetToken.updateMany({
+        where: { email: record.email, usedAt: null },
+        data: { usedAt },
+      }),
+    ]);
 
     return { message: 'Password reset successfully' };
   }
@@ -308,19 +324,13 @@ export class AuthService {
 
     const { email, given_name, family_name, sub: googleId } = payload;
 
-    let user = await prisma.user.findUnique({ where: { email } });
+    const user = await prisma.user.findUnique({ where: { email } });
 
     if (!user) {
-      // Auto-register Google user
-      user = await prisma.user.create({
-        data: {
-          email,
-          firstName: given_name || email.split('@')[0],
-          lastName: family_name || '',
-          emailVerified: true,
-          role: 'USER',
-        },
-      });
+      throw new UnauthorizedException('Google account is not registered');
+    }
+    if (user.status !== 'ACTIVE' || !user.tenantId) {
+      throw new UnauthorizedException('Account is not active');
     }
 
     // Link OAuth account
@@ -341,6 +351,15 @@ export class AuthService {
 
   // ─── 2FA / TOTP ────────────────────────────────────────────────────
   async setup2FA(userId: string) {
+    const existing = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { twoFactorEnabled: true },
+    });
+    if (!existing) throw new BadRequestException('User not found');
+    if (existing.twoFactorEnabled) {
+      throw new BadRequestException('2FA is already enabled; disable it before setting up a new secret');
+    }
+
     const secret = speakeasy.generateSecret({
       name: `SCC380 (${userId})`,
       length: 32,
@@ -375,12 +394,15 @@ export class AuthService {
 
     if (!verified) throw new UnauthorizedException('Invalid 2FA code');
 
-    // Generate backup codes
-    const backupCodes = Array.from({ length: 8 }, () => randomBytes(4).toString('hex').toUpperCase());
+    // Generate backup codes, return them once, and store only hashes.
+    const backupCodes = Array.from({ length: 8 }, () => randomBytes(8).toString('hex').toUpperCase());
+    const backupCodeHashes = backupCodes.map((backupCode) =>
+      createHash('sha256').update(backupCode).digest('hex'),
+    );
 
     await prisma.user.update({
       where: { id: userId },
-      data: { twoFactorEnabled: true, twoFactorBackupCodes: backupCodes },
+      data: { twoFactorEnabled: true, twoFactorBackupCodes: backupCodeHashes },
     });
 
     return { message: '2FA enabled successfully', backupCodes };
@@ -395,11 +417,19 @@ export class AuthService {
       throw new BadRequestException('2FA not enabled');
     }
 
-    // Check backup codes
-    if (user.twoFactorBackupCodes.includes(code)) {
+    // Check hashed backup codes, with legacy plaintext compatibility until old codes are consumed.
+    const backupCodeHash = createHash('sha256').update(code).digest('hex');
+    const matchedBackupCode = user.twoFactorBackupCodes.find(
+      (storedCode) => storedCode === backupCodeHash || storedCode === code,
+    );
+    if (matchedBackupCode) {
       await prisma.user.update({
         where: { id: userId },
-        data: { twoFactorBackupCodes: { set: user.twoFactorBackupCodes.filter((c) => c !== code) } },
+        data: {
+          twoFactorBackupCodes: {
+            set: user.twoFactorBackupCodes.filter((storedCode) => storedCode !== matchedBackupCode),
+          },
+        },
       });
       return { verified: true, usedBackupCode: true };
     }

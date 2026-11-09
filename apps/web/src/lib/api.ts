@@ -12,10 +12,20 @@ api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
     const token = getToken();
     const tenantSlug = getTenantSlug();
+    const url = typeof config.url === 'string' ? config.url : '';
+    const publicAuthRequest = [
+      '/auth/login',
+      '/auth/register',
+      '/auth/google',
+      '/auth/verify-2fa-login',
+      '/auth/forgot-password',
+      '/auth/reset-password',
+    ].some((path) => url.startsWith(path));
+
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
-    if (tenantSlug) {
+    if (tenantSlug && !publicAuthRequest) {
       config.headers['X-Tenant-Slug'] = tenantSlug;
     }
     const branchId = localStorage.getItem('selectedBranchId');

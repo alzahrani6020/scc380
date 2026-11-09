@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
-import { setAuth } from '@/lib/auth';
+import { clearAuth, getToken, setAuth } from '@/lib/auth';
 import { GoogleLogin, googleLogout } from '@react-oauth/google';
 import {
   Building2, Lock, Mail, ChevronLeft,
@@ -30,8 +30,12 @@ export default function LoginPage() {
   }, []);
 
   useEffect(() => {
-    const token = localStorage.getItem('accessToken') || sessionStorage.getItem('accessToken');
-    if (token) router.push('/dashboard');
+    const token = getToken();
+    if (!token) return;
+
+    api.get('/auth/me')
+      .then(() => router.replace('/dashboard'))
+      .catch(() => clearAuth());
   }, [router]);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -41,7 +45,8 @@ export default function LoginPage() {
       const res = await api.post('/auth/login', { email, password });
 
       if (res.data.requires2FA) {
-        router.push(`/auth/verify-2fa?token=${encodeURIComponent(res.data.tempToken)}`);
+        sessionStorage.setItem('scc_2fa_temp_token', res.data.tempToken);
+        window.location.href = '/auth/verify-2fa';
         return;
       }
 

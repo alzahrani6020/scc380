@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { setAuth } from '@/lib/auth';
 import { Shield, ArrowRight, Loader2 } from 'lucide-react';
@@ -9,17 +9,18 @@ import Link from 'next/link';
 
 function Verify2FAForm() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const tempToken = searchParams.get('token');
+  const [tempToken, setTempToken] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!tempToken) {
-      setError('رابط غير صالح — جرب تسجيل الدخول مرة أخرى');
+    const token = sessionStorage.getItem('scc_2fa_temp_token');
+    setTempToken(token);
+    if (!token) {
+      setError('جلسة التحقق غير صالحة — جرب تسجيل الدخول مرة أخرى');
     }
-  }, [tempToken]);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,6 +41,7 @@ function Verify2FAForm() {
         },
       };
       setAuth(authData, true);
+      sessionStorage.removeItem('scc_2fa_temp_token');
       router.push('/dashboard');
     } catch (err: any) {
       setError(err.response?.data?.message || 'كود التحقق غير صحيح');
@@ -67,16 +69,16 @@ function Verify2FAForm() {
             <input
               type="text"
               required
-              placeholder="أدخل كود التحقق (6 أرقام)"
-              maxLength={6}
+              placeholder="أدخل 6 أرقام أو رمز استرداد"
+              maxLength={16}
               autoFocus
               className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl py-4 px-4 text-lg text-center tracking-[0.5em] font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all placeholder:text-slate-500 placeholder:tracking-normal placeholder:text-sm"
               value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+              onChange={(e) => setCode(e.target.value.replace(/[^0-9A-Fa-f]/g, '').toUpperCase())}
             />
             <button
               type="submit"
-              disabled={loading || !tempToken || code.length !== 6}
+              disabled={loading || !tempToken || !(/^\d{6}$/.test(code) || /^[0-9A-F]{8}$/.test(code) || /^[0-9A-F]{16}$/.test(code))}
               className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 disabled:opacity-50"
             >
               {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : 'تحقق وتسجيل الدخول'}
@@ -95,13 +97,5 @@ function Verify2FAForm() {
 }
 
 export default function Verify2FAPage() {
-  return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="w-12 h-12 border-4 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
-      </div>
-    }>
-      <Verify2FAForm />
-    </Suspense>
-  );
+  return <Verify2FAForm />;
 }
