@@ -102,7 +102,7 @@ export default function RegisterPage() {
 
                 <div className="relative">
                   <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-                  <input type={showPassword ? 'text' : 'password'} required placeholder="كلمة المرور"
+                  <input type={showPassword ? 'text' : 'password'} required minLength={12} placeholder="كلمة المرور (12 حرفًا على الأقل)"
                     className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl py-3 pr-10 pl-12 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 transition-all placeholder:text-slate-500"
                     value={password} onChange={(e) => setPassword(e.target.value)} />
                   <button type="button" onClick={() => setShowPassword(!showPassword)}

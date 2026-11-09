@@ -1,4 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import api from '@/lib/api';
+import { clearAuth } from '@/lib/auth';
 
 interface User {
   id: string;
@@ -10,19 +12,37 @@ interface User {
 }
 
 export function useAuth() {
-  const [user] = useState<User>({
-    id: 'dev-user',
-    email: 'dev@local.com',
-    role: 'SUPER_ADMIN',
-    firstName: 'مطور',
-    lastName: 'النظام',
-    tenant: { name: 'شركة التقنية المتقدمة', slug: 'advanced-tech' },
-  });
-  const [loading] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const loadUser = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await api.get('/auth/me');
+      setUser(response.data);
+    } catch {
+      setUser(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadUser();
+  }, [loadUser]);
 
   const logout = () => {
-    window.location.reload();
+    clearAuth();
+    if (typeof window !== 'undefined') {
+      window.location.href = '/auth/login';
+    }
   };
 
-  return { user, loading, logout, isAuthenticated: true };
+  return {
+    user,
+    loading,
+    logout,
+    isAuthenticated: !!user,
+    refresh: loadUser,
+  };
 }
