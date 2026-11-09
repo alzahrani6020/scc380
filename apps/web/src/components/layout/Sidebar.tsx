@@ -16,13 +16,13 @@ import {
 
 const navigation = [
   { name: 'لوحة التحكم', href: '/dashboard', icon: LayoutDashboard },
-  { name: 'CRM', href: '/dashboard/crm', icon: Users },
+  { name: 'CRM - إدارة العملاء', href: '/dashboard/crm', icon: Users },
   { name: '├── جهات الاتصال', href: '/dashboard/crm/contacts', icon: Users },
   { name: '├── الصفقات', href: '/dashboard/crm/deals', icon: Briefcase },
   { name: '├── الأنشطة', href: '/dashboard/crm/activities', icon: Activity },
   { name: 'ERP - الفواتير', href: '/dashboard/erp', icon: FileText },
   { name: 'المشاريع', href: '/dashboard/projects', icon: FolderKanban },
-  { name: 'الموارد البشرية', href: '/dashboard/hr', icon: Briefcase },
+  { name: 'مكين - الموارد البشرية', href: '/dashboard/hr', icon: Briefcase },
   { name: '├── الموظفون', href: '/dashboard/hr/employees', icon: Users },
   { name: '├── الحضور', href: '/dashboard/hr/attendance', icon: ClipboardList },
   { name: '├── الإجازات', href: '/dashboard/hr/leaves', icon: CalendarDays },
