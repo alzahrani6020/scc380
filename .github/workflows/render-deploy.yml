@@ -1,32 +1,15 @@
-name: Deploy API to Render
+name: Render Blueprint Deployment Model
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 
 jobs:
-  deploy-api:
+  explain-deployment-owner:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v2
-        with:
-          version: 8
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: 'pnpm'
-      - run: pnpm install
-      - run: pnpm --filter @scc/database db:generate
-      - run: pnpm exec turbo run build --filter=@scc/api
-      - name: Deploy to Render
-        env:
-          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+      - name: Deployment ownership
         run: |
-          set -euo pipefail
-          if [ -z "${RENDER_DEPLOY_HOOK:-}" ]; then
-            echo "::error::RENDER_DEPLOY_HOOK is not configured; refusing false-positive deploy success."
-            exit 1
-          fi
-          curl -fsS -X POST "$RENDER_DEPLOY_HOOK"
+          echo "API image build/push is owned by build-api-image.yml."
+          echo "That workflow pins render.yaml to the immutable Git SHA image tag."
+          echo "Render Blueprint autoSync then deploys the pinned image."
+          echo "No RENDER_DEPLOY_HOOK secret is required."
