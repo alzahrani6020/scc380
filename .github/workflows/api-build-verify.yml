@@ -68,6 +68,8 @@ jobs:
           NODE
 
       - name: Initialize Nest routes on Express 4
+        env:
+          JWT_SECRET: ci-only-jwt-secret-not-for-production-0123456789abcdef
         run: |
           cd apps/api
           node - <<'NODE'
