@@ -12,6 +12,7 @@ on:
       - "package.json"
       - "turbo.json"
       - ".github/workflows/api-build-verify.yml"
+      - ".github/workflows/render-deploy.yml"
   push:
     branches:
       - feat/real-estate-activation
