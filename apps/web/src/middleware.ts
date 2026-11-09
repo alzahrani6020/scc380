@@ -78,7 +78,10 @@ export async function middleware(request: NextRequest) {
   if (accessToken && accessToken.split('.').length === 3) {
     try {
       const payload = JSON.parse(Buffer.from(accessToken.split('.')[1], 'base64url').toString('utf-8'));
-      sessionValid = !payload.exp || Date.now() < payload.exp * 1000;
+      sessionValid =
+        payload?.type === 'access' &&
+        typeof payload.exp === 'number' &&
+        Date.now() < payload.exp * 1000;
     } catch {
       sessionValid = false;
     }
