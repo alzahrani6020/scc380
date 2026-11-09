@@ -34,3 +34,24 @@ test('AuthService explicitly tags both access and refresh JWT payloads', () => {
   assert.equal(accessTags.length, 2);
   assert.equal(refreshTags.length, 2);
 });
+
+
+test('reset password policy stays aligned at 12-128 characters', () => {
+  const controllerSource = readFileSync(
+    join(process.cwd(), 'src/auth/auth.controller.ts'),
+    'utf8',
+  );
+  assert.match(controllerSource, /newPassword\.length < 12/);
+  assert.match(controllerSource, /newPassword\.length > 128/);
+});
+
+test('2FA temporary token is not placed in a URL', () => {
+  const webRoot = join(process.cwd(), '../web/src/app/auth');
+  const loginSource = readFileSync(join(webRoot, 'login/page.tsx'), 'utf8');
+  const verifySource = readFileSync(join(webRoot, 'verify-2fa/page.tsx'), 'utf8');
+
+  assert.doesNotMatch(loginSource, /verify-2fa\?token=/);
+  assert.match(loginSource, /sessionStorage\.setItem\('scc_2fa_temp_token'/);
+  assert.match(verifySource, /sessionStorage\.getItem\('scc_2fa_temp_token'/);
+  assert.match(verifySource, /sessionStorage\.removeItem\('scc_2fa_temp_token'/);
+});
