@@ -147,3 +147,24 @@ test('new 2FA backup codes use 64 bits of randomness', () => {
   );
   assert.match(source, /randomBytes\(8\)\.toString\('hex'\)/);
 });
+
+
+test('registration requires tenant name and slug to avoid tenantless users', () => {
+  const dtoSource = readFileSync(
+    join(process.cwd(), 'src/auth/dto/register.dto.ts'),
+    'utf8',
+  );
+  assert.doesNotMatch(dtoSource, /ValidateIf/);
+  assert.match(dtoSource, /tenantName!:/);
+  assert.match(dtoSource, /tenantSlug!:/);
+});
+
+test('Google OAuth does not auto-register tenantless users', () => {
+  const source = readFileSync(
+    join(process.cwd(), 'src/auth/auth.service.ts'),
+    'utf8',
+  );
+  assert.doesNotMatch(source, /Auto-register Google user/);
+  assert.match(source, /Google account is not registered/);
+  assert.match(source, /!user\.tenantId/);
+});
