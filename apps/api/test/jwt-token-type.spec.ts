@@ -114,9 +114,10 @@ test('2FA login UI accepts both TOTP and 8-character backup codes', () => {
     join(process.cwd(), '../web/src/app/auth/verify-2fa/page.tsx'),
     'utf8',
   );
-  assert.match(verifySource, /maxLength=\{8\}/);
+  assert.match(verifySource, /maxLength=\{16\}/);
   assert.match(verifySource, /\^\\d\{6\}\$/);
   assert.match(verifySource, /\^\[0-9A-F\]\{8\}\$/);
+  assert.match(verifySource, /\^\[0-9A-F\]\{16\}\$/);
 });
 
 
@@ -136,4 +137,13 @@ test('CORS allows the custom tenant and branch headers used by the web client', 
   );
   assert.match(source, /X-Tenant-Slug/);
   assert.match(source, /X-Branch-Id/);
+});
+
+
+test('new 2FA backup codes use 64 bits of randomness', () => {
+  const source = readFileSync(
+    join(process.cwd(), 'src/auth/auth.service.ts'),
+    'utf8',
+  );
+  assert.match(source, /randomBytes\(8\)\.toString\('hex'\)/);
 });
