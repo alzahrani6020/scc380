@@ -16,22 +16,22 @@ export class TenantController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.service.findOne(id);
+  findOne(@Request() req: any, @Param('id') id: string) {
+    return this.service.findOne(req.user, id);
   }
 
   @Post()
-  create(@Body() body: any) {
-    return this.service.create(body);
+  create(@Request() req: any, @Body() body: any) {
+    return this.service.create(req.user, body);
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() body: any) {
-    return this.service.update(id, body);
+  update(@Request() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.service.update(req.user, id, body);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.service.remove(id);
+  remove(@Request() req: any, @Param('id') id: string) {
+    return this.service.remove(req.user, id);
   }
 }
