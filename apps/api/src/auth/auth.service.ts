@@ -151,6 +151,7 @@ export class AuthService {
     await prisma.$transaction([
       prisma.session.create({
         data: {
+          id: tokens.sessionKey,
           userId,
           tenantId: tenantId || null,
           token: tokens.refreshTokenHash,
@@ -193,6 +194,7 @@ export class AuthService {
     await prisma.$transaction([
       prisma.session.create({
         data: {
+          id: tokens.sessionKey,
           userId,
           tenantId: tenantId || null,
           token: tokens.refreshTokenHash,
@@ -298,6 +300,7 @@ export class AuthService {
 
       await tx.session.create({
         data: {
+          id: tokens.sessionKey,
           userId: user.id,
           tenantId: user.tenantId || null,
           token: tokens.refreshTokenHash,
