@@ -20,44 +20,99 @@ jobs:
           node -e "
             let u;
             try { u = new URL(process.env.U); } catch { console.error('SCC_API_DIRECT_URL missing/invalid'); process.exit(1); }
-            if (!u.hostname.endsWith('supabase.co')) {
-              console.error('SCC_API_DIRECT_URL does not point to supabase.co — aborting (wrong secret?)');
+            const expectedHost = 'db.oowlepeqgdnvjfvwqbfn.supabase.co';
+            if (!['postgres:', 'postgresql:'].includes(u.protocol)) {
+              console.error('SCC_API_DIRECT_URL must use postgres/postgresql — aborting');
               process.exit(1);
             }
-            console.log('secret target OK: project ref =', u.hostname.split('.')[0]);
+            if (u.hostname !== expectedHost) {
+              console.error('SCC_API_DIRECT_URL points to the wrong database host — aborting');
+              process.exit(1);
+            }
+            console.log('secret target OK: project ref = oowlepeqgdnvjfvwqbfn');
           "
 
-      - name: Generate diff (Supabase live -> schema.prisma), Prisma 5.10
+      - name: Generate diff (Supabase live -> schema.prisma), Prisma 5.10.0
         env:
           SCC_API_DIRECT_URL: ${{ secrets.SCC_API_DIRECT_URL }}
         run: |
-          npx --yes prisma@5.10.2 migrate diff \
+          npx --yes prisma@5.10.0 migrate diff \
             --from-url "$SCC_API_DIRECT_URL" \
             --to-schema-datamodel packages/database/prisma/schema.prisma \
             --script > migration.sql
+          test -s migration.sql
           echo "lines: $(wc -l < migration.sql)"
 
-      - name: Destructive-statement gate
+      - name: Analyze statements + destructive gate
         run: |
-          if grep -inE 'drop |truncate|alter table .* drop|delete from|reindex' migration.sql; then
-            echo "::error::Destructive statements found — STOP"
-            exit 1
-          fi
-          echo "destructive-gate: CLEAN"
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
 
-      - name: Statement summary (for human review)
-        run: |
-          echo "CREATE TABLE:    $(grep -ciE '^\s*CREATE TABLE' migration.sql || true)"
-          echo "ALTER TABLE:     $(grep -ciE '^\s*ALTER TABLE' migration.sql || true)"
-          echo "CREATE INDEX:    $(grep -ciE '^\s*CREATE (UNIQUE )?INDEX' migration.sql || true)"
-          echo "ADD CONSTRAINT:  $(grep -ciE 'ADD CONSTRAINT' migration.sql || true)"
-          echo "---- anything outside the expected set: ----"
-          grep -ivE '^\s*(CREATE TABLE|ALTER TABLE|CREATE (UNIQUE )?INDEX|ADD CONSTRAINT|--|SET |SELECT |CREATE SEQUENCE|ALTER SEQUENCE|CREATE EXTENSION)' migration.sql \
-            | grep -vE '^\s*$' | head -40
+          sql = Path("migration.sql").read_text(encoding="utf-8")
+          statements = [s.strip() for s in sql.split(";") if s.strip()]
+
+          destructive_re = re.compile(
+              r"\b(?:DROP|TRUNCATE|REINDEX)\b|\bDELETE\s+FROM\b|\bALTER\s+TABLE\b[\s\S]*?\bDROP\b",
+              re.IGNORECASE,
+          )
+
+          counts = {
+              "CREATE TABLE": 0,
+              "ALTER TABLE": 0,
+              "CREATE INDEX": 0,
+              "ADD CONSTRAINT": 0,
+          }
+          unexpected = []
+          destructive = []
+
+          for stmt in statements:
+              normalized = re.sub(r"^\s*(?:--[^\n]*\n\s*)+", "", stmt).strip()
+              upper = normalized.upper()
+
+              if destructive_re.search(normalized):
+                  destructive.append(normalized)
+
+              if re.match(r"^CREATE\s+TABLE\b", upper):
+                  counts["CREATE TABLE"] += 1
+              elif re.match(r"^ALTER\s+TABLE\b", upper):
+                  counts["ALTER TABLE"] += 1
+                  if re.search(r"\bADD\s+CONSTRAINT\b", upper):
+                      counts["ADD CONSTRAINT"] += 1
+              elif re.match(r"^CREATE\s+(?:UNIQUE\s+)?INDEX\b", upper):
+                  counts["CREATE INDEX"] += 1
+              elif re.match(r"^(?:SET|SELECT|CREATE\s+SEQUENCE|ALTER\s+SEQUENCE|CREATE\s+EXTENSION)\b", upper):
+                  pass
+              else:
+                  unexpected.append(normalized)
+
+          print(f"statements total: {len(statements)}")
+          for key, value in counts.items():
+              print(f"{key}: {value}")
+
+          print("---- statements outside expected set ----")
+          if unexpected:
+              for stmt in unexpected[:20]:
+                  preview = re.sub(r"\s+", " ", stmt)[:300]
+                  print(preview)
+          else:
+              print("none")
+
+          if destructive:
+              print("::error::Destructive statements found — STOP")
+              for stmt in destructive[:20]:
+                  preview = re.sub(r"\s+", " ", stmt)[:500]
+                  print(preview)
+              raise SystemExit(1)
+
+          print("destructive-gate: CLEAN")
+          PY
 
       - name: Upload migration.sql (artifact only)
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: migration-sql
           path: migration.sql
           retention-days: 30
+          if-no-files-found: error
