@@ -33,6 +33,14 @@ export function getRefreshToken(): string | null {
   return getAny('refreshToken');
 }
 
+export function getRememberPreference(): boolean {
+  try {
+    return !!localStorage.getItem('refreshToken');
+  } catch {
+    return false;
+  }
+}
+
 export function getTenantSlug(): string | null {
   return getAny('tenantSlug');
 }
