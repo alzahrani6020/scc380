@@ -82,8 +82,15 @@ api.interceptors.response.use(
     const original = error.config as any;
     const isAuthEndpoint =
       typeof original?.url === 'string' &&
-      ['/auth/login', '/auth/register', '/auth/google', '/auth/verify-2fa-login', '/auth/refresh']
-        .some((path) => original.url.startsWith(path));
+      [
+        '/auth/login',
+        '/auth/register',
+        '/auth/google',
+        '/auth/verify-2fa-login',
+        '/auth/refresh',
+        '/auth/logout',
+        '/auth/logout-all',
+      ].some((path) => original.url.startsWith(path));
 
     if (
       error.response?.status === 401 &&
