@@ -1,0 +1,63 @@
+name: db-schema-diff
+# Workflow A — GENERATE + REVIEW ONLY. Never applies SQL.
+# Produces migration.sql (Supabase live -> schema.prisma) as an artifact,
+# gates on destructive statements, and prints a statement summary for the
+# human PASS / STOP / NEEDS REVIEW gate.
+on:
+  workflow_dispatch:
+
+jobs:
+  diff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate secret target (hostname only — secret never printed)
+        env:
+          U: ${{ secrets.SCC_API_DIRECT_URL }}
+        run: |
+          node -e "
+            let u;
+            try { u = new URL(process.env.U); } catch { console.error('SCC_API_DIRECT_URL missing/invalid'); process.exit(1); }
+            if (!u.hostname.endsWith('supabase.co')) {
+              console.error('SCC_API_DIRECT_URL does not point to supabase.co — aborting (wrong secret?)');
+              process.exit(1);
+            }
+            console.log('secret target OK: project ref =', u.hostname.split('.')[0]);
+          "
+
+      - name: Generate diff (Supabase live -> schema.prisma), Prisma 5.10
+        env:
+          SCC_API_DIRECT_URL: ${{ secrets.SCC_API_DIRECT_URL }}
+        run: |
+          npx --yes prisma@5.10.2 migrate diff \
+            --from-url "$SCC_API_DIRECT_URL" \
+            --to-schema-datamodel packages/database/prisma/schema.prisma \
+            --script > migration.sql
+          echo "lines: $(wc -l < migration.sql)"
+
+      - name: Destructive-statement gate
+        run: |
+          if grep -inE 'drop |truncate|alter table .* drop|delete from|reindex' migration.sql; then
+            echo "::error::Destructive statements found — STOP"
+            exit 1
+          fi
+          echo "destructive-gate: CLEAN"
+
+      - name: Statement summary (for human review)
+        run: |
+          echo "CREATE TABLE:    $(grep -ciE '^\s*CREATE TABLE' migration.sql || true)"
+          echo "ALTER TABLE:     $(grep -ciE '^\s*ALTER TABLE' migration.sql || true)"
+          echo "CREATE INDEX:    $(grep -ciE '^\s*CREATE (UNIQUE )?INDEX' migration.sql || true)"
+          echo "ADD CONSTRAINT:  $(grep -ciE 'ADD CONSTRAINT' migration.sql || true)"
+          echo "---- anything outside the expected set: ----"
+          grep -ivE '^\s*(CREATE TABLE|ALTER TABLE|CREATE (UNIQUE )?INDEX|ADD CONSTRAINT|--|SET |SELECT |CREATE SEQUENCE|ALTER SEQUENCE|CREATE EXTENSION)' migration.sql \
+            | grep -vE '^\s*$' | head -40
+
+      - name: Upload migration.sql (artifact only)
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-sql
+          path: migration.sql
+          retention-days: 30
