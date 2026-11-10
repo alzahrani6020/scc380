@@ -23,13 +23,6 @@ jobs:
           docker rm "$CID" > /dev/null
           ls -la dist-ai/
 
-      - name: Dump compiled tryAnswer logic
-        run: |
-          echo '== tryAnswer section =='
-          sed -n '/tryAnswer/,/async countIntent/p' dist-ai/insights.service.js | head -80
-          echo '== countIntent..end =='
-          sed -n '/async countIntent/,' dist-ai/insights.service.js | head -60
-
       - name: The decisive greps
         run: |
           echo "== grep -c مرحبا insights.service.js =="

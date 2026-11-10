@@ -14,6 +14,10 @@ export class AiService {
     private insights: InsightsService,
   ) {
     this.ollamaUrl = this.config.get('OLLAMA_URL') || 'http://localhost:11434';
+    // Boot canary — proves in Render logs which build is live and that DI resolved
+    this.logger.log(
+      `AI-BOOT build=2026-11-10-insights-v2 insights=${!!this.insights} ollama=${this.ollamaUrl}`,
+    );
   }
 
   async chat(message: string, context?: string, tenantId?: string | null) {
