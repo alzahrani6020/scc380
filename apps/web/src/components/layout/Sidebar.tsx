@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import api from '@/lib/api';
-import { clearAuth } from '@/lib/auth';
+import { clearAuth, getRefreshToken } from '@/lib/auth';
 import { cn } from '@scc/utils';
 import {
   LayoutDashboard, Users, FileText, Briefcase, Truck, Activity,
@@ -107,6 +107,20 @@ export default function Sidebar() {
   const pathname = usePathname();
   const [alertCount, setAlertCount] = useState(0);
 
+  const handleLogout = async () => {
+    const refreshToken = getRefreshToken();
+    try {
+      if (refreshToken) {
+        await api.post('/auth/logout', { refreshToken });
+      }
+    } catch {
+      // Local sign-out must still complete if the session is already invalid.
+    } finally {
+      clearAuth();
+      window.location.href = '/auth/login';
+    }
+  };
+
   useEffect(() => {
     api.get('/alerts/counts').then(r => setAlertCount(r.data?.total || 0)).catch(() => {});
     const interval = setInterval(() => {
@@ -167,7 +181,7 @@ export default function Sidebar() {
       {/* Logout */}
       <div className="p-4 border-t border-slate-800">
         <button
-          onClick={() => { clearAuth(); window.location.href = '/auth/login'; }}
+          onClick={handleLogout}
           className="flex items-center gap-3 w-full px-4 py-3 rounded-xl text-sm font-medium text-red-400 hover:bg-red-500/10 transition-all"
         >
           <LogOut className="h-5 w-5" />
