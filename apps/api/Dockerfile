@@ -8,7 +8,7 @@ COPY packages/ ./packages/
 COPY apps/api/ ./apps/api/
 RUN pnpm install --frozen-lockfile --prefer-offline
 RUN cd packages/database && npx prisma generate
-RUN pnpm exec turbo run build --filter=@scc/api --no-daemon --concurrency=1
+RUN pnpm exec turbo run build --filter=@scc/api --no-daemon --concurrency=1 --force
 
 FROM node:20-alpine AS runner
 RUN apk add --no-cache openssl
