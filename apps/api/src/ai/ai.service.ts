@@ -24,11 +24,17 @@ export class AiService {
       if (insight) {
         return { response: insight, model: 'scc-insights', source: 'database' };
       }
+      this.logger.warn(`Insights returned no match for: ${message?.slice(0, 60)}`);
     } catch (error) {
-      this.logger.error(
-        'Insights path failed, falling back to LLM',
-        error instanceof Error ? error.message : undefined,
-      );
+      const detail = error instanceof Error ? error.message : String(error);
+      this.logger.error('Insights path failed', detail);
+      // Surface the failure in the response (internal tool — aids ops debugging)
+      return {
+        response: `insights-error: ${detail}`,
+        model: 'scc-insights',
+        source: 'database',
+        error: detail,
+      };
     }
 
     // 2) LLM path (optional — requires an Ollama instance at OLLAMA_URL)
