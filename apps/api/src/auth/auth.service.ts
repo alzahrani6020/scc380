@@ -27,6 +27,57 @@ export class AuthService {
     return email.trim().toLowerCase();
   }
 
+  private hashToken(token: string) {
+    return createHash('sha256').update(token).digest('hex');
+  }
+
+  private buildTokenPair(
+    userId: string,
+    email: string,
+    role: string,
+    tenantId?: string,
+    tenantSlug?: string,
+  ) {
+    const sessionKey = randomBytes(24).toString('hex');
+    const accessPayload = {
+      sub: userId,
+      email,
+      role,
+      tenantId,
+      tenantSlug,
+      type: 'access',
+      sid: sessionKey,
+    };
+    const refreshPayload = {
+      sub: userId,
+      email,
+      role,
+      tenantId,
+      tenantSlug,
+      type: 'refresh',
+      jti: sessionKey,
+    };
+
+    const accessToken = this.jwt.sign(accessPayload);
+    const refreshToken = this.jwt.sign(refreshPayload, {
+      secret: this.config.get('JWT_SECRET'),
+      expiresIn: this.config.get('REFRESH_TOKEN_EXPIRES_IN') || '7d',
+    });
+    const decoded = this.jwt.decode(refreshToken) as { exp?: number } | null;
+    const expiresAt =
+      decoded?.exp && Number.isFinite(decoded.exp)
+        ? new Date(decoded.exp * 1000)
+        : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    return {
+      accessToken,
+      refreshToken,
+      sessionKey,
+      refreshTokenHash: this.hashToken(refreshToken),
+      expiresAt,
+    };
+  }
+
   async validateUser(email: string, password: string, tenantId?: string) {
     const normalizedEmail = this.normalizeEmail(email);
     const user = await prisma.user.findUnique({
@@ -95,22 +146,26 @@ export class AuthService {
       };
     }
 
-    const accessPayload = { sub: userId, email, role, tenantId, tenantSlug, type: 'access' };
-    const refreshPayload = { sub: userId, email, role, tenantId, tenantSlug, type: 'refresh' };
-    const accessToken = this.jwt.sign(accessPayload);
-    const refreshToken = this.jwt.sign(refreshPayload, {
-      secret: this.config.get('JWT_SECRET'),
-      expiresIn: this.config.get('REFRESH_TOKEN_EXPIRES_IN') || '7d',
-    });
+    const tokens = this.buildTokenPair(userId, email, role, tenantId, tenantSlug);
 
-    await prisma.user.update({
-      where: { id: userId },
-      data: { lastLoginAt: new Date() },
-    });
+    await prisma.$transaction([
+      prisma.session.create({
+        data: {
+          userId,
+          tenantId: tenantId || null,
+          token: tokens.refreshTokenHash,
+          expiresAt: tokens.expiresAt,
+        },
+      }),
+      prisma.user.update({
+        where: { id: userId },
+        data: { lastLoginAt: new Date() },
+      }),
+    ]);
 
     return {
-      accessToken,
-      refreshToken,
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
       user: { id: userId, email, role, tenantId, tenantSlug },
     };
   }
@@ -133,24 +188,152 @@ export class AuthService {
     }
 
     const { sub: userId, email, role, tenantId, tenantSlug } = payload;
-    const accessPayload = { sub: userId, email, role, tenantId, tenantSlug, type: 'access' };
-    const refreshPayload = { sub: userId, email, role, tenantId, tenantSlug, type: 'refresh' };
-    const accessToken = this.jwt.sign(accessPayload);
-    const refreshToken = this.jwt.sign(refreshPayload, {
-      secret: this.config.get('JWT_SECRET'),
-      expiresIn: this.config.get('REFRESH_TOKEN_EXPIRES_IN') || '7d',
+    const tokens = this.buildTokenPair(userId, email, role, tenantId, tenantSlug);
+
+    await prisma.$transaction([
+      prisma.session.create({
+        data: {
+          userId,
+          tenantId: tenantId || null,
+          token: tokens.refreshTokenHash,
+          expiresAt: tokens.expiresAt,
+        },
+      }),
+      prisma.user.update({
+        where: { id: userId },
+        data: { lastLoginAt: new Date() },
+      }),
+    ]);
+
+    return {
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      user: { id: userId, email, role, tenantId, tenantSlug },
+    };
+  }
+
+  async refresh(refreshToken: string) {
+    let payload: any;
+    try {
+      payload = this.jwt.verify(refreshToken, {
+        secret: this.config.get('JWT_SECRET'),
+      });
+    } catch {
+      throw new UnauthorizedException('Invalid or expired refresh token');
+    }
+
+    if (payload?.type !== 'refresh' || !payload?.sub || !payload?.jti) {
+      throw new UnauthorizedException('Invalid refresh token type');
+    }
+
+    const tokenHash = this.hashToken(refreshToken);
+    const session = await prisma.session.findUnique({
+      where: { token: tokenHash },
+      include: {
+        user: {
+          include: {
+            tenant: { select: { id: true, slug: true, status: true } },
+          },
+        },
+      },
     });
 
-    await prisma.user.update({
-      where: { id: userId },
-      data: { lastLoginAt: new Date() },
+    if (!session) {
+      throw new UnauthorizedException('Refresh session not found');
+    }
+
+    if (session.revokedAt) {
+      await prisma.session.updateMany({
+        where: { userId: session.userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      throw new UnauthorizedException('Refresh token reuse detected');
+    }
+
+    if (session.expiresAt <= new Date()) {
+      await prisma.session.update({
+        where: { id: session.id },
+        data: { revokedAt: new Date() },
+      });
+      throw new UnauthorizedException('Refresh session expired');
+    }
+
+    const user = session.user;
+    if (
+      !user ||
+      user.status !== 'ACTIVE' ||
+      (user.tenant && user.tenant.status !== 'ACTIVE') ||
+      (payload.tenantId || null) !== (session.tenantId || null)
+    ) {
+      await prisma.session.updateMany({
+        where: { userId: session.userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      throw new UnauthorizedException('Account is not active');
+    }
+
+    const tenantSlug = user.tenant?.slug || payload.tenantSlug || undefined;
+    const tokens = this.buildTokenPair(
+      user.id,
+      user.email,
+      user.role,
+      user.tenantId || undefined,
+      tenantSlug,
+    );
+    const revokedAt = new Date();
+
+    await prisma.$transaction(async (tx) => {
+      const revoked = await tx.session.updateMany({
+        where: {
+          id: session.id,
+          revokedAt: null,
+          expiresAt: { gt: revokedAt },
+        },
+        data: { revokedAt },
+      });
+
+      if (revoked.count !== 1) {
+        throw new UnauthorizedException('Refresh token already used');
+      }
+
+      await tx.session.create({
+        data: {
+          userId: user.id,
+          tenantId: user.tenantId || null,
+          token: tokens.refreshTokenHash,
+          expiresAt: tokens.expiresAt,
+        },
+      });
     });
 
     return {
-      accessToken,
-      refreshToken,
-      user: { id: userId, email, role, tenantId, tenantSlug },
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        tenantId: user.tenantId,
+        tenantSlug,
+      },
     };
+  }
+
+  async logout(refreshToken: string) {
+    const tokenHash = this.hashToken(refreshToken);
+    await prisma.session.updateMany({
+      where: { token: tokenHash, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    return { message: 'Logged out successfully' };
+  }
+
+  async logoutAll(userId: string) {
+    await prisma.session.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    return { message: 'All sessions revoked successfully' };
   }
 
   async register(data: {
@@ -300,6 +483,10 @@ export class AuthService {
       prisma.passwordResetToken.updateMany({
         where: { email: record.email, usedAt: null },
         data: { usedAt },
+      }),
+      prisma.session.updateMany({
+        where: { userId: user.id, revokedAt: null },
+        data: { revokedAt: usedAt },
       }),
     ]);
 
