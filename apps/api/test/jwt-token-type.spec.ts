@@ -220,3 +220,44 @@ test('web API refreshes once and retries the failed request without recursive re
   assert.match(source, /return api\(original\)/);
   assert.match(source, /!isAuthEndpoint/);
 });
+
+test('access tokens are bound to persisted session ids for immediate revocation', () => {
+  const authSource = readFileSync(
+    join(process.cwd(), 'src/auth/auth.service.ts'),
+    'utf8',
+  );
+  const strategySource = readFileSync(
+    join(process.cwd(), 'src/auth/strategies/jwt.strategy.ts'),
+    'utf8',
+  );
+
+  assert.ok((authSource.match(/id:\s*tokens\.sessionKey/g) ?? []).length >= 3);
+  assert.match(authSource, /sid:\s*sessionKey/);
+  assert.match(authSource, /jti:\s*sessionKey/);
+  assert.match(strategySource, /where:\s*\{\s*id:\s*payload\.sid\s*\}/);
+  assert.match(strategySource, /session\.revokedAt/);
+  assert.match(strategySource, /session\.expiresAt <= new Date\(\)/);
+  assert.match(strategySource, /Session is not active/);
+});
+
+test('sidebar logout revokes the refresh session before clearing local auth', () => {
+  const source = readFileSync(
+    join(process.cwd(), '../web/src/components/layout/Sidebar.tsx'),
+    'utf8',
+  );
+
+  assert.match(source, /getRefreshToken\(\)/);
+  assert.match(source, /api\.post\('\/auth\/logout', \{ refreshToken \}\)/);
+  assert.match(source, /finally\s*\{[\s\S]*clearAuth\(\)/);
+  assert.match(source, /onClick=\{handleLogout\}/);
+});
+
+test('logout endpoints are excluded from automatic refresh recursion', () => {
+  const source = readFileSync(
+    join(process.cwd(), '../web/src/lib/api.ts'),
+    'utf8',
+  );
+
+  assert.match(source, /'\/auth\/logout'/);
+  assert.match(source, /'\/auth\/logout-all'/);
+});
