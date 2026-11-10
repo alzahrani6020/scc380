@@ -23,7 +23,7 @@ jobs:
           docker rm "$CID" > /dev/null
           ls -la dist-ai/
 
-      - name: The decisive greps
+XXX
         run: |
           echo "== grep -c مرحبا insights.service.js =="
           grep -c "مرحبا" dist-ai/insights.service.js || echo "0 or MISSING"
