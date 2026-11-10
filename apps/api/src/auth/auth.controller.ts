@@ -37,6 +37,26 @@ export class AuthController {
     return this.authService.me(req.user.userId);
   }
 
+  @UseGuards(AuthRateLimitGuard)
+  @Post('refresh')
+  async refresh(@Body('refreshToken') refreshToken: string) {
+    if (!refreshToken) throw new BadRequestException('refreshToken is required');
+    return this.authService.refresh(refreshToken);
+  }
+
+  @Post('logout')
+  async logout(@Body('refreshToken') refreshToken: string) {
+    if (!refreshToken) throw new BadRequestException('refreshToken is required');
+    return this.authService.logout(refreshToken);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @Post('logout-all')
+  async logoutAll(@Request() req) {
+    return this.authService.logoutAll(req.user.userId);
+  }
+
   // ─── Forgot / Reset Password ───────────────────────────────────────
   @UseGuards(AuthRateLimitGuard)
   @Post('forgot-password')
