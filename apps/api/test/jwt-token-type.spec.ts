@@ -21,18 +21,16 @@ for (const type of [undefined, 'refresh', '2fa_pending']) {
   });
 }
 
-test('AuthService explicitly tags both access and refresh JWT payloads', () => {
+test('AuthService explicitly tags access and refresh JWT payloads and reuses one token-pair factory', () => {
   const source = readFileSync(
     join(process.cwd(), 'src/auth/auth.service.ts'),
     'utf8',
   );
 
-  const accessTags = source.match(/type:\s*'access'/g) ?? [];
-  const refreshTags = source.match(/type:\s*'refresh'/g) ?? [];
-
-  // One pair for normal login and one pair for the post-2FA login path.
-  assert.equal(accessTags.length, 2);
-  assert.equal(refreshTags.length, 2);
+  assert.match(source, /type:\s*'access'/);
+  assert.match(source, /type:\s*'refresh'/);
+  assert.match(source, /private buildTokenPair/);
+  assert.ok((source.match(/this\.buildTokenPair\(/g) ?? []).length >= 3);
 });
 
 
@@ -167,4 +165,58 @@ test('Google OAuth does not auto-register tenantless users', () => {
   assert.doesNotMatch(source, /Auto-register Google user/);
   assert.match(source, /Google account is not registered/);
   assert.match(source, /!user\.tenantId/);
+});
+
+test('refresh lifecycle is stateful, hashed, rotating, and replay-aware', () => {
+  const source = readFileSync(
+    join(process.cwd(), 'src/auth/auth.service.ts'),
+    'utf8',
+  );
+
+  assert.match(source, /refreshTokenHash:\s*this\.hashToken\(refreshToken\)/);
+  assert.match(source, /prisma\.session\.create/);
+  assert.match(source, /prisma\.session\.findUnique/);
+  assert.match(source, /Refresh token reuse detected/);
+  assert.match(source, /where:\s*\{\s*id:\s*session\.id,\s*revokedAt:\s*null,/s);
+  assert.match(source, /prisma\.session\.updateMany\([\s\S]*userId:\s*session\.userId[\s\S]*revokedAt:\s*null/);
+});
+
+test('password reset revokes all active sessions', () => {
+  const source = readFileSync(
+    join(process.cwd(), 'src/auth/auth.service.ts'),
+    'utf8',
+  );
+
+  assert.match(
+    source,
+    /prisma\.session\.updateMany\([\s\S]*userId:\s*user\.id[\s\S]*revokedAt:\s*null/,
+  );
+});
+
+test('auth controller exposes refresh, logout, and authenticated logout-all', () => {
+  const source = readFileSync(
+    join(process.cwd(), 'src/auth/auth.controller.ts'),
+    'utf8',
+  );
+
+  assert.match(source, /@Post\('refresh'\)/);
+  assert.match(source, /@Post\('logout'\)/);
+  assert.match(source, /@Post\('logout-all'\)/);
+  assert.match(source, /return this\.authService\.refresh\(refreshToken\)/);
+  assert.match(source, /return this\.authService\.logoutAll\(req\.user\.userId\)/);
+});
+
+test('web API refreshes once and retries the failed request without recursive refresh', () => {
+  const source = readFileSync(
+    join(process.cwd(), '../web/src/lib/api.ts'),
+    'utf8',
+  );
+
+  assert.match(source, /let refreshPromise:/);
+  assert.match(source, /if \(refreshPromise\) return refreshPromise/);
+  assert.match(source, /\/auth\/refresh/);
+  assert.match(source, /!original\?\._retry/);
+  assert.match(source, /original\._retry = true/);
+  assert.match(source, /return api\(original\)/);
+  assert.match(source, /!isAuthEndpoint/);
 });
