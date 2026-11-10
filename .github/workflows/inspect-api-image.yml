@@ -1,0 +1,35 @@
+name: inspect-api-image
+# Pulls the LIVE API image and dumps the compiled dist/ai files.
+# Answers one question only: does the running container contain the new
+# insights.service.js or a stale/mixed dist? Read-only — no deploys.
+on:
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Log in to GHCR (same-repo token)
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Pull the pinned image
+        run: docker pull ghcr.io/alzahrani6020/scc380-api-prod:ccb0a6afb2e3f48bdd2a6cda24f31436713624d4
+
+      - name: Extract dist/ai from the image (no container start)
+        run: |
+          CID=$(docker create ghcr.io/alzahrani6020/scc380-api-prod:ccb0a6afb2e3f48bdd2a6cda24f31436713624d4)
+          docker cp "$CID":/app/apps/api/dist/ai ./dist-ai
+          docker rm "$CID" > /dev/null
+          ls -la dist-ai/
+
+      - name: The decisive greps
+        run: |
+          echo "== grep -c مرحبا insights.service.js =="
+          grep -c "مرحبا" dist-ai/insights.service.js || echo "0 or MISSING"
+          echo "== markers in ai.service.js =="
+          grep -o "scc-insights\|insights-error\|Insights returned no match" dist-ai/ai.service.js | sort | uniq -c
+          echo "== first 500 chars of compiled insights.service.js =="
+          head -c 500 dist-ai/insights.service.js; echo
+          echo "== tryAnswer presence =="
+          grep -c "tryAnswer" dist-ai/insights.service.js || echo "MISSING"
