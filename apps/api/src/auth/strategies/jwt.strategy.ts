@@ -45,6 +45,29 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Tenant context is required');
     }
 
+    if (!payload?.sid) {
+      throw new UnauthorizedException('Session is required');
+    }
+
+    const session = await prisma.session.findUnique({
+      where: { id: payload.sid },
+      select: {
+        userId: true,
+        tenantId: true,
+        revokedAt: true,
+        expiresAt: true,
+      },
+    });
+    if (
+      !session ||
+      session.userId !== user.id ||
+      session.revokedAt ||
+      session.expiresAt <= new Date() ||
+      (session.tenantId || null) !== (user.tenantId || null)
+    ) {
+      throw new UnauthorizedException('Session is not active');
+    }
+
     return {
       id: user.id,
       userId: user.id,
