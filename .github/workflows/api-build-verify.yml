@@ -60,6 +60,9 @@ jobs:
       - name: Build database package for tests
         run: pnpm --filter @scc/database build
 
+      - name: Build auth package for tests
+        run: pnpm --filter @scc/auth build
+
       - name: Run API tests
         run: pnpm --filter @scc/api test
 
