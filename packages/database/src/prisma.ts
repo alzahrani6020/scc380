@@ -12,10 +12,10 @@ const NO_TENANT_MATCH = '__SCC_TENANT_CONTEXT_REQUIRED__';
 
 // Tenant-aware query helpers.
 // Missing tenant context must never broaden a query to all tenants.
-export function withTenant(where: Record<string, any>, tenantId?: string | null) {
+export function withTenant(where: Record<string, any>, tenantId?: string | null): Record<string, any> {
   return { ...where, tenantId: tenantId || NO_TENANT_MATCH };
 }
 
-export function tenantWhere(tenantId?: string | null) {
+export function tenantWhere(tenantId?: string | null): Record<string, any> {
   return { tenantId: tenantId || NO_TENANT_MATCH };
 }
