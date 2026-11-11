@@ -171,6 +171,10 @@ model User {
   passwordResets PasswordResetToken[]
   auditLogs     AuditLog[]
 
+  assignedContacts   Contact[]  @relation("ContactAssignee")
+  assignedDeals      Deal[]     @relation("DealAssignee")
+  assignedActivities Activity[] @relation("ActivityAssignee")
+
   @@index([tenantId])
   @@map("users")
 }
@@ -299,6 +303,9 @@ model Contact {
   source        LeadSource? @default(OTHER)
   stage         DealStage?  @default(LEAD)
   assignedToId  String?
+  assignedTo    User?     @relation("ContactAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  deals         Deal[]    @relation("ContactDeals")
+  activities    Activity[] @relation("ContactActivities")
   customFields  Json?     @default("{}")
   tags          String[]  @default([])
   createdAt     DateTime  @default(now())
@@ -320,6 +327,7 @@ model Deal {
   title         String
   description   String?
   contactId     String
+  contact       Contact   @relation("ContactDeals", fields: [contactId], references: [id], onDelete: Restrict)
   value         Decimal?  @db.Decimal(18, 2)
   currency      String?   @default("SAR")
   stage         DealStage @default(LEAD)
@@ -327,6 +335,8 @@ model Deal {
   expectedClose DateTime?
   actualClose   DateTime?
   assignedToId  String?
+  assignedTo    User?     @relation("DealAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  activities    Activity[] @relation("DealActivities")
   pipelineId    String?
   stageOrder    Int?      @default(0)
   customFields  Json?     @default("{}")
@@ -349,10 +359,13 @@ model Activity {
   subject       String
   description   String?
   contactId     String?
+  contact       Contact?  @relation("ContactActivities", fields: [contactId], references: [id], onDelete: SetNull)
   dealId        String?
+  deal          Deal?     @relation("DealActivities", fields: [dealId], references: [id], onDelete: SetNull)
   scheduledAt   DateTime?
   completedAt   DateTime?
   assignedToId  String?
+  assignedTo    User?     @relation("ActivityAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
   remindAt      DateTime?
   reminded      Boolean   @default(false)
   createdAt     DateTime  @default(now())
