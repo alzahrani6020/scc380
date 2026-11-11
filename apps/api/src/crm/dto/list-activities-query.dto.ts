@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { IsEnum, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { ActivityType } from '@prisma/client';
 
 export class ListActivitiesQueryDto {
@@ -34,4 +34,8 @@ export class ListActivitiesQueryDto {
   @IsString()
   @MaxLength(50)
   assignedToId?: string;
+
+  @IsOptional()
+  @IsIn(['scheduled', 'recent'])
+  sort?: 'scheduled' | 'recent';
 }
