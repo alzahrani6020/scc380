@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import api from '@/lib/api';
-import { Users, Plus, Search, Phone, Mail, MapPin, Pencil, Trash2, X, AlertCircle, RefreshCw } from 'lucide-react';
+import { Users, Plus, Search, Phone, Mail, MapPin, Pencil, Trash2, X, AlertCircle, RefreshCw, Download, Upload } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
 import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
@@ -32,6 +32,8 @@ const statusFilterOptions = [{ value: '', label: 'كل الحالات' }, ...con
 
 export default function CrmPage() {
   const [contacts, setContacts] = useState<any[]>([]);
+  const [companies, setCompanies] = useState<any[]>([]);
+  const [csvLoading, setCsvLoading] = useState(false);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -72,6 +74,10 @@ export default function CrmPage() {
       });
   }, []);
 
+  useEffect(() => {
+    api.get('/crm/companies?limit=100').then((res) => setCompanies(res.data?.data || [])).catch(() => {});
+  }, []);
+
   // Debounce the search box (400ms) before it becomes a server query.
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 400);
@@ -108,6 +114,7 @@ export default function CrmPage() {
       phone: contact.phone || '',
       phone2: contact.phone2 || '',
       companyName: contact.companyName || '',
+      companyId: contact.companyId || '',
       jobTitle: contact.jobTitle || '',
       idNumber: contact.idNumber || '',
       vatNumber: contact.vatNumber || '',
@@ -126,10 +133,12 @@ export default function CrmPage() {
     e.preventDefault();
     setFormLoading(true);
     try {
+      const payload = { ...formData };
+      if (payload.companyId === '') delete payload.companyId;
       if (editingContact) {
-        await api.patch(`/crm/contacts/${editingContact.id}`, formData);
+        await api.patch(`/crm/contacts/${editingContact.id}`, payload);
       } else {
-        await api.post('/crm/contacts', formData);
+        await api.post('/crm/contacts', payload);
       }
       setIsModalOpen(false);
       fetchContacts(page, debouncedSearch, typeFilter, statusFilter);
@@ -155,6 +164,45 @@ export default function CrmPage() {
     }
   };
 
+  const exportCsv = async () => {
+    setCsvLoading(true);
+    try {
+      const res = await api.get('/crm/csv/contacts', { responseType: 'blob' });
+      const url = URL.createObjectURL(new Blob([res.data], { type: 'text/csv;charset=utf-8' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'crm-contacts.csv';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } finally {
+      setCsvLoading(false);
+    }
+  };
+
+  const importCsv = async (file?: File) => {
+    if (!file) return;
+    setCsvLoading(true);
+    try {
+      const csv = await file.text();
+      const preview = await api.post('/crm/csv/contacts/import', { csv, dryRun: true });
+      const p = preview.data;
+      const message = 'الصفوف: ' + p.totalRows + '\nصالحة: ' + p.validRows + '\nمكررة: ' + p.duplicates.length + '\nأخطاء: ' + p.errors.length;
+      if (p.errors.length) {
+        alert(message + '\nلن يتم الاستيراد حتى تصحيح الأخطاء.');
+        return;
+      }
+      if (!confirm(message + '\nهل تريد تنفيذ الاستيراد؟')) return;
+      const result = await api.post('/crm/csv/contacts/import', { csv, dryRun: false });
+      alert('تم استيراد ' + result.data.imported + ' وتجاوز ' + result.data.skippedDuplicates + ' مكرر.');
+      fetchContacts(1, debouncedSearch, typeFilter, statusFilter);
+      setPage(1);
+    } finally {
+      setCsvLoading(false);
+    }
+  };
+
   const hasActiveFilters = Boolean(debouncedSearch || typeFilter || statusFilter);
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -168,7 +216,12 @@ export default function CrmPage() {
           </h1>
           <p className="text-slate-400 text-sm mt-1">{total} جهة اتصال مسجلة</p>
         </div>
-        <Button onClick={openCreate}><Plus className="h-5 w-5" /> إضافة جهة اتصال</Button>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" onClick={exportCsv} disabled={csvLoading}><Download className="h-4 w-4" /> تصدير CSV</Button>
+          <input id="crm-csv-import" type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; importCsv(file).catch(console.error); e.currentTarget.value = ''; }} />
+          <Button variant="ghost" onClick={() => document.getElementById('crm-csv-import')?.click()} disabled={csvLoading}><Upload className="h-4 w-4" /> استيراد CSV</Button>
+          <Button onClick={openCreate}><Plus className="h-5 w-5" /> إضافة جهة اتصال</Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -273,7 +326,8 @@ export default function CrmPage() {
             <Input label="البريد الإلكتروني" type="email" value={formData.email || ''} onChange={(e) => setFormData({ ...formData, email: e.target.value })} />
             <Input label="الهاتف" value={formData.phone || ''} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} />
             <Input label="الهاتف 2" value={formData.phone2 || ''} onChange={(e) => setFormData({ ...formData, phone2: e.target.value })} />
-            <Input label="اسم الشركة" value={formData.companyName || ''} onChange={(e) => setFormData({ ...formData, companyName: e.target.value })} />
+            <Select label="الشركة" options={[{ value: '', label: 'بدون شركة مرتبطة' }, ...companies.map((x) => ({ value: x.id, label: x.name }))]} value={formData.companyId || ''} onChange={(e) => setFormData({ ...formData, companyId: e.target.value })} />
+            <Input label="اسم الشركة (نص قديم/حر)" value={formData.companyName || ''} onChange={(e) => setFormData({ ...formData, companyName: e.target.value })} />
             <Input label="المسمى الوظيفي" value={formData.jobTitle || ''} onChange={(e) => setFormData({ ...formData, jobTitle: e.target.value })} />
             <Input label="رقم الهوية" value={formData.idNumber || ''} onChange={(e) => setFormData({ ...formData, idNumber: e.target.value })} />
             <Input label="الرقم الضريبي" value={formData.vatNumber || ''} onChange={(e) => setFormData({ ...formData, vatNumber: e.target.value })} />
