@@ -21,4 +21,4 @@ COPY --from=builder /app/packages ./packages
 COPY --from=builder /app/apps/api ./apps/api
 COPY --from=builder /app/node_modules ./node_modules
 EXPOSE 3001
-CMD ["node", "apps/api/dist/main.js"]
+CMD ["sh", "-c", "node apps/api/scripts/baseline-and-migrate.cjs && node apps/api/dist/main.js"]
