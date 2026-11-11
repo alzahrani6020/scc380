@@ -50,6 +50,7 @@ test('production startup is fail-closed on Prisma migration gate', () => {
   assert.match(gate, /PRISMA_MIGRATE_DEPLOY_PASS/);
   assert.match(gate, /migrate', 'resolve'/);
   assert.match(gate, /migrate', 'deploy'/);
+  assert.match(gate, /to_regclass\(\$1\)::text AS name/);
   assert.match(gate, /CRM_EXPANSION_BLOCKED legacy deals\.pipelineId/);
   assert.match(gate, /audit_logs_tenantId_fkey/);
   assert.match(gate, /invoice_items_invoiceId_fkey/);
