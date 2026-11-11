@@ -29,4 +29,19 @@ export class ListDealsQueryDto {
   @IsString()
   @MaxLength(50)
   assignedToId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  companyId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  pipelineId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  pipelineStageId?: string;
 }
