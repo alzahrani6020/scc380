@@ -11,6 +11,9 @@ class CreateDealDto {
   @IsString() @MaxLength(150) title: string;
   @IsString() @MaxLength(2000) @IsOptional() description?: string;
   @IsString() @MaxLength(50) contactId: string;
+  @IsString() @MaxLength(50) @IsOptional() companyId?: string;
+  @IsString() @MaxLength(50) @IsOptional() pipelineId?: string;
+  @IsString() @MaxLength(50) @IsOptional() pipelineStageId?: string;
   @IsNumber() @IsOptional() value?: number;
   @IsString() @MaxLength(10) @IsOptional() currency?: string;
   @IsEnum(DealStage) @IsOptional() stage?: DealStage;
@@ -23,6 +26,9 @@ class UpdateDealDto {
   @IsString() @MaxLength(150) @IsOptional() title?: string;
   @IsString() @MaxLength(2000) @IsOptional() description?: string;
   @IsString() @MaxLength(50) @IsOptional() contactId?: string;
+  @IsString() @MaxLength(50) @IsOptional() companyId?: string;
+  @IsString() @MaxLength(50) @IsOptional() pipelineId?: string;
+  @IsString() @MaxLength(50) @IsOptional() pipelineStageId?: string;
   @IsNumber() @IsOptional() value?: number;
   @IsString() @MaxLength(10) @IsOptional() currency?: string;
   @IsEnum(DealStage) @IsOptional() stage?: DealStage;
