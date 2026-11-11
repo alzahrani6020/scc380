@@ -3,6 +3,10 @@ import { prisma, tenantWhere } from '@scc/database';
 
 @Injectable()
 export class ActivitiesService {
+  private tenantIdFor(req: any) {
+    return req.user?.role === 'SUPER_ADMIN' ? req.tenantId : req.user?.tenantId;
+  }
+
   /** Referential integrity: linked contact/deal/assignee must belong to the caller's tenant. */
   private async assertRefsInTenant(
     tenantId: string | null | undefined,
@@ -24,9 +28,10 @@ export class ActivitiesService {
   }
 
   async findAll(req: any, query: any) {
+    const tenantId = this.tenantIdFor(req);
     const page = Math.max(1, Number.parseInt(query.page || '1', 10) || 1);
     const limit = Math.min(100, Math.max(1, Number.parseInt(query.limit || '25', 10) || 25));
-    const where: any = { ...tenantWhere(req.user?.tenantId) };
+    const where: any = { ...tenantWhere(tenantId) };
     if (query.type) where.type = query.type;
     if (query.contactId) where.contactId = query.contactId;
     if (query.dealId) where.dealId = query.dealId;
@@ -44,24 +49,27 @@ export class ActivitiesService {
   }
 
   async findOne(req: any, id: string) {
-    const where = { ...tenantWhere(req.user?.tenantId), id };
+    const tenantId = this.tenantIdFor(req);
+    const where = { ...tenantWhere(tenantId), id };
     const activity = await prisma.activity.findFirst({ where });
     if (!activity) throw new NotFoundException('Activity not found');
     return activity;
   }
 
   async create(req: any, dto: any) {
-    await this.assertRefsInTenant(req.user?.tenantId, dto);
-    const data = { ...dto, tenantId: req.user?.tenantId };
+    const tenantId = this.tenantIdFor(req);
+    await this.assertRefsInTenant(tenantId, dto);
+    const data = { ...dto, tenantId };
     if (dto.scheduledAt) data.scheduledAt = new Date(dto.scheduledAt);
     return prisma.activity.create({ data });
   }
 
   async update(req: any, id: string, dto: any) {
-    const where = { ...tenantWhere(req.user?.tenantId), id };
+    const tenantId = this.tenantIdFor(req);
+    const where = { ...tenantWhere(tenantId), id };
     const existing = await prisma.activity.findFirst({ where });
     if (!existing) throw new NotFoundException('Activity not found');
-    await this.assertRefsInTenant(req.user?.tenantId, dto);
+    await this.assertRefsInTenant(tenantId, dto);
     const data = { ...dto };
     if (dto.scheduledAt) data.scheduledAt = new Date(dto.scheduledAt);
     if (dto.completedAt) data.completedAt = new Date(dto.completedAt);
@@ -69,7 +77,8 @@ export class ActivitiesService {
   }
 
   async remove(req: any, id: string) {
-    const where = { ...tenantWhere(req.user?.tenantId), id };
+    const tenantId = this.tenantIdFor(req);
+    const where = { ...tenantWhere(tenantId), id };
     const existing = await prisma.activity.findFirst({ where });
     if (!existing) throw new NotFoundException('Activity not found');
     return prisma.activity.delete({ where: { id } });
