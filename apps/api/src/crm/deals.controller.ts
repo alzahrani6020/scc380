@@ -1,33 +1,34 @@
 import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, Req } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard, RequirePermissions } from '../auth/guards/permissions.guard';
 import { DealsService } from './deals.service';
-import { IsString, IsOptional, IsNumber, IsEnum, IsInt, Min, Max } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsEnum, IsInt, Min, Max, IsISO8601, MaxLength } from 'class-validator';
 import { DealStage } from '@prisma/client';
+import { ListDealsQueryDto } from './dto/list-deals-query.dto';
 
 class CreateDealDto {
-  @IsString() title: string;
-  @IsString() @IsOptional() description?: string;
-  @IsString() contactId: string;
+  @IsString() @MaxLength(150) title: string;
+  @IsString() @MaxLength(2000) @IsOptional() description?: string;
+  @IsString() @MaxLength(50) contactId: string;
   @IsNumber() @IsOptional() value?: number;
-  @IsString() @IsOptional() currency?: string;
+  @IsString() @MaxLength(10) @IsOptional() currency?: string;
   @IsEnum(DealStage) @IsOptional() stage?: DealStage;
   @IsInt() @Min(0) @Max(100) @IsOptional() probability?: number;
-  @IsString() @IsOptional() expectedClose?: string;
-  @IsString() @IsOptional() assignedToId?: string;
+  @IsISO8601() @IsOptional() expectedClose?: string;
+  @IsString() @MaxLength(50) @IsOptional() assignedToId?: string;
 }
 
 class UpdateDealDto {
-  @IsString() @IsOptional() title?: string;
-  @IsString() @IsOptional() description?: string;
-  @IsString() @IsOptional() contactId?: string;
+  @IsString() @MaxLength(150) @IsOptional() title?: string;
+  @IsString() @MaxLength(2000) @IsOptional() description?: string;
+  @IsString() @MaxLength(50) @IsOptional() contactId?: string;
   @IsNumber() @IsOptional() value?: number;
-  @IsString() @IsOptional() currency?: string;
+  @IsString() @MaxLength(10) @IsOptional() currency?: string;
   @IsEnum(DealStage) @IsOptional() stage?: DealStage;
   @IsInt() @Min(0) @Max(100) @IsOptional() probability?: number;
-  @IsString() @IsOptional() expectedClose?: string;
-  @IsString() @IsOptional() assignedToId?: string;
+  @IsISO8601() @IsOptional() expectedClose?: string;
+  @IsString() @MaxLength(50) @IsOptional() assignedToId?: string;
 }
 
 @ApiTags('CRM - Deals')
@@ -39,12 +40,7 @@ export class DealsController {
 
   @Get()
   @RequirePermissions('crm:read')
-  @ApiQuery({ name: 'stage', required: false })
-  @ApiQuery({ name: 'search', required: false })
-  @ApiQuery({ name: 'assignedToId', required: false })
-  @ApiQuery({ name: 'page', required: false })
-  @ApiQuery({ name: 'limit', required: false })
-  findAll(@Req() req: any, @Query() query: any) {
+  findAll(@Req() req: any, @Query() query: ListDealsQueryDto) {
     return this.service.findAll(req, query);
   }
 
