@@ -2,9 +2,9 @@ import { UserRole } from '@scc/types';
 
 export const RolePermissions = {
   SUPER_ADMIN: ['*'],
-  ADMIN: ['tenant:read', 'tenant:write', 'user:read', 'user:write', 'crm:*', 'erp:*', 'hr:*', 'fleet:*', 'analytics:*', 'notifications:read', 'notifications:admin'],
-  MANAGER: ['crm:*', 'erp:read', 'hr:read', 'fleet:*', 'analytics:read', 'notifications:read', 'notifications:admin'],
-  USER: ['crm:read', 'crm:write', 'erp:read', 'notifications:read'],
+  ADMIN: ['tenant:read', 'tenant:write', 'user:read', 'user:write', 'crm:*', 'erp:*', 'hr:*', 'fleet:*', 'analytics:*', 'notifications:read', 'notifications:self-write', 'notifications:admin'],
+  MANAGER: ['crm:*', 'erp:read', 'hr:read', 'fleet:*', 'analytics:read', 'notifications:read', 'notifications:self-write', 'notifications:admin'],
+  USER: ['crm:read', 'crm:write', 'erp:read', 'notifications:read', 'notifications:self-write'],
   AUDITOR: ['*read'],
   READONLY: ['*read'],
 } as const;
