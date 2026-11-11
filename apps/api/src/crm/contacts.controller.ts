@@ -14,33 +14,37 @@ import { ListContactsQueryDto } from './dto/list-contacts-query.dto';
 export class ContactsController {
   constructor(private readonly contactsService: ContactsService) {}
 
+  private tenantIdFor(req: any): string | undefined {
+    return req.user?.role === 'SUPER_ADMIN' ? req.tenantId : req.user?.tenantId;
+  }
+
   @Get()
   @RequirePermissions('crm:read')
-  findAll(@Request() req, @Query() query: ListContactsQueryDto) {
-    return this.contactsService.findAll(req.user.tenantId, req.user.role, query);
+  findAll(@Request() req: any, @Query() query: ListContactsQueryDto) {
+    return this.contactsService.findAll(this.tenantIdFor(req), req.user.role, query);
   }
 
   @Get(':id')
   @RequirePermissions('crm:read')
-  findOne(@Request() req, @Param('id') id: string) {
-    return this.contactsService.findOne(req.user.tenantId, req.user.role, id);
+  findOne(@Request() req: any, @Param('id') id: string) {
+    return this.contactsService.findOne(this.tenantIdFor(req), req.user.role, id);
   }
 
   @Post()
   @RequirePermissions('crm:write')
-  create(@Request() req, @Body() body: CreateContactDto) {
-    return this.contactsService.create(req.user.tenantId, req.user.role, body);
+  create(@Request() req: any, @Body() body: CreateContactDto) {
+    return this.contactsService.create(this.tenantIdFor(req), req.user.role, body);
   }
 
   @Patch(':id')
   @RequirePermissions('crm:write')
-  update(@Request() req, @Param('id') id: string, @Body() body: UpdateContactDto) {
-    return this.contactsService.update(req.user.tenantId, req.user.role, id, body);
+  update(@Request() req: any, @Param('id') id: string, @Body() body: UpdateContactDto) {
+    return this.contactsService.update(this.tenantIdFor(req), req.user.role, id, body);
   }
 
   @Delete(':id')
   @RequirePermissions('crm:write')
-  remove(@Request() req, @Param('id') id: string) {
-    return this.contactsService.delete(req.user.tenantId, req.user.role, id);
+  remove(@Request() req: any, @Param('id') id: string) {
+    return this.contactsService.delete(this.tenantIdFor(req), req.user.role, id);
   }
 }
