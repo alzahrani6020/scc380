@@ -79,8 +79,8 @@ async function verifyTenantMigration() {
   if (!userTenant) throw new Error('BASELINE_BLOCKED tenant migration missing users.tenantId');
 
   const constraints = [
-    'users_tenantId_fkey','contacts_tenantId_fkey','deals_tenantId_fkey',
-    'activities_tenantId_fkey','invoices_tenantId_fkey','invoice_items_tenantId_fkey',
+    'users_tenantId_fkey','audit_logs_tenantId_fkey','contacts_tenantId_fkey','deals_tenantId_fkey',
+    'activities_tenantId_fkey','invoices_tenantId_fkey','invoice_items_tenantId_fkey','invoice_items_invoiceId_fkey',
     'employees_tenantId_fkey','departments_tenantId_fkey','vehicles_tenantId_fkey',
     'fleet_trips_tenantId_fkey',
   ];
@@ -103,6 +103,25 @@ async function verifyCrmRelations() {
   }
 }
 
+async function verifyCrmExpansionPreconditions(applied) {
+  if (applied.has('20261111190000_add_crm_companies_pipelines')) return;
+  if (!(await tableExists('deals'))) return;
+
+  const pipelineTableExists = await tableExists('pipelines');
+  if (!pipelineTableExists) {
+    const pipelineColumn = await columnState('deals', 'pipelineId');
+    if (pipelineColumn) {
+      const rows = await prisma.$queryRawUnsafe(
+        'SELECT COUNT(*)::int AS count FROM "deals" WHERE "pipelineId" IS NOT NULL',
+      );
+      const count = Number(rows?.[0]?.count || 0);
+      if (count > 0) {
+        throw new Error(`CRM_EXPANSION_BLOCKED legacy deals.pipelineId values=${count}; manual mapping required`);
+      }
+    }
+  }
+}
+
 async function resolveIfNeeded(applied, migration, verify) {
   if (applied.has(migration)) return;
   await verify();
@@ -119,6 +138,7 @@ async function resolveIfNeeded(applied, migration, verify) {
     await resolveIfNeeded(applied, historical[0], verifyInit);
     await resolveIfNeeded(applied, historical[1], verifyTenantMigration);
     await resolveIfNeeded(applied, historical[2], verifyCrmRelations);
+    await verifyCrmExpansionPreconditions(applied);
   }
 
   console.log('PRISMA_MIGRATE_DEPLOY_START');
