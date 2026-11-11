@@ -144,16 +144,17 @@ export class ReportsService {
     const dateFilter: any = {};
     if (from) dateFilter.gte = new Date(from);
     if (to) dateFilter.lte = new Date(to);
-    const dateWhere = Object.keys(dateFilter).length > 0 ? { issueDate: dateFilter } : {};
+    const invoiceDateWhere = Object.keys(dateFilter).length > 0 ? { issueDate: dateFilter } : {};
+    const expenseDateWhere = Object.keys(dateFilter).length > 0 ? { incurredAt: dateFilter } : {};
 
     const [outputVat, inputVat] = await Promise.all([
       prisma.invoice.aggregate({
         _sum: { taxAmount: true, total: true },
-        where: { ...tw, ...dateWhere },
+        where: { ...tw, ...invoiceDateWhere },
       }),
       prisma.expense.aggregate({
         _sum: { amount: true },
-        where: { ...tw, ...dateWhere },
+        where: { ...tw, ...expenseDateWhere },
       }),
     ]);
 
