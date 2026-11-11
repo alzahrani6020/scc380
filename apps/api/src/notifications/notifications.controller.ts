@@ -40,19 +40,19 @@ export class NotificationsController {
   }
 
   @Post(':id/read')
-  @RequirePermissions('notifications:read')
+  @RequirePermissions('notifications:self-write')
   markAsRead(@Req() req: any, @Param('id') id: string) {
     return this.service.markAsRead(req, id);
   }
 
   @Post('read-all')
-  @RequirePermissions('notifications:read')
+  @RequirePermissions('notifications:self-write')
   markAllAsRead(@Req() req: any) {
     return this.service.markAllAsRead(req);
   }
 
   @Delete(':id')
-  @RequirePermissions('notifications:read')
+  @RequirePermissions('notifications:self-write')
   remove(@Req() req: any, @Param('id') id: string) {
     return this.service.remove(req, id);
   }
