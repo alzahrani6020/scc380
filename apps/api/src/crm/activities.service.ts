@@ -41,7 +41,7 @@ export class ActivitiesService {
     const [data, count] = await Promise.all([
       prisma.activity.findMany({
         where,
-        orderBy: { scheduledAt: 'asc' },
+        orderBy: query.sort === 'recent' ? { createdAt: 'desc' } : { scheduledAt: 'asc' },
         skip: (page - 1) * limit,
         take: limit,
       }),

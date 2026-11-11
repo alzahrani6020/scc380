@@ -40,12 +40,56 @@ export class AnalyticsService {
     if (to) dateFilter.lte = new Date(to);
     const dateWhere = Object.keys(dateFilter).length > 0 ? { createdAt: dateFilter } : {};
 
-    const [byStage, bySource] = await Promise.all([
+    const [byStage, bySource, dynamicStageCounts, legacyStageCounts] = await Promise.all([
       prisma.deal.groupBy({ by: ['stage'], _count: { id: true }, where: { ...tw, ...dateWhere } }),
       prisma.contact.groupBy({ by: ['source'], _count: { id: true }, where: { ...tw, ...dateWhere } }),
+      prisma.deal.groupBy({
+        by: ['pipelineStageId'],
+        _count: { id: true },
+        where: { ...tw, ...dateWhere, pipelineStageId: { not: null } },
+      }),
+      prisma.deal.groupBy({
+        by: ['stage'],
+        _count: { id: true },
+        where: { ...tw, ...dateWhere, pipelineStageId: null },
+      }),
     ]);
 
-    return { byStage, bySource };
+    const dynamicStageIds = dynamicStageCounts
+      .map((row) => row.pipelineStageId)
+      .filter((id): id is string => Boolean(id));
+
+    const dynamicStages = dynamicStageIds.length > 0
+      ? await prisma.pipelineStage.findMany({
+          where: { ...tw, id: { in: dynamicStageIds } },
+          select: { id: true, name: true, pipeline: { select: { name: true } } },
+        })
+      : [];
+
+    const dynamicBreakdown = dynamicStageCounts
+      .filter((row): row is typeof row & { pipelineStageId: string } => Boolean(row.pipelineStageId))
+      .map((row) => {
+        const stage = dynamicStages.find((item) => item.id === row.pipelineStageId);
+        return {
+          key: `pipeline:${row.pipelineStageId}`,
+          label: stage ? `${stage.pipeline.name} — ${stage.name}` : 'مرحلة ديناميكية',
+          count: row._count.id,
+          source: 'pipeline' as const,
+        };
+      });
+
+    const legacyBreakdown = legacyStageCounts.map((row) => ({
+      key: `legacy:${row.stage}`,
+      label: row.stage,
+      count: row._count.id,
+      source: 'legacy' as const,
+    }));
+
+    return {
+      byStage,
+      bySource,
+      stageBreakdown: [...dynamicBreakdown, ...legacyBreakdown],
+    };
   }
 
   async getErpStats(tenantId: string | undefined, userRole: string, from?: string, to?: string) {
