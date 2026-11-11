@@ -55,8 +55,14 @@ export class CrmCsvService {
     return req.user?.role === 'SUPER_ADMIN' ? req.tenantId : req.user?.tenantId;
   }
 
-  async exportContacts(req: any) {
+  private requireTenantId(req: any) {
     const tenantId = this.tenantIdFor(req);
+    if (!tenantId) throw new BadRequestException('Tenant context is required');
+    return tenantId;
+  }
+
+  async exportContacts(req: any) {
+    const tenantId = this.requireTenantId(req);
     const contacts = await prisma.contact.findMany({
       where: tenantWhere(tenantId),
       orderBy: { createdAt: 'asc' },
@@ -93,7 +99,7 @@ export class CrmCsvService {
     const unknown = headers.filter((h) => !allowed.has(h));
     if (unknown.length) throw new BadRequestException(`Unsupported columns: ${unknown.join(', ')}`);
 
-    const tenantId = this.tenantIdFor(req);
+    const tenantId = this.requireTenantId(req);
     const scope = tenantWhere(tenantId);
     const parsed = rows.slice(1).map((values, index) => {
       const item: any = {};
