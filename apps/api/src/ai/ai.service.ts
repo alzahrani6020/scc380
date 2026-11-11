@@ -6,18 +6,15 @@ const LLM_TIMEOUT_MS = 30_000;
 
 @Injectable()
 export class AiService {
-  private ollamaUrl: string;
+  private ollamaUrl: string | null;
   private logger = new Logger('AiService');
 
   constructor(
     private config: ConfigService,
     private insights: InsightsService,
   ) {
-    this.ollamaUrl = this.config.get('OLLAMA_URL') || 'http://localhost:11434';
-    // Boot canary — proves in Render logs which build is live and that DI resolved
-    this.logger.log(
-      `AI-BOOT build=2026-11-10-insights-v2 insights=${!!this.insights} ollama=${this.ollamaUrl}`,
-    );
+    const configuredOllamaUrl = this.config.get<string>('OLLAMA_URL')?.trim();
+    this.ollamaUrl = configuredOllamaUrl || null;
   }
 
   async chat(message: string, context?: string, tenantId?: string | null) {
@@ -41,7 +38,18 @@ export class AiService {
       };
     }
 
-    // 2) LLM path (optional — requires an Ollama instance at OLLAMA_URL)
+    // 2) LLM path is optional. Do not attempt localhost when no provider is configured.
+    if (!this.ollamaUrl) {
+      return {
+        response:
+          'أستطيع الإجابة عن أسئلة بيانات منشأتك (فواتير، إيرادات، مركبات، صفقات، تنبيهات، عدّادات). ' +
+          'أما الأسئلة العامة فتتطلب تفعيل خدمة نموذج لغوي خارجية.',
+        model: null,
+        source: 'none',
+        fallback: true,
+      };
+    }
+
     try {
       const systemPrompt = context === 'crm'
         ? 'You are an AI assistant for a CRM/ERP system called Smart Command Center (SCC 380). Help users with business operations, customer management, and analytics. Answer in Arabic or English based on the user query.'
@@ -90,6 +98,14 @@ export class AiService {
 
   async summarize(text: string) {
     const trimmed = (text || '').trim().slice(0, 10_000);
+    if (!this.ollamaUrl) {
+      return {
+        response: 'عذراً، خدمة التلخيص غير متوفرة حالياً.',
+        model: null,
+        fallback: true,
+      };
+    }
+
     try {
       const response = await fetch(`${this.ollamaUrl}/api/generate`, {
         method: 'POST',
@@ -126,6 +142,8 @@ export class AiService {
   }
 
   async getModels() {
+    if (!this.ollamaUrl) return { models: [] };
+
     try {
       const response = await fetch(`${this.ollamaUrl}/api/tags`, {
         signal: AbortSignal.timeout(10_000),
