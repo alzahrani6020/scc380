@@ -98,8 +98,13 @@ export default function ActivitiesPage() {
 
   const openEdit = (item: any) => {
     setEditing(item);
+    // Only DTO-whitelisted fields — the API rejects unknown fields (forbidNonWhitelisted)
     setFormData({
-      ...item,
+      type: item.type || 'TASK',
+      subject: item.subject || '',
+      description: item.description || '',
+      contactId: item.contactId || '',
+      dealId: item.dealId || '',
       scheduledAt: item.scheduledAt ? new Date(item.scheduledAt).toISOString().slice(0, 16) : '',
       completedAt: item.completedAt ? new Date(item.completedAt).toISOString().slice(0, 16) : '',
     });

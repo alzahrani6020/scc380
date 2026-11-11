@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, Req } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PermissionsGuard, RequirePermissions } from '../auth/guards/permissions.guard';
 import { DealsService } from './deals.service';
 import { IsString, IsOptional, IsNumber, IsEnum } from 'class-validator';
 
@@ -30,12 +31,13 @@ class UpdateDealDto {
 
 @ApiTags('CRM - Deals')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('crm/deals')
 export class DealsController {
   constructor(private readonly service: DealsService) {}
 
   @Get()
+  @RequirePermissions('crm:read')
   @ApiQuery({ name: 'stage', required: false })
   @ApiQuery({ name: 'search', required: false })
   @ApiQuery({ name: 'assignedToId', required: false })
@@ -44,21 +46,25 @@ export class DealsController {
   }
 
   @Get(':id')
+  @RequirePermissions('crm:read')
   findOne(@Req() req: any, @Param('id') id: string) {
     return this.service.findOne(req, id);
   }
 
   @Post()
+  @RequirePermissions('crm:write')
   create(@Req() req: any, @Body() dto: CreateDealDto) {
     return this.service.create(req, dto);
   }
 
   @Patch(':id')
+  @RequirePermissions('crm:write')
   update(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateDealDto) {
     return this.service.update(req, id, dto);
   }
 
   @Delete(':id')
+  @RequirePermissions('crm:write')
   remove(@Req() req: any, @Param('id') id: string) {
     return this.service.remove(req, id);
   }

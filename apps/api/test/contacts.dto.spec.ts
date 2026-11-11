@@ -6,8 +6,9 @@ import { CreateContactDto } from '../src/crm/dto/create-contact.dto';
 import { UpdateContactDto } from '../src/crm/dto/update-contact.dto';
 import { ListContactsQueryDto } from '../src/crm/dto/list-contacts-query.dto';
 
-// Same pipe as main.ts: whitelist strips non-DTO fields, transform instantiates DTOs.
-const pipe = new ValidationPipe({ whitelist: true, transform: true });
+// Same pipe as main.ts: whitelist strips non-DTO fields, transform instantiates DTOs,
+// and forbidNonWhitelisted rejects any extra field with 400 (production behavior).
+const pipe = new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true });
 const body = (value: unknown, metatype: any) => pipe.transform(value, { type: 'body', metatype });
 const query = (value: unknown) => pipe.transform(value, { type: 'query', metatype: ListContactsQueryDto });
 
@@ -38,19 +39,33 @@ test('valid create payload passes with all mirrored form fields', async () => {
   assert.equal(out.phone2, undefined);
 });
 
-test('system/ownership fields are stripped by the whitelist: id, createdAt, updatedAt', async () => {
+test('system/ownership fields are rejected like production (forbidNonWhitelisted)', async () => {
+  // Production rejects the full DB record shape the old edit form sent ({...contact})
+  await assert.rejects(
+    () => body({
+      firstName: 'أحمد',
+      lastName: 'علي',
+      id: 'hacked-id',
+      createdAt: '2010-01-01T00:00:00Z',
+      updatedAt: '2010-01-01T00:00:00Z',
+      unknownField: 'x',
+    }, CreateContactDto),
+    BadRequestException,
+  );
+});
+
+test('UI-shaped edit payload (DTO fields only) passes with the production pipe', async () => {
   const out = (await body({
     firstName: 'أحمد',
     lastName: 'علي',
-    id: 'hacked-id',
-    createdAt: '2010-01-01T00:00:00Z',
-    updatedAt: '2010-01-01T00:00:00Z',
-    unknownField: 'x',
-  }, CreateContactDto)) as CreateContactDto;
-  assert.equal((out as any).id, undefined);
-  assert.equal((out as any).createdAt, undefined);
-  assert.equal((out as any).updatedAt, undefined);
-  assert.equal((out as any).unknownField, undefined);
+    email: '',
+    phone: '',
+    type: 'CUSTOMER',
+    status: 'ACTIVE',
+    country: 'SA',
+  }, UpdateContactDto)) as UpdateContactDto;
+  assert.equal(out.firstName, 'أحمد');
+  assert.equal(out.email, undefined);
 });
 
 test('tenantId stays allowed in the DTO but the service gates it by role', async () => {
@@ -83,10 +98,13 @@ test('invalid type/status enums are rejected', async () => {
   );
 });
 
-test('update DTO accepts partial payloads and strips system fields', async () => {
-  const out = (await body({ firstName: 'جديد', tenantId: 'evil', id: 'evil' }, UpdateContactDto)) as UpdateContactDto;
+test('update DTO accepts partial payloads but rejects non-whitelisted fields', async () => {
+  const out = (await body({ firstName: 'جديد' }, UpdateContactDto)) as UpdateContactDto;
   assert.equal(out.firstName, 'جديد');
-  assert.equal((out as any).id, undefined);
+  // tenantId is whitelisted (service gates it by role); id is not — production rejects it
+  const withTenant = (await body({ tenantId: 't1' }, UpdateContactDto)) as UpdateContactDto;
+  assert.equal(withTenant.tenantId, 't1');
+  await assert.rejects(() => body({ firstName: 'جديد', id: 'evil' }, UpdateContactDto), BadRequestException);
 });
 
 test('query defaults: page=1, limit=25 when omitted', async () => {

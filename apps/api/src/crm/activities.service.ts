@@ -1,8 +1,28 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { prisma, tenantWhere } from '@scc/database';
 
 @Injectable()
 export class ActivitiesService {
+  /** Referential integrity: linked contact/deal/assignee must belong to the caller's tenant. */
+  private async assertRefsInTenant(
+    tenantId: string | null | undefined,
+    refs: { contactId?: string; dealId?: string; assignedToId?: string },
+  ) {
+    const scope = tenantWhere(tenantId ?? undefined);
+    if (refs.contactId) {
+      const contact = await prisma.contact.findFirst({ where: { id: refs.contactId, ...scope } });
+      if (!contact) throw new BadRequestException('Contact not found in your tenant');
+    }
+    if (refs.dealId) {
+      const deal = await prisma.deal.findFirst({ where: { id: refs.dealId, ...scope } });
+      if (!deal) throw new BadRequestException('Deal not found in your tenant');
+    }
+    if (refs.assignedToId) {
+      const user = await prisma.user.findFirst({ where: { id: refs.assignedToId, ...scope } });
+      if (!user) throw new BadRequestException('Assignee not found in your tenant');
+    }
+  }
+
   async findAll(req: any, query: any) {
     const where: any = { ...tenantWhere(req.user?.tenantId) };
     if (query.type) where.type = query.type;
@@ -24,6 +44,7 @@ export class ActivitiesService {
   }
 
   async create(req: any, dto: any) {
+    await this.assertRefsInTenant(req.user?.tenantId, dto);
     const data = { ...dto, tenantId: req.user?.tenantId };
     if (dto.scheduledAt) data.scheduledAt = new Date(dto.scheduledAt);
     return prisma.activity.create({ data });
@@ -33,6 +54,7 @@ export class ActivitiesService {
     const where = { ...tenantWhere(req.user?.tenantId), id };
     const existing = await prisma.activity.findFirst({ where });
     if (!existing) throw new NotFoundException('Activity not found');
+    await this.assertRefsInTenant(req.user?.tenantId, dto);
     const data = { ...dto };
     if (dto.scheduledAt) data.scheduledAt = new Date(dto.scheduledAt);
     if (dto.completedAt) data.completedAt = new Date(dto.completedAt);

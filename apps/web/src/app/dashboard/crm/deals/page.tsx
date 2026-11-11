@@ -57,8 +57,15 @@ export default function DealsPage() {
 
   const openEdit = (item: any) => {
     setEditing(item);
+    // Only DTO-whitelisted fields — the API rejects unknown fields (forbidNonWhitelisted)
     setFormData({
-      ...item,
+      title: item.title || '',
+      description: item.description || '',
+      contactId: item.contactId || '',
+      value: item.value ?? '',
+      currency: item.currency || 'SAR',
+      stage: item.stage || 'LEAD',
+      probability: item.probability ?? 0,
       expectedClose: item.expectedClose ? new Date(item.expectedClose).toISOString().split('T')[0] : '',
     });
     setIsModalOpen(true);
@@ -71,6 +78,10 @@ export default function DealsPage() {
       const payload = { ...formData };
       if (payload.value) payload.value = parseFloat(payload.value);
       if (payload.probability) payload.probability = parseInt(payload.probability);
+      // Empty optional fields would fail DTO validation — drop them
+      for (const key of ['description', 'expectedClose', 'value', 'probability', 'currency']) {
+        if (payload[key] === '') delete payload[key];
+      }
       if (editing) {
         await api.patch(`/crm/deals/${editing.id}`, payload);
       } else {

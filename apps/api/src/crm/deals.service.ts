@@ -1,8 +1,16 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { prisma, tenantWhere } from '@scc/database';
 
 @Injectable()
 export class DealsService {
+  /** Referential integrity: a deal may only point at a contact inside the caller's tenant. */
+  private async assertContactInTenant(tenantId: string | null | undefined, contactId: string) {
+    const contact = await prisma.contact.findFirst({
+      where: { id: contactId, ...tenantWhere(tenantId ?? undefined) },
+    });
+    if (!contact) throw new BadRequestException('Contact not found in your tenant');
+  }
+
   async findAll(req: any, query: any) {
     const where: any = { ...tenantWhere(req.user?.tenantId) };
     if (query.stage) where.stage = query.stage;
@@ -28,6 +36,7 @@ export class DealsService {
   }
 
   async create(req: any, dto: any) {
+    if (dto.contactId) await this.assertContactInTenant(req.user?.tenantId, dto.contactId);
     const data = { ...dto, tenantId: req.user?.tenantId };
     if (dto.expectedClose) data.expectedClose = new Date(dto.expectedClose);
     return prisma.deal.create({ data });
@@ -37,6 +46,7 @@ export class DealsService {
     const where = { ...tenantWhere(req.user?.tenantId), id };
     const existing = await prisma.deal.findFirst({ where });
     if (!existing) throw new NotFoundException('Deal not found');
+    if (dto.contactId) await this.assertContactInTenant(req.user?.tenantId, dto.contactId);
     const data = { ...dto };
     if (dto.expectedClose) data.expectedClose = new Date(dto.expectedClose);
     if (dto.actualClose) data.actualClose = new Date(dto.actualClose);

@@ -100,7 +100,25 @@ export default function CrmPage() {
 
   const openEdit = (contact: any) => {
     setEditingContact(contact);
-    setFormData({ ...contact });
+    // Only DTO-whitelisted fields — the API rejects unknown fields (forbidNonWhitelisted)
+    setFormData({
+      firstName: contact.firstName || '',
+      lastName: contact.lastName || '',
+      email: contact.email || '',
+      phone: contact.phone || '',
+      phone2: contact.phone2 || '',
+      companyName: contact.companyName || '',
+      jobTitle: contact.jobTitle || '',
+      idNumber: contact.idNumber || '',
+      vatNumber: contact.vatNumber || '',
+      crNumber: contact.crNumber || '',
+      address: contact.address || '',
+      city: contact.city || '',
+      region: contact.region || '',
+      country: contact.country || 'SA',
+      type: contact.type || 'CUSTOMER',
+      status: contact.status || 'ACTIVE',
+    });
     setIsModalOpen(true);
   };
 

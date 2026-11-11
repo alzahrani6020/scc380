@@ -11,8 +11,15 @@ export const RolePermissions = {
 
 export function hasPermission(role: UserRole, permission: string): boolean {
   const permissions = (RolePermissions[role] || []) as unknown as string[];
-  if (permissions.includes('*')) return true;
-  if (permissions.includes(permission)) return true;
-  if (permissions.includes(`${permission.split(':')[0]}:*`)) return true;
-  return false;
+  return permissions.some((p) => {
+    if (p === permission) return true;
+    if (!p.includes('*')) return false;
+    // Supports both 'crm:*' and '*read' forms
+    const rx = new RegExp('^' + p.split('*').map(escapeRegExp).join('.*') + '$');
+    return rx.test(permission);
+  });
+}
+
+function escapeRegExp(s: string) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
