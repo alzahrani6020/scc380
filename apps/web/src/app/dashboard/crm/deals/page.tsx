@@ -86,8 +86,14 @@ export default function DealsPage() {
       if (payload.value) payload.value = parseFloat(payload.value);
       if (payload.probability) payload.probability = parseInt(payload.probability);
       // Empty optional fields would fail DTO validation — drop them
-      for (const key of ['description', 'expectedClose', 'value', 'probability', 'currency', 'companyId', 'pipelineId', 'pipelineStageId']) {
+      for (const key of ['description', 'expectedClose', 'value', 'probability', 'currency']) {
         if (payload[key] === '') delete payload[key];
+      }
+      for (const key of ['companyId', 'pipelineId', 'pipelineStageId']) {
+        if (payload[key] === '') {
+          if (editing) payload[key] = null;
+          else delete payload[key];
+        }
       }
       if (editing) {
         await api.patch(`/crm/deals/${editing.id}`, payload);
@@ -155,7 +161,7 @@ export default function DealsPage() {
               </div>
               <div className="flex items-center gap-3">
                 <div className="text-left">
-                  <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium ${stageColors[d.stage]}`}>{stages.find(s => s.value === d.stage)?.label || d.stage}</span>
+                  <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium ${stageColors[d.stage] || 'bg-slate-500/20 text-slate-400'}`}>{pipelines.flatMap((p) => p.stages || []).find((s: any) => s.id === d.pipelineStageId)?.name || stages.find(s => s.value === d.stage)?.label || d.stage}</span>
                   {d.probability !== null && <p className="text-slate-500 text-xs mt-1">{d.probability}% احتمالية</p>}
                 </div>
                 <div className="flex items-center gap-1">
