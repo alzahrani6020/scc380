@@ -38,6 +38,12 @@ export class ActivitiesService {
     if (query.contactId) where.contactId = query.contactId;
     if (query.dealId) where.dealId = query.dealId;
     if (query.assignedToId) where.assignedToId = query.assignedToId;
+    if (query.search) {
+      where.OR = [
+        { subject: { contains: query.search, mode: 'insensitive' } },
+        { description: { contains: query.search, mode: 'insensitive' } },
+      ];
+    }
     const [data, count] = await Promise.all([
       prisma.activity.findMany({
         where,

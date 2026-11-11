@@ -1,13 +1,15 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import api from '@/lib/api';
-import { Activity, CalendarClock, CheckCircle2, Pencil, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react';
+import { Activity, CalendarClock, CheckCircle2, Pencil, Plus, RefreshCw, Search, Trash2, X, AlertCircle } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
 import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
 import Button from '@/components/ui/Button';
 import Textarea from '@/components/ui/Textarea';
+
+const PAGE_SIZE = 25;
 
 const activityTypes = [
   { value: '', label: 'كل الأنواع' },
@@ -25,36 +27,55 @@ export default function ActivitiesPage() {
   const [items, setItems] = useState<any[]>([]);
   const [contacts, setContacts] = useState<any[]>([]);
   const [deals, setDeals] = useState<any[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [type, setType] = useState('');
   const [contactId, setContactId] = useState('');
   const [dealId, setDealId] = useState('');
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [formLoading, setFormLoading] = useState(false);
   const [formData, setFormData] = useState<any>({ type: 'TASK' });
+  const abortRef = useRef<AbortController | null>(null);
 
-  const fetchData = async () => {
+  // Contact/deal pickers are loaded once (bounded to the API max of 100).
+  useEffect(() => {
+    Promise.all([
+      api.get('/crm/contacts?limit=100').then((res) => setContacts(res.data?.data || [])),
+      api.get('/crm/deals?limit=100').then((res) => setDeals(res.data?.data || [])),
+    ]).catch(() => {});
+  }, []);
+
+  const fetchActivities = useCallback((p: number, s: string, t: string, c: string, d: string) => {
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
     setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (type) params.set('type', type);
-      if (contactId) params.set('contactId', contactId);
-      if (dealId) params.set('dealId', dealId);
-
-      const [activitiesRes, contactsRes, dealsRes] = await Promise.all([
-        api.get('/crm/activities' + (params.toString() ? `?${params.toString()}` : '')),
-        api.get('/crm/contacts?limit=100'),
-        api.get('/crm/deals'),
-      ]);
-      setItems(activitiesRes.data?.data || []);
-      setContacts(contactsRes.data?.data || []);
-      setDeals(dealsRes.data?.data || []);
-    } finally {
-      setLoading(false);
-    }
-  };
+    setError(null);
+    const params = new URLSearchParams({ page: String(p), limit: String(PAGE_SIZE) });
+    if (s) params.set('search', s);
+    if (t) params.set('type', t);
+    if (c) params.set('contactId', c);
+    if (d) params.set('dealId', d);
+    api
+      .get('/crm/activities?' + params.toString(), { signal: ctrl.signal })
+      .then((res) => {
+        const body = res.data as { data: any[]; count: number };
+        setItems(body.data);
+        setTotal(body.count);
+      })
+      .catch((err) => {
+        if (err?.code === 'ERR_CANCELED') return;
+        setError('تعذر تحميل الأنشطة. تحقق من الاتصال بالخادم.');
+      })
+      .finally(() => {
+        if (!ctrl.signal.aborted) setLoading(false);
+      });
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -63,9 +84,25 @@ export default function ActivitiesPage() {
     setDealId(params.get('dealId') || '');
   }, []);
 
+  // Debounce the search box (400ms) before it becomes a server query.
   useEffect(() => {
-    fetchData().catch(console.error);
-  }, [type, contactId, dealId]);
+    const timer = setTimeout(() => setDebouncedSearch(search), 400);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  // Any filter change restarts from page 1.
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, type, contactId, dealId]);
+
+  useEffect(() => {
+    fetchActivities(page, debouncedSearch, type, contactId, dealId);
+  }, [page, debouncedSearch, type, contactId, dealId, fetchActivities]);
+
+  // Cancel in-flight request on unmount.
+  useEffect(() => {
+    return () => abortRef.current?.abort();
+  }, []);
 
   const contactOptions = useMemo(() => [
     { value: '', label: 'كل جهات الاتصال' },
@@ -76,12 +113,6 @@ export default function ActivitiesPage() {
     { value: '', label: 'كل الصفقات' },
     ...deals.map((d) => ({ value: d.id, label: d.title })),
   ], [deals]);
-
-  const filtered = items.filter((item) => {
-    const q = search.trim().toLowerCase();
-    if (!q) return true;
-    return [item.subject, item.description].some((v) => String(v || '').toLowerCase().includes(q));
-  });
 
   const openCreate = () => {
     setEditing(null);
@@ -124,7 +155,7 @@ export default function ActivitiesPage() {
       if (editing) await api.patch(`/crm/activities/${editing.id}`, payload);
       else await api.post('/crm/activities', payload);
       setIsModalOpen(false);
-      await fetchData();
+      fetchActivities(page, debouncedSearch, type, contactId, dealId);
     } finally {
       setFormLoading(false);
     }
@@ -133,13 +164,20 @@ export default function ActivitiesPage() {
   const remove = async (id: string) => {
     if (!confirm('هل تريد حذف هذا النشاط؟')) return;
     await api.delete(`/crm/activities/${id}`);
-    await fetchData();
+    if (items.length === 1 && page > 1) {
+      setPage(page - 1);
+    } else {
+      fetchActivities(page, debouncedSearch, type, contactId, dealId);
+    }
   };
 
   const markCompleted = async (item: any) => {
     await api.patch(`/crm/activities/${item.id}`, { completedAt: new Date().toISOString() });
-    await fetchData();
+    fetchActivities(page, debouncedSearch, type, contactId, dealId);
   };
+
+  const hasActiveFilters = Boolean(debouncedSearch || type || contactId || dealId);
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <div className="space-y-6 animate-fade-in-up">
@@ -149,7 +187,7 @@ export default function ActivitiesPage() {
             <Activity className="h-6 w-6 text-primary-400" />
             أنشطة CRM
           </h1>
-          <p className="text-slate-400 text-sm mt-1">متابعة المكالمات والاجتماعات والمهام المرتبطة بالعملاء والصفقات</p>
+          <p className="text-slate-400 text-sm mt-1">متابعة المكالمات والاجتماعات والمهام المرتبطة بالعملاء والصفقات — إجمالي {total}</p>
         </div>
         <Button onClick={openCreate}><Plus className="h-5 w-5" /> نشاط جديد</Button>
       </div>
@@ -157,7 +195,7 @@ export default function ActivitiesPage() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
         <div className="relative md:col-span-1">
           <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-          <input className="scc-input pr-9" placeholder="بحث في الأنشطة..." value={search} onChange={(e) => setSearch(e.target.value)} />
+          <input className="scc-input pr-9" placeholder="بحث في كل الأنشطة..." value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <Select options={activityTypes} value={type} onChange={(e) => setType(e.target.value)} />
         <Select options={contactOptions} value={contactId} onChange={(e) => setContactId(e.target.value)} />
@@ -166,49 +204,77 @@ export default function ActivitiesPage() {
 
       {loading ? (
         <div className="h-64 flex items-center justify-center"><RefreshCw className="h-8 w-8 animate-spin text-primary-400" /></div>
-      ) : filtered.length === 0 ? (
+      ) : error ? (
+        <div className="flex flex-col items-center justify-center h-64 gap-4">
+          <div className="flex items-center gap-2 text-red-400">
+            <AlertCircle className="h-5 w-5" />
+            <span>{error}</span>
+          </div>
+          <Button variant="ghost" onClick={() => fetchActivities(page, debouncedSearch, type, contactId, dealId)}>
+            <RefreshCw className="h-4 w-4" /> إعادة المحاولة
+          </Button>
+        </div>
+      ) : items.length === 0 && !hasActiveFilters ? (
         <div className="scc-card text-center py-14">
           <CalendarClock className="h-10 w-10 text-slate-600 mx-auto mb-3" />
+          <p className="text-slate-300 font-medium">لا توجد أنشطة بعد</p>
+          <p className="text-slate-500 text-sm mt-1">أنشئ نشاطًا لمتابعة عملائك.</p>
+        </div>
+      ) : items.length === 0 && hasActiveFilters ? (
+        <div className="scc-card text-center py-14">
+          <Search className="h-10 w-10 text-slate-600 mx-auto mb-3" />
           <p className="text-slate-300 font-medium">لا توجد أنشطة مطابقة</p>
-          <p className="text-slate-500 text-sm mt-1">أنشئ نشاطًا أو غيّر عوامل التصفية.</p>
+          <p className="text-slate-500 text-sm mt-1">غيّر عوامل التصفية أو البحث.</p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {filtered.map((item) => {
-            const contact = contacts.find((c) => c.id === item.contactId);
-            const deal = deals.find((d) => d.id === item.dealId);
-            return (
-              <div key={item.id} className="scc-card-hover flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] px-2 py-1 rounded-full bg-primary-500/10 text-primary-300">{item.type}</span>
-                    {item.completedAt && <span className="text-[11px] px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-300">مكتمل</span>}
+        <>
+          <div className="space-y-3">
+            {items.map((item) => {
+              const contact = contacts.find((c) => c.id === item.contactId);
+              const deal = deals.find((d) => d.id === item.dealId);
+              return (
+                <div key={item.id} className="scc-card-hover flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] px-2 py-1 rounded-full bg-primary-500/10 text-primary-300">{item.type}</span>
+                      {item.completedAt && <span className="text-[11px] px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-300">مكتمل</span>}
+                    </div>
+                    <h3 className="text-white font-semibold mt-2">{item.subject}</h3>
+                    {item.description && <p className="text-slate-400 text-sm mt-1">{item.description}</p>}
+                    <div className="flex flex-wrap gap-3 text-xs text-slate-500 mt-2">
+                      {contact && <span>العميل: {contact.firstName} {contact.lastName}</span>}
+                      {deal && <span>الصفقة: {deal.title}</span>}
+                      {item.scheduledAt && <span>الموعد: {new Date(item.scheduledAt).toLocaleString('ar-SA')}</span>}
+                    </div>
                   </div>
-                  <h3 className="text-white font-semibold mt-2">{item.subject}</h3>
-                  {item.description && <p className="text-slate-400 text-sm mt-1">{item.description}</p>}
-                  <div className="flex flex-wrap gap-3 text-xs text-slate-500 mt-2">
-                    {contact && <span>العميل: {contact.firstName} {contact.lastName}</span>}
-                    {deal && <span>الصفقة: {deal.title}</span>}
-                    {item.scheduledAt && <span>الموعد: {new Date(item.scheduledAt).toLocaleString('ar-SA')}</span>}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  {!item.completedAt && (
-                    <button onClick={() => markCompleted(item)} className="p-2 rounded-lg hover:bg-emerald-500/10 text-emerald-400" title="إكمال">
-                      <CheckCircle2 className="h-4 w-4" />
+                  <div className="flex items-center gap-2 shrink-0">
+                    {!item.completedAt && (
+                      <button onClick={() => markCompleted(item)} className="p-2 rounded-lg hover:bg-emerald-500/10 text-emerald-400" title="إكمال">
+                        <CheckCircle2 className="h-4 w-4" />
+                      </button>
+                    )}
+                    <button onClick={() => openEdit(item)} className="p-2 rounded-lg hover:bg-primary-500/10 text-primary-400" title="تعديل">
+                      <Pencil className="h-4 w-4" />
                     </button>
-                  )}
-                  <button onClick={() => openEdit(item)} className="p-2 rounded-lg hover:bg-primary-500/10 text-primary-400" title="تعديل">
-                    <Pencil className="h-4 w-4" />
-                  </button>
-                  <button onClick={() => remove(item.id)} className="p-2 rounded-lg hover:bg-red-500/10 text-red-400" title="حذف">
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                    <button onClick={() => remove(item.id)} className="p-2 rounded-lg hover:bg-red-500/10 text-red-400" title="حذف">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center justify-between pt-2">
+            <p className="text-sm text-slate-400">
+              صفحة {page} من {totalPages} — إجمالي {total}
+            </p>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" disabled={page <= 1} onClick={() => setPage(page - 1)}>السابق</Button>
+              <Button variant="ghost" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>التالي</Button>
+            </div>
+          </div>
+        </>
       )}
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editing ? 'تعديل النشاط' : 'نشاط جديد'} size="lg">
