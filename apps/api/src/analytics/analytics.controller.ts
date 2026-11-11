@@ -12,11 +12,6 @@ export class AnalyticsController {
     private alertsService: AlertsService,
   ) {}
 
-  @Get('public-summary')
-  async getPublicSummary() {
-    return this.service.getDashboardStats(undefined, 'SUPER_ADMIN');
-  }
-
   @Get('dashboard')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
