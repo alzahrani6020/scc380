@@ -11,13 +11,6 @@ export interface TenantRequest extends Request {
 @Injectable()
 export class TenantMiddleware implements NestMiddleware {
   async use(req: TenantRequest, res: Response, next: NextFunction) {
-    // Super Admin bypass - no tenant restrictions
-    if (req.user?.role === 'SUPER_ADMIN') {
-      req.tenantSlug = 'all';
-      req.tenantId = undefined;
-      return next();
-    }
-
     const explicitTenantSlug = req.headers['x-tenant-slug'] as string | undefined;
     const hostname = (req.hostname || '').toLowerCase();
     const isInfrastructureHost =

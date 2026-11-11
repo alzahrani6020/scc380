@@ -1,11 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { getTenantId } from '@/lib/auth';
+import { getToken } from '@/lib/auth';
 
 interface UseSocketReturn {
   socket: Socket | null;
   connected: boolean;
   notifications: any[];
+}
+
+function getSocketBaseUrl() {
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+  return apiUrl.replace(/\/api\/?$/, '').replace(/\/$/, '');
 }
 
 export function useSocket(): UseSocketReturn {
@@ -14,22 +19,27 @@ export function useSocket(): UseSocketReturn {
   const [notifications, setNotifications] = useState<any[]>([]);
 
   useEffect(() => {
-    const socket = io('http://localhost:3001/notifications');
+    const token = getToken();
+    if (!token) return;
+
+    const socket = io(`${getSocketBaseUrl()}/notifications`, {
+      auth: { token },
+      transports: ['websocket', 'polling'],
+    });
     socketRef.current = socket;
 
-    socket.on('connect', () => {
-      setConnected(true);
-      const tenantId = getTenantId();
-      if (tenantId) socket.emit('join-tenant', tenantId);
-    });
-
+    socket.on('connect', () => setConnected(true));
     socket.on('disconnect', () => setConnected(false));
+    socket.on('connect_error', () => setConnected(false));
 
     socket.on('notification', (data) => {
       setNotifications((prev) => [data, ...prev]);
     });
 
-    return () => { socket.disconnect(); };
+    return () => {
+      socket.disconnect();
+      socketRef.current = null;
+    };
   }, []);
 
   return { socket: socketRef.current, connected, notifications };

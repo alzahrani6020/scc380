@@ -8,12 +8,14 @@ export const prisma = globalForPrisma.prisma || new PrismaClient({
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
 
-// Tenant-aware query helpers
-export function withTenant(where: Record<string, any>, tenantId?: string) {
-  if (!tenantId) return where;
-  return { ...where, tenantId };
+const NO_TENANT_MATCH = '__SCC_TENANT_CONTEXT_REQUIRED__';
+
+// Tenant-aware query helpers.
+// Missing tenant context must never broaden a query to all tenants.
+export function withTenant(where: Record<string, any>, tenantId?: string | null): Record<string, any> {
+  return { ...where, tenantId: tenantId || NO_TENANT_MATCH };
 }
 
-export function tenantWhere(tenantId?: string) {
-  return tenantId ? { tenantId } : {};
+export function tenantWhere(tenantId?: string | null): Record<string, any> {
+  return { tenantId: tenantId || NO_TENANT_MATCH };
 }

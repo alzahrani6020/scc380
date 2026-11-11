@@ -1,8 +1,8 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
-import { prisma } from '@scc/database';
+import { validateAccessSessionPayload } from '../access-session';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -18,63 +18,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  async validate(payload: any) {
-    if (payload?.type !== 'access') {
-      throw new UnauthorizedException('Invalid token type');
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { id: payload.sub },
-      select: {
-        id: true,
-        email: true,
-        role: true,
-        status: true,
-        tenantId: true,
-        tenant: { select: { slug: true, status: true } },
-      },
-    });
-
-    if (!user || user.status !== 'ACTIVE') {
-      throw new UnauthorizedException('Account is not active');
-    }
-    if (user.tenant && user.tenant.status !== 'ACTIVE') {
-      throw new UnauthorizedException('Tenant is not active');
-    }
-    if (user.role !== 'SUPER_ADMIN' && !user.tenantId) {
-      throw new UnauthorizedException('Tenant context is required');
-    }
-
-    if (!payload?.sid) {
-      throw new UnauthorizedException('Session is required');
-    }
-
-    const session = await prisma.session.findUnique({
-      where: { id: payload.sid },
-      select: {
-        userId: true,
-        tenantId: true,
-        revokedAt: true,
-        expiresAt: true,
-      },
-    });
-    if (
-      !session ||
-      session.userId !== user.id ||
-      session.revokedAt ||
-      session.expiresAt <= new Date() ||
-      (session.tenantId || null) !== (user.tenantId || null)
-    ) {
-      throw new UnauthorizedException('Session is not active');
-    }
-
-    return {
-      id: user.id,
-      userId: user.id,
-      email: user.email,
-      role: user.role,
-      tenantId: user.tenantId,
-      tenantSlug: user.tenant?.slug,
-    };
+  validate(payload: any) {
+    return validateAccessSessionPayload(payload);
   }
 }
