@@ -45,6 +45,12 @@ export class CreateContactDto {
   @IsOptional()
   @Transform(emptyToUndefined)
   @IsString()
+  @MaxLength(50)
+  companyId?: string;
+
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsString()
   @MaxLength(100)
   jobTitle?: string;
 
