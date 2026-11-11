@@ -1,4 +1,4 @@
-import { Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { prisma, withTenant } from '@scc/database';
 import { CreateContactDto } from './dto/create-contact.dto';
@@ -12,9 +12,6 @@ export interface ContactListQuery {
   status?: string;
 }
 
-// Only fields the CRM form submits / the schema exposes to clients. Ownership
-// and system fields (id, createdAt, updatedAt) are never taken from the client;
-// tenantId is accepted but gated by role in create/update below.
 const CONTACT_PAYLOAD_FIELDS = [
   'firstName',
   'lastName',
@@ -32,7 +29,6 @@ const CONTACT_PAYLOAD_FIELDS = [
   'country',
   'type',
   'status',
-  'tenantId',
 ] as const;
 
 function pickContactPayload(source: unknown): Record<string, unknown> {
@@ -48,17 +44,20 @@ function pickContactPayload(source: unknown): Record<string, unknown> {
 export class ContactsService {
   private readonly db: PrismaClient;
 
-  // Optional explicit token keeps Nest from trying to resolve the type-only
-  // PrismaClient metadata as Function, while still allowing tests to inject
-  // an in-memory fake by constructing ContactsService directly.
   constructor(@Optional() @Inject('CONTACTS_DB') db?: PrismaClient) {
     this.db = db ?? prisma;
   }
 
-  async findAll(tenantId: string | undefined, userRole: string, filters: ContactListQuery = {}) {
+  private requireTenantId(tenantId: string | undefined): string {
+    if (!tenantId) throw new BadRequestException('Tenant context is required');
+    return tenantId;
+  }
+
+  async findAll(tenantId: string | undefined, _userRole: string, filters: ContactListQuery = {}) {
+    const scopedTenantId = this.requireTenantId(tenantId);
     const page = Math.max(1, Math.floor(filters.page ?? 1) || 1);
     const limit = Math.min(100, Math.max(1, Math.floor(filters.limit ?? 25) || 25));
-    const where = userRole === 'SUPER_ADMIN' ? {} : withTenant({}, tenantId);
+    const where = withTenant({}, scopedTenantId);
     if (filters.type) where.type = filters.type;
     if (filters.status) where.status = filters.status;
     if (filters.search) {
@@ -81,35 +80,32 @@ export class ContactsService {
     return { data, count, page, limit };
   }
 
-  async findOne(tenantId: string | undefined, userRole: string, id: string) {
-    const where = userRole === 'SUPER_ADMIN' ? { id } : withTenant({ id }, tenantId);
-    const contact = await this.db.contact.findFirst({ where });
+  async findOne(tenantId: string | undefined, _userRole: string, id: string) {
+    const scopedTenantId = this.requireTenantId(tenantId);
+    const contact = await this.db.contact.findFirst({ where: withTenant({ id }, scopedTenantId) });
     if (!contact) throw new NotFoundException('Contact not found');
     return contact;
   }
 
-  async create(tenantId: string | undefined, userRole: string, dto: CreateContactDto) {
-    if (userRole === 'SUPER_ADMIN' && !dto.tenantId) {
-      throw new NotFoundException('Super Admin must specify tenantId when creating');
-    }
+  async create(tenantId: string | undefined, _userRole: string, dto: CreateContactDto) {
+    const scopedTenantId = this.requireTenantId(tenantId);
     const data = pickContactPayload(dto);
-    data.tenantId = userRole === 'SUPER_ADMIN' ? dto.tenantId : tenantId;
+    data.tenantId = scopedTenantId;
     return this.db.contact.create({ data: data as Prisma.ContactUncheckedCreateInput });
   }
 
-  async update(tenantId: string | undefined, userRole: string, id: string, dto: UpdateContactDto) {
-    const where = userRole === 'SUPER_ADMIN' ? { id } : withTenant({ id }, tenantId);
+  async update(tenantId: string | undefined, _userRole: string, id: string, dto: UpdateContactDto) {
+    const scopedTenantId = this.requireTenantId(tenantId);
+    const where = withTenant({ id }, scopedTenantId);
     const contact = await this.db.contact.findFirst({ where });
     if (!contact) throw new NotFoundException('Contact not found');
     const data = pickContactPayload(dto as Record<string, unknown>);
-    // Non-SUPER_ADMIN can never move a contact across tenants.
-    if (userRole !== 'SUPER_ADMIN') delete data.tenantId;
     return this.db.contact.update({ where: { id }, data: data as Prisma.ContactUpdateInput });
   }
 
-  async delete(tenantId: string | undefined, userRole: string, id: string) {
-    const where = userRole === 'SUPER_ADMIN' ? { id } : withTenant({ id }, tenantId);
-    const contact = await this.db.contact.findFirst({ where });
+  async delete(tenantId: string | undefined, _userRole: string, id: string) {
+    const scopedTenantId = this.requireTenantId(tenantId);
+    const contact = await this.db.contact.findFirst({ where: withTenant({ id }, scopedTenantId) });
     if (!contact) throw new NotFoundException('Contact not found');
     return this.db.contact.delete({ where: { id } });
   }

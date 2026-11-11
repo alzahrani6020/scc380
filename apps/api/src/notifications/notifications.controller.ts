@@ -1,39 +1,59 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param, Query, UseGuards, Req } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PermissionsGuard, RequirePermissions } from '../auth/guards/permissions.guard';
 import { NotificationsService } from './notifications.service';
-import { IsString, IsOptional } from 'class-validator';
+import { IsString, IsOptional, MaxLength } from 'class-validator';
+import { ListNotificationsQueryDto } from './dto/list-notifications-query.dto';
 
 class CreateNotificationDto {
-  @IsString() userId: string;
-  @IsString() title: string;
-  @IsString() body: string;
-  @IsString() @IsOptional() type?: string;
-  @IsString() @IsOptional() channel?: string;
+  @IsString() @MaxLength(50) userId: string;
+  @IsString() @MaxLength(150) title: string;
+  @IsString() @MaxLength(2000) body: string;
+  @IsString() @MaxLength(50) @IsOptional() type?: string;
+  @IsString() @MaxLength(30) @IsOptional() channel?: string;
 }
 
 @ApiTags('Notifications')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('notifications')
 export class NotificationsController {
   constructor(private readonly service: NotificationsService) {}
 
   @Get()
-  findAll(@Req() req: any, @Query() query: any) { return this.service.findAll(req, query); }
+  @RequirePermissions('notifications:read')
+  findAll(@Req() req: any, @Query() query: ListNotificationsQueryDto) {
+    return this.service.findAll(req, query);
+  }
 
   @Get('unread-count')
-  getUnreadCount(@Req() req: any) { return this.service.getUnreadCount(req); }
+  @RequirePermissions('notifications:read')
+  getUnreadCount(@Req() req: any) {
+    return this.service.getUnreadCount(req);
+  }
 
   @Post()
-  create(@Req() req: any, @Body() dto: CreateNotificationDto) { return this.service.create(req, dto); }
+  @RequirePermissions('notifications:admin')
+  create(@Req() req: any, @Body() dto: CreateNotificationDto) {
+    return this.service.create(req, dto);
+  }
 
   @Post(':id/read')
-  markAsRead(@Req() req: any, @Param('id') id: string) { return this.service.markAsRead(req, id); }
+  @RequirePermissions('notifications:read')
+  markAsRead(@Req() req: any, @Param('id') id: string) {
+    return this.service.markAsRead(req, id);
+  }
 
   @Post('read-all')
-  markAllAsRead(@Req() req: any) { return this.service.markAllAsRead(req); }
+  @RequirePermissions('notifications:read')
+  markAllAsRead(@Req() req: any) {
+    return this.service.markAllAsRead(req);
+  }
 
   @Delete(':id')
-  remove(@Req() req: any, @Param('id') id: string) { return this.service.remove(req, id); }
+  @RequirePermissions('notifications:read')
+  remove(@Req() req: any, @Param('id') id: string) {
+    return this.service.remove(req, id);
+  }
 }

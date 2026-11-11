@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { ContactsService } from '../src/crm/contacts.service';
 import { deriveAuditAction } from '../src/common/interceptors/audit-log.interceptor';
@@ -214,9 +214,14 @@ test('delete of another tenant contact throws NotFound (no cross-tenant delete)'
   assert.equal(db.rows.length, before);
 });
 
-test('SUPER_ADMIN list is not tenant-scoped (existing behavior preserved)', async () => {
-  const res = await service.findAll(undefined, 'SUPER_ADMIN', {});
-  assert.equal(res.count, 30);
+test('SUPER_ADMIN requires explicit tenant scope for contacts', async () => {
+  await assert.rejects(
+    () => service.findAll(undefined, 'SUPER_ADMIN', {}),
+    (err: any) => err instanceof BadRequestException && err.message === 'Tenant context is required',
+  );
+  const res = await service.findAll('t2', 'SUPER_ADMIN', {});
+  assert.equal(res.count, 15);
+  assert.ok(res.data.every((c: any) => c.tenantId === 't2'));
 });
 
 // ---------- tenantId / system-field immutability ----------
@@ -253,30 +258,21 @@ test('client-supplied id/createdAt/updatedAt are never written on create', async
 
 // ---------- SUPER_ADMIN create: A/B proven behavior (phase 7) ----------
 
-test('SUPER_ADMIN without tenantId throws NotFoundException with the existing message', async () => {
+test('SUPER_ADMIN create requires explicit tenant context from the request', async () => {
   await assert.rejects(
     () => service.create(undefined, 'SUPER_ADMIN', { firstName: 'X', lastName: 'Y' } as any),
-    (err: any) =>
-      err instanceof NotFoundException &&
-      err.getStatus() === 404 &&
-      err.message === 'Super Admin must specify tenantId when creating',
+    (err: any) => err instanceof BadRequestException && err.message === 'Tenant context is required',
   );
-});
-
-test('SUPER_ADMIN with tenantId creates the contact under that tenant', async () => {
-  const row = await service.create(undefined, 'SUPER_ADMIN', {
-    firstName: 'X',
-    lastName: 'Y',
-    tenantId: 't9',
-  } as any);
+  const row = await service.create('t9', 'SUPER_ADMIN', { firstName: 'X', lastName: 'Y' } as any);
   assert.equal(row.tenantId, 't9');
-  assert.equal(db.rows.find((r) => r.id === row.id)!.tenantId, 't9');
 });
 
-test('SUPER_ADMIN can still reassign a contact via update (current behavior preserved)', async () => {
-  const anyRow = db.rows[0];
-  await service.update(undefined, 'SUPER_ADMIN', anyRow.id, { tenantId: 't7' } as any);
-  assert.equal(db.rows.find((r) => r.id === anyRow.id)!.tenantId, 't7');
+test('tenantId cannot be reassigned through contact update even by SUPER_ADMIN', async () => {
+  const anyRow = db.rows.find((r) => r.tenantId === 't1')!;
+  await service.update('t1', 'SUPER_ADMIN', anyRow.id, { tenantId: 't7', firstName: 'Safe' } as any);
+  const after = db.rows.find((r) => r.id === anyRow.id)!;
+  assert.equal(after.tenantId, 't1');
+  assert.equal(after.firstName, 'Safe');
 });
 
 // ---------- audit action labels (phase 13) ----------
@@ -286,6 +282,7 @@ test('deriveAuditAction maps contacts mutations to CONTACT_* labels', () => {
   assert.equal(deriveAuditAction('PATCH', '/api/crm/contacts/c1'), 'CONTACT_UPDATED');
   assert.equal(deriveAuditAction('PUT', '/api/crm/contacts/c1'), 'CONTACT_UPDATED');
   assert.equal(deriveAuditAction('DELETE', '/api/crm/contacts/c1'), 'CONTACT_DELETED');
-  assert.equal(deriveAuditAction('POST', '/api/crm/deals'), 'POST'); // other routes unchanged
-  assert.equal(deriveAuditAction('PATCH', '/api/crm/deals/d1'), 'PATCH');
+  assert.equal(deriveAuditAction('POST', '/api/crm/deals'), 'DEAL_CREATED');
+  assert.equal(deriveAuditAction('PATCH', '/api/crm/deals/d1'), 'DEAL_UPDATED');
+  assert.equal(deriveAuditAction('DELETE', '/api/crm/activities/a1'), 'ACTIVITY_DELETED');
 });

@@ -5,7 +5,6 @@ import { IsEmail, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class
 export const CONTACT_TYPES = ['CUSTOMER', 'LEAD', 'PROSPECT', 'PARTNER', 'SUPPLIER', 'VENDOR'] as const;
 export const CONTACT_STATUSES = ['ACTIVE', 'INACTIVE', 'CONVERTED', 'BLACKLISTED'] as const;
 
-// The form submits '' for untouched optional fields — treat empty string as absent.
 const emptyToUndefined = ({ value }: { value: unknown }) => (value === '' ? undefined : value);
 
 export class CreateContactDto {
@@ -98,11 +97,4 @@ export class CreateContactDto {
   @IsOptional()
   @IsIn(CONTACT_STATUSES as unknown as string[])
   status?: string;
-
-  // Only honored by the service for SUPER_ADMIN; every other role is forced
-  // onto their own tenantId server-side. No id/createdAt/updatedAt here by design.
-  @IsOptional()
-  @IsString()
-  @MaxLength(50)
-  tenantId?: string;
 }

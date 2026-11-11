@@ -1,59 +1,72 @@
 import { Injectable, NestInterceptor, ExecutionContext, CallHandler } from '@nestjs/common';
-import { Observable } from 'rxjs';
-import { tap } from 'rxjs/operators';
-import { prisma } from '@scc/database';
+import { Observable, from } from 'rxjs';
+import { switchMap, tap } from 'rxjs/operators';
+import { prisma, tenantWhere } from '@scc/database';
 
 const SENSITIVE_FIELDS = new Set([
-  'password',
-  'passwordhash',
-  'accesstoken',
-  'refreshtoken',
-  'resettoken',
-  'token',
-  'authorization',
-  'twofactorsecret',
-  'twofactorbackupcodes',
-  'backupcodes',
-  'apikey',
-  'apikeys',
-  'secret',
-  'otp',
-  'csid',
-  'privatekey',
-  'cookie',
-  'cookies',
+  'password', 'passwordhash', 'accesstoken', 'refreshtoken', 'resettoken',
+  'token', 'authorization', 'twofactorsecret', 'twofactorbackupcodes',
+  'backupcodes', 'apikey', 'apikeys', 'secret', 'otp', 'csid',
+  'privatekey', 'cookie', 'cookies',
 ]);
 
-function sanitizeBody(body: any): any {
-  if (!body || typeof body !== 'object') return body;
-  const sanitized: any = Array.isArray(body) ? [...body] : { ...body };
-  for (const key of Object.keys(sanitized)) {
-    if (SENSITIVE_FIELDS.has(key.toLowerCase())) {
-      sanitized[key] = '***REDACTED***';
-    } else if (typeof sanitized[key] === 'object') {
-      sanitized[key] = sanitizeBody(sanitized[key]);
-    }
+function sanitizeBody(value: any): any {
+  if (value === null || value === undefined) return value;
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) return value.map(sanitizeBody);
+  if (typeof value !== 'object') return value;
+
+  if (typeof value.toJSON === 'function' && value.constructor?.name !== 'Object') {
+    return sanitizeBody(value.toJSON());
+  }
+
+  const sanitized: Record<string, any> = {};
+  for (const [key, child] of Object.entries(value)) {
+    sanitized[key] = SENSITIVE_FIELDS.has(key.toLowerCase()) ? '***REDACTED***' : sanitizeBody(child);
   }
   return sanitized;
 }
 
 function getEntityType(path: string): string {
+  if (/\/crm\/contacts\b/.test(path)) return 'CONTACT';
+  if (/\/crm\/deals\b/.test(path)) return 'DEAL';
+  if (/\/crm\/activities\b/.test(path)) return 'ACTIVITY';
+  if (/\/notifications\b/.test(path)) return 'NOTIFICATION';
+
   const segments = path.split('/').filter(Boolean);
   const idx = segments.findIndex((s) =>
-    ['auth', 'zatca', 'erp', 'crm', 'hr', 'finance', 'fleet', 'inventory', 'analytics', 'government', 'projects', 'notifications', 'alerts', 'templates', 'users', 'settings', 'billing', 'compliance'].includes(s),
+    ['auth', 'zatca', 'erp', 'crm', 'hr', 'finance', 'fleet', 'inventory', 'analytics', 'government', 'projects', 'alerts', 'templates', 'users', 'settings', 'billing', 'compliance'].includes(s),
   );
   return idx >= 0 ? segments[idx].toUpperCase() : 'UNKNOWN';
 }
 
-// Enrich well-known entity mutations with specific action labels; everything
-// else keeps the raw HTTP method as the action (existing behavior).
 export function deriveAuditAction(method: string, path: string): string {
-  if (/\/crm\/contacts\b/.test(path)) {
-    if (method === 'POST') return 'CONTACT_CREATED';
-    if (method === 'PATCH' || method === 'PUT') return 'CONTACT_UPDATED';
-    if (method === 'DELETE') return 'CONTACT_DELETED';
-  }
+  const verbs: Record<string, string> = { POST: 'CREATED', PATCH: 'UPDATED', PUT: 'UPDATED', DELETE: 'DELETED' };
+  const suffix = verbs[method];
+  if (!suffix) return method;
+  if (/\/crm\/contacts\b/.test(path)) return `CONTACT_${suffix}`;
+  if (/\/crm\/deals\b/.test(path)) return `DEAL_${suffix}`;
+  if (/\/crm\/activities\b/.test(path)) return `ACTIVITY_${suffix}`;
+  if (/\/notifications\b/.test(path)) return `NOTIFICATION_${suffix}`;
   return method;
+}
+
+async function loadPreviousValue(request: any, method: string, path: string) {
+  if (!['PATCH', 'PUT', 'DELETE'].includes(method) || !request.params?.id) return null;
+
+  const tenantId =
+    request.user?.role === 'SUPER_ADMIN' ? request.tenantId : request.user?.tenantId;
+  const where = { id: request.params.id, ...tenantWhere(tenantId) };
+
+  if (/\/crm\/contacts\b/.test(path)) return prisma.contact.findFirst({ where });
+  if (/\/crm\/deals\b/.test(path)) return prisma.deal.findFirst({ where });
+  if (/\/crm\/activities\b/.test(path)) return prisma.activity.findFirst({ where });
+  if (/\/notifications\b/.test(path)) {
+    const notificationWhere: any = { ...where };
+    if (request.user?.role !== 'SUPER_ADMIN') notificationWhere.userId = request.user?.userId;
+    return prisma.notification.findFirst({ where: notificationWhere });
+  }
+  return null;
 }
 
 @Injectable()
@@ -62,8 +75,10 @@ export class AuditLogInterceptor implements NestInterceptor {
     const request = context.switchToHttp().getRequest();
     const response = context.switchToHttp().getResponse();
     const user = request.user;
-    const tenantId = user?.tenantId || null;
-    const userId = user?.userId || user?.sub || null;
+    const tenantId = user?.role === 'SUPER_ADMIN'
+      ? request.tenantId || user?.tenantId || null
+      : user?.tenantId || null;
+    const userId = user?.userId || user?.sub || user?.id || null;
     const ipAddress = request.ip || request.headers['x-forwarded-for'] || request.connection?.remoteAddress;
     const userAgent = request.headers['user-agent'];
     const method = request.method;
@@ -71,55 +86,61 @@ export class AuditLogInterceptor implements NestInterceptor {
     const body = sanitizeBody(request.body);
     const entityType = getEntityType(path);
 
-    return next.handle().pipe(
-      tap({
-        next: async (data) => {
-          if (['GET', 'HEAD', 'OPTIONS'].includes(method)) return;
-          try {
-            await prisma.auditLog.create({
-              data: {
-                tenantId,
-                userId,
-                action: deriveAuditAction(method, path),
-                entityType,
-                entityId: request.params?.id || body?.id || null,
-                newValues: typeof data === 'object' ? sanitizeBody(data) : null,
-                ipAddress: typeof ipAddress === 'string' ? ipAddress : null,
-                userAgent: typeof userAgent === 'string' ? userAgent : null,
-                httpMethod: method,
-                httpPath: path,
-                requestBody: Object.keys(body || {}).length > 0 ? body : null,
-                responseStatus: response.statusCode,
-              },
-            });
-          } catch (e) {
-            console.error('Audit log failed:', e);
-          }
-        },
-        error: async (error) => {
-          if (['GET', 'HEAD', 'OPTIONS'].includes(method)) return;
-          try {
-            await prisma.auditLog.create({
-              data: {
-                tenantId,
-                userId,
-                action: `${deriveAuditAction(method, path)}_ERROR`,
-                entityType,
-                entityId: request.params?.id || body?.id || null,
-                oldValues: { error: error.message, statusCode: error.status },
-                ipAddress: typeof ipAddress === 'string' ? ipAddress : null,
-                userAgent: typeof userAgent === 'string' ? userAgent : null,
-                httpMethod: method,
-                httpPath: path,
-                requestBody: Object.keys(body || {}).length > 0 ? body : null,
-                responseStatus: error.status || 500,
-              },
-            });
-          } catch (e) {
-            console.error('Audit log failed:', e);
-          }
-        },
-      }),
+    return from(loadPreviousValue(request, method, path)).pipe(
+      switchMap((previous) =>
+        next.handle().pipe(
+          tap({
+            next: async (data) => {
+              if (['GET', 'HEAD', 'OPTIONS'].includes(method)) return;
+              try {
+                await prisma.auditLog.create({
+                  data: {
+                    tenantId,
+                    userId,
+                    action: deriveAuditAction(method, path),
+                    entityType,
+                    entityId: request.params?.id || data?.id || body?.id || null,
+                    oldValues: previous ? sanitizeBody(previous) : null,
+                    newValues: typeof data === 'object' ? sanitizeBody(data) : null,
+                    ipAddress: typeof ipAddress === 'string' ? ipAddress : null,
+                    userAgent: typeof userAgent === 'string' ? userAgent : null,
+                    httpMethod: method,
+                    httpPath: path,
+                    requestBody: Object.keys(body || {}).length > 0 ? body : null,
+                    responseStatus: response.statusCode,
+                  },
+                });
+              } catch (e) {
+                console.error('Audit log failed:', e);
+              }
+            },
+            error: async (error) => {
+              if (['GET', 'HEAD', 'OPTIONS'].includes(method)) return;
+              try {
+                await prisma.auditLog.create({
+                  data: {
+                    tenantId,
+                    userId,
+                    action: `${deriveAuditAction(method, path)}_ERROR`,
+                    entityType,
+                    entityId: request.params?.id || body?.id || null,
+                    oldValues: previous ? sanitizeBody(previous) : { error: error.message, statusCode: error.status },
+                    newValues: null,
+                    ipAddress: typeof ipAddress === 'string' ? ipAddress : null,
+                    userAgent: typeof userAgent === 'string' ? userAgent : null,
+                    httpMethod: method,
+                    httpPath: path,
+                    requestBody: Object.keys(body || {}).length > 0 ? body : null,
+                    responseStatus: error.status || 500,
+                  },
+                });
+              } catch (e) {
+                console.error('Audit log failed:', e);
+              }
+            },
+          }),
+        ),
+      ),
     );
   }
 }

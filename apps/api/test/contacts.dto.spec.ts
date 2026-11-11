@@ -68,9 +68,11 @@ test('UI-shaped edit payload (DTO fields only) passes with the production pipe',
   assert.equal(out.email, undefined);
 });
 
-test('tenantId stays allowed in the DTO but the service gates it by role', async () => {
-  const out = (await body({ firstName: 'A', lastName: 'B', tenantId: 't9' }, CreateContactDto)) as CreateContactDto;
-  assert.equal(out.tenantId, 't9'); // honored only for SUPER_ADMIN (service-level gate, see service spec)
+test('tenantId is rejected from contact create payloads', async () => {
+  await assert.rejects(
+    () => body({ firstName: 'A', lastName: 'B', tenantId: 't9' }, CreateContactDto),
+    BadRequestException,
+  );
 });
 
 test('missing required firstName/lastName is rejected', async () => {
@@ -98,12 +100,10 @@ test('invalid type/status enums are rejected', async () => {
   );
 });
 
-test('update DTO accepts partial payloads but rejects non-whitelisted fields', async () => {
+test('update DTO accepts partial payloads but rejects ownership/system fields', async () => {
   const out = (await body({ firstName: 'جديد' }, UpdateContactDto)) as UpdateContactDto;
   assert.equal(out.firstName, 'جديد');
-  // tenantId is whitelisted (service gates it by role); id is not — production rejects it
-  const withTenant = (await body({ tenantId: 't1' }, UpdateContactDto)) as UpdateContactDto;
-  assert.equal(withTenant.tenantId, 't1');
+  await assert.rejects(() => body({ tenantId: 't1' }, UpdateContactDto), BadRequestException);
   await assert.rejects(() => body({ firstName: 'جديد', id: 'evil' }, UpdateContactDto), BadRequestException);
 });
 
