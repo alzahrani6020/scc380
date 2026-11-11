@@ -37,7 +37,9 @@ const navigation: NavEntry[] = [
   { header: 'العملاء (CRM)' },
   { name: 'نظرة عامة', href: '/dashboard/crm', icon: Gauge },
   { name: 'جهات الاتصال', href: '/dashboard/crm/contacts', icon: Contact },
+  { name: 'الشركات', href: '/dashboard/crm/companies', icon: Building2 },
   { name: 'الصفقات', href: '/dashboard/crm/deals', icon: Handshake },
+  { name: 'مسارات المبيعات', href: '/dashboard/crm/pipelines', icon: GitBranch },
   { name: 'الأنشطة', href: '/dashboard/crm/activities', icon: Activity },
   { name: 'المشاريع', href: '/dashboard/projects', icon: FolderKanban },
 
