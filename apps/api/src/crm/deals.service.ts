@@ -96,9 +96,10 @@ export class DealsService {
     if (dto.pipelineStageId) {
       const stage = await prisma.pipelineStage.findFirst({
         where: { id: dto.pipelineStageId, ...tenantWhere(tenantId) },
-        select: { order: true, probability: true, isWon: true, isLost: true },
+        select: { pipelineId: true, order: true, probability: true, isWon: true, isLost: true },
       });
       if (stage) {
+        data.pipelineId = dto.pipelineId || stage.pipelineId;
         data.stageOrder = stage.order;
         if (dto.probability === undefined) data.probability = stage.probability;
         if (stage.isWon) data.stage = 'CLOSED_WON';
@@ -114,15 +115,24 @@ export class DealsService {
     const existing = await prisma.deal.findFirst({ where });
     if (!existing) throw new NotFoundException('Deal not found');
     await this.assertRefsInTenant(tenantId, dto);
-    const data = { ...dto };
+    const data: any = { ...dto };
+    if (dto.pipelineId && dto.pipelineId !== existing.pipelineId && !dto.pipelineStageId) {
+      data.pipelineStageId = null;
+      data.stageOrder = 0;
+    }
     if (dto.expectedClose) data.expectedClose = new Date(dto.expectedClose);
     if (dto.actualClose) data.actualClose = new Date(dto.actualClose);
     if (dto.pipelineStageId) {
       const stage = await prisma.pipelineStage.findFirst({
         where: { id: dto.pipelineStageId, ...tenantWhere(tenantId) },
-        select: { order: true, probability: true, isWon: true, isLost: true },
+        select: { pipelineId: true, order: true, probability: true, isWon: true, isLost: true },
       });
       if (stage) {
+        const effectivePipelineId = dto.pipelineId || existing.pipelineId || stage.pipelineId;
+        if (effectivePipelineId !== stage.pipelineId) {
+          throw new BadRequestException('Pipeline stage does not belong to the selected pipeline');
+        }
+        data.pipelineId = stage.pipelineId;
         data.stageOrder = stage.order;
         if (dto.probability === undefined) data.probability = stage.probability;
         if (stage.isWon) data.stage = 'CLOSED_WON';
