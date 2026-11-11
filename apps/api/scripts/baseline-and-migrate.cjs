@@ -2,8 +2,6 @@ const { execFileSync } = require('node:child_process');
 const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
-const SCHEMA = 'packages/database/prisma/schema.prisma';
-
 const historical = [
   '20260514013541_init',
   '20260514081656_add_tenant_id_to_all_models',
@@ -11,7 +9,7 @@ const historical = [
 ];
 
 function runPrisma(args) {
-  execFileSync('pnpm', ['exec', 'prisma', ...args, '--schema', SCHEMA], {
+  execFileSync('pnpm', ['--dir', 'packages/database', 'exec', 'prisma', ...args, '--schema', 'prisma/schema.prisma'], {
     cwd: '/app',
     stdio: 'inherit',
     env: process.env,
