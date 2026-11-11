@@ -18,7 +18,7 @@ function runPrisma(args) {
 
 async function tableExists(name) {
   const rows = await prisma.$queryRawUnsafe(
-    'SELECT to_regclass($1) AS name',
+    'SELECT to_regclass($1)::text AS name',
     `public.${name}`,
   );
   return Boolean(rows?.[0]?.name);
