@@ -134,7 +134,10 @@ export default function CrmPage() {
     setFormLoading(true);
     try {
       const payload = { ...formData };
-      if (payload.companyId === '') delete payload.companyId;
+      if (payload.companyId === '') {
+        if (editingContact) payload.companyId = null;
+        else delete payload.companyId;
+      }
       if (editingContact) {
         await api.patch(`/crm/contacts/${editingContact.id}`, payload);
       } else {
@@ -285,7 +288,7 @@ export default function CrmPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <h3 className="font-bold text-white truncate">{contact.firstName} {contact.lastName}</h3>
-                    <p className="text-slate-400 text-sm">{contact.companyName || '—'}</p>
+                    <p className="text-slate-400 text-sm">{companies.find((x) => x.id === contact.companyId)?.name || contact.companyName || '—'}</p>
                   </div>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button onClick={() => openEdit(contact)} className="p-1.5 rounded-lg hover:bg-primary-500/10 text-primary-400"><Pencil className="h-4 w-4" /></button>
