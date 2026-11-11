@@ -1,0 +1,56 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
+import { prisma } from '@scc/database';
+
+@Injectable()
+export class ActivityReminderService {
+  private readonly logger = new Logger(ActivityReminderService.name);
+
+  @Cron('0 * * * * *')
+  async deliverDueReminders() {
+    const due = await prisma.activity.findMany({
+      where: {
+        reminded: false,
+        remindAt: { lte: new Date() },
+        assignedToId: { not: null },
+      },
+      select: {
+        id: true,
+        tenantId: true,
+        assignedToId: true,
+        subject: true,
+        scheduledAt: true,
+      },
+      take: 100,
+      orderBy: { remindAt: 'asc' },
+    });
+
+    for (const activity of due) {
+      try {
+        await prisma.$transaction(async (tx) => {
+          const claimed = await tx.activity.updateMany({
+            where: { id: activity.id, reminded: false },
+            data: { reminded: true },
+          });
+          if (claimed.count !== 1 || !activity.assignedToId) return;
+
+          await tx.notification.create({
+            data: {
+              tenantId: activity.tenantId,
+              userId: activity.assignedToId,
+              title: 'تذكير بنشاط CRM',
+              body: activity.scheduledAt
+                ? `${activity.subject} — ${activity.scheduledAt.toISOString()}`
+                : activity.subject,
+              type: 'CRM_ACTIVITY_REMINDER',
+              channel: 'IN_APP',
+              status: 'PENDING',
+            },
+          });
+        });
+      } catch (error: any) {
+        this.logger.error(`CRM reminder failed for ${activity.id}: ${error?.message || error}`);
+      }
+    }
+  }
+}
