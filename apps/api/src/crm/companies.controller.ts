@@ -1,9 +1,17 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { IsBoolean, IsEmail, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsBoolean, IsBooleanString, IsEmail, IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard, RequirePermissions } from '../auth/guards/permissions.guard';
 import { CompaniesService } from './companies.service';
+
+class ListCompaniesQueryDto {
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) page: number = 1;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100) limit: number = 25;
+  @IsOptional() @IsString() @MaxLength(100) search?: string;
+  @IsOptional() @IsBooleanString() active?: string;
+}
 
 class CreateCompanyDto {
   @IsString() @MinLength(1) @MaxLength(150) name: string;
@@ -42,7 +50,7 @@ export class CompaniesController {
 
   @Get()
   @RequirePermissions('crm:read')
-  findAll(@Req() req: any, @Query() query: any) { return this.service.findAll(req, query); }
+  findAll(@Req() req: any, @Query() query: ListCompaniesQueryDto) { return this.service.findAll(req, query); }
 
   @Get(':id')
   @RequirePermissions('crm:read')
