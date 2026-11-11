@@ -61,7 +61,7 @@ export default function CrmOverviewPage() {
         api.get('/analytics/crm'),
         api.get('/crm/companies?limit=1'),
         api.get('/crm/pipelines'),
-        api.get('/crm/activities?limit=5'),
+        api.get('/crm/activities?limit=5&sort=recent'),
       ]);
 
       setDashboard(dashboardRes.data);
@@ -83,6 +83,17 @@ export default function CrmOverviewPage() {
   }, [load]);
 
   const stageRows = useMemo(() => {
+    const unified = Array.isArray(crmStats?.stageBreakdown) ? crmStats.stageBreakdown : [];
+    if (unified.length > 0) {
+      const max = Math.max(1, ...unified.map((row: any) => Number(row?.count || 0)));
+      return unified.map((row: any) => ({
+        key: row.key,
+        label: row.source === 'legacy' ? (stageLabels[row.label] || row.label || 'غير محدد') : row.label,
+        count: Number(row?.count || 0),
+        width: Math.max(4, Math.round((Number(row?.count || 0) / max) * 100)),
+      }));
+    }
+
     const rows = Array.isArray(crmStats?.byStage) ? crmStats.byStage : [];
     const max = Math.max(1, ...rows.map((row: any) => Number(row?._count?.id || 0)));
     return rows.map((row: any) => ({
