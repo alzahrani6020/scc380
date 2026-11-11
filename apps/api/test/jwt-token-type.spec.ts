@@ -119,13 +119,18 @@ test('2FA login UI accepts both TOTP and 8-character backup codes', () => {
 });
 
 
-test('tenantless non-super-admin users are rejected by JwtStrategy', () => {
-  const source = readFileSync(
+test('tenantless non-super-admin users are rejected by the shared access-session validator', () => {
+  const strategySource = readFileSync(
     join(process.cwd(), 'src/auth/strategies/jwt.strategy.ts'),
     'utf8',
   );
-  assert.match(source, /user\.role !== 'SUPER_ADMIN' && !user\.tenantId/);
-  assert.match(source, /Tenant context is required/);
+  const validatorSource = readFileSync(
+    join(process.cwd(), 'src/auth/access-session.ts'),
+    'utf8',
+  );
+  assert.match(strategySource, /validateAccessSessionPayload/);
+  assert.match(validatorSource, /user\.role !== 'SUPER_ADMIN' && !user\.tenantId/);
+  assert.match(validatorSource, /Tenant context is required/);
 });
 
 test('CORS allows the custom tenant and branch headers used by the web client', () => {
@@ -230,14 +235,19 @@ test('access tokens are bound to persisted session ids for immediate revocation'
     join(process.cwd(), 'src/auth/strategies/jwt.strategy.ts'),
     'utf8',
   );
+  const validatorSource = readFileSync(
+    join(process.cwd(), 'src/auth/access-session.ts'),
+    'utf8',
+  );
 
   assert.ok((authSource.match(/id:\s*tokens\.sessionKey/g) ?? []).length >= 3);
   assert.match(authSource, /sid:\s*sessionKey/);
   assert.match(authSource, /jti:\s*sessionKey/);
-  assert.match(strategySource, /where:\s*\{\s*id:\s*payload\.sid\s*\}/);
-  assert.match(strategySource, /session\.revokedAt/);
-  assert.match(strategySource, /session\.expiresAt <= new Date\(\)/);
-  assert.match(strategySource, /Session is not active/);
+  assert.match(strategySource, /validateAccessSessionPayload/);
+  assert.match(validatorSource, /where:\s*\{\s*id:\s*payload\.sid\s*\}/);
+  assert.match(validatorSource, /session\.revokedAt/);
+  assert.match(validatorSource, /session\.expiresAt <= new Date\(\)/);
+  assert.match(validatorSource, /Session is not active/);
 });
 
 test('sidebar logout revokes the refresh session before clearing local auth', () => {
