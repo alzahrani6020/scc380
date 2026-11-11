@@ -60,11 +60,13 @@ test('deal and activity DTOs use enum validation and probability bounds', () => 
   assert.match(activities, /@IsEnum\(ActivityType\)/);
 });
 
-test('activities list uses bounded pagination', () => {
-  const source = src('src/crm/activities.service.ts');
-  assert.match(source, /Math\.min\(100/);
-  assert.match(source, /skip:\s*\(page - 1\) \* limit/);
-  assert.match(source, /take:\s*limit/);
+test('activities list uses validated bounded pagination', () => {
+  const service = src('src/crm/activities.service.ts');
+  const queryDto = src('src/crm/dto/list-activities-query.dto.ts');
+  assert.match(queryDto, /@Max\(100\)/);
+  assert.match(queryDto, /@Min\(1\)/);
+  assert.match(service, /skip:\s*\(page - 1\) \* limit/);
+  assert.match(service, /take:\s*limit/);
 });
 
 test('analytics UI uses authenticated API and contains no production demo fallback', () => {
