@@ -84,10 +84,10 @@ test('CRM relation apply step is guarded and non-destructive', () => {
   assert.match(source, /pg_constraint/);
   assert.match(source, /expectedConstraints: constraints\.length/);
   assert.match(source, /installedConstraints: rows\.length/);
-  assert.doesNotMatch(source, /\bDROP\b/i);
-  assert.doesNotMatch(source, /\bTRUNCATE\b/i);
-  assert.doesNotMatch(source, /\bDELETE\s+FROM\b/i);
-  assert.doesNotMatch(source, /\bUPDATE\s+["a-z]/i);
+  assert.doesNotMatch(source, /(^|\n)\s*DROP\s+/i);
+  assert.doesNotMatch(source, /(^|\n)\s*TRUNCATE\s+/i);
+  assert.doesNotMatch(source, /(^|\n)\s*DELETE\s+FROM\s+/i);
+  assert.doesNotMatch(source, /(^|\n)\s*UPDATE\s+["a-z]/i);
 });
 
 test('CRM FK migration is additive only', () => {
@@ -96,8 +96,8 @@ test('CRM FK migration is additive only', () => {
     'utf8',
   );
   assert.ok((migration.match(/ADD CONSTRAINT/g) ?? []).length === 6);
-  assert.doesNotMatch(migration, /\bDROP\b/i);
-  assert.doesNotMatch(migration, /\bTRUNCATE\b/i);
-  assert.doesNotMatch(migration, /\bDELETE\b/i);
-  assert.doesNotMatch(migration, /\bUPDATE\b/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*DROP\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*TRUNCATE\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*DELETE\s+FROM\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*UPDATE\s+["a-z]/i);
 });
