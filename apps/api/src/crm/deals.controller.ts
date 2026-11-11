@@ -3,7 +3,8 @@ import { ApiTags, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard, RequirePermissions } from '../auth/guards/permissions.guard';
 import { DealsService } from './deals.service';
-import { IsString, IsOptional, IsNumber, IsEnum } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsEnum, IsInt, Min, Max } from 'class-validator';
+import { DealStage } from '@prisma/client';
 
 class CreateDealDto {
   @IsString() title: string;
@@ -11,8 +12,8 @@ class CreateDealDto {
   @IsString() contactId: string;
   @IsNumber() @IsOptional() value?: number;
   @IsString() @IsOptional() currency?: string;
-  @IsString() @IsOptional() stage?: string;
-  @IsNumber() @IsOptional() probability?: number;
+  @IsEnum(DealStage) @IsOptional() stage?: DealStage;
+  @IsInt() @Min(0) @Max(100) @IsOptional() probability?: number;
   @IsString() @IsOptional() expectedClose?: string;
   @IsString() @IsOptional() assignedToId?: string;
 }
@@ -23,8 +24,8 @@ class UpdateDealDto {
   @IsString() @IsOptional() contactId?: string;
   @IsNumber() @IsOptional() value?: number;
   @IsString() @IsOptional() currency?: string;
-  @IsString() @IsOptional() stage?: string;
-  @IsNumber() @IsOptional() probability?: number;
+  @IsEnum(DealStage) @IsOptional() stage?: DealStage;
+  @IsInt() @Min(0) @Max(100) @IsOptional() probability?: number;
   @IsString() @IsOptional() expectedClose?: string;
   @IsString() @IsOptional() assignedToId?: string;
 }
@@ -41,6 +42,8 @@ export class DealsController {
   @ApiQuery({ name: 'stage', required: false })
   @ApiQuery({ name: 'search', required: false })
   @ApiQuery({ name: 'assignedToId', required: false })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'limit', required: false })
   findAll(@Req() req: any, @Query() query: any) {
     return this.service.findAll(req, query);
   }
