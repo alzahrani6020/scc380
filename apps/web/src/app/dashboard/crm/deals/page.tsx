@@ -31,6 +31,8 @@ const stageColors: Record<string, string> = {
 export default function DealsPage() {
   const [items, setItems] = useState<any[]>([]);
   const [contacts, setContacts] = useState<any[]>([]);
+  const [companies, setCompanies] = useState<any[]>([]);
+  const [pipelines, setPipelines] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -46,6 +48,8 @@ export default function DealsPage() {
     Promise.all([
       api.get('/crm/deals').then(r => setItems(r.data.data || [])),
       api.get('/crm/contacts?limit=100').then(r => setContacts(r.data.data || [])),
+      api.get('/crm/companies?limit=100').then(r => setCompanies(r.data.data || [])),
+      api.get('/crm/pipelines').then(r => setPipelines(r.data || [])),
     ]).catch(console.error).finally(() => setLoading(false));
   };
 
@@ -62,6 +66,9 @@ export default function DealsPage() {
       title: item.title || '',
       description: item.description || '',
       contactId: item.contactId || '',
+      companyId: item.companyId || '',
+      pipelineId: item.pipelineId || '',
+      pipelineStageId: item.pipelineStageId || '',
       value: item.value ?? '',
       currency: item.currency || 'SAR',
       stage: item.stage || 'LEAD',
@@ -81,6 +88,12 @@ export default function DealsPage() {
       // Empty optional fields would fail DTO validation — drop them
       for (const key of ['description', 'expectedClose', 'value', 'probability', 'currency']) {
         if (payload[key] === '') delete payload[key];
+      }
+      for (const key of ['companyId', 'pipelineId', 'pipelineStageId']) {
+        if (payload[key] === '') {
+          if (editing) payload[key] = null;
+          else delete payload[key];
+        }
       }
       if (editing) {
         await api.patch(`/crm/deals/${editing.id}`, payload);
@@ -105,6 +118,13 @@ export default function DealsPage() {
   const filtered = items.filter((d) => d.title?.includes(search) || d.description?.includes(search));
 
   const contactOptions = contacts.map(c => ({ value: c.id, label: `${c.firstName} ${c.lastName}` }));
+  const companyOptions = [{ value: '', label: 'بدون شركة' }, ...companies.map(c => ({ value: c.id, label: c.name }))];
+  const pipelineOptions = [{ value: '', label: 'بدون مسار ديناميكي' }, ...pipelines.map(p => ({ value: p.id, label: p.name }))];
+  const selectedPipeline = pipelines.find((p) => p.id === formData.pipelineId);
+  const pipelineStageOptions = [
+    { value: '', label: 'بدون مرحلة ديناميكية' },
+    ...((selectedPipeline?.stages || []).map((s: any) => ({ value: s.id, label: `${s.order}. ${s.name}` }))),
+  ];
 
   return (
     <div className="space-y-6 animate-fade-in-up">
@@ -141,7 +161,7 @@ export default function DealsPage() {
               </div>
               <div className="flex items-center gap-3">
                 <div className="text-left">
-                  <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium ${stageColors[d.stage]}`}>{stages.find(s => s.value === d.stage)?.label || d.stage}</span>
+                  <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium ${stageColors[d.stage] || 'bg-slate-500/20 text-slate-400'}`}>{pipelines.flatMap((p) => p.stages || []).find((s: any) => s.id === d.pipelineStageId)?.name || stages.find(s => s.value === d.stage)?.label || d.stage}</span>
                   {d.probability !== null && <p className="text-slate-500 text-xs mt-1">{d.probability}% احتمالية</p>}
                 </div>
                 <div className="flex items-center gap-1">
@@ -164,6 +184,9 @@ export default function DealsPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Input label="العنوان" required value={formData.title || ''} onChange={(e) => setFormData({ ...formData, title: e.target.value })} />
             <Select label="العميل" required options={contactOptions} value={formData.contactId || ''} onChange={(e) => setFormData({ ...formData, contactId: e.target.value })} />
+            <Select label="الشركة" options={companyOptions} value={formData.companyId || ''} onChange={(e) => setFormData({ ...formData, companyId: e.target.value })} />
+            <Select label="مسار المبيعات" options={pipelineOptions} value={formData.pipelineId || ''} onChange={(e) => setFormData({ ...formData, pipelineId: e.target.value, pipelineStageId: '' })} />
+            <Select label="المرحلة الديناميكية" options={pipelineStageOptions} value={formData.pipelineStageId || ''} onChange={(e) => setFormData({ ...formData, pipelineStageId: e.target.value })} />
             <Input label="القيمة" type="number" value={formData.value || ''} onChange={(e) => setFormData({ ...formData, value: e.target.value })} />
             <Input label="العملة" value={formData.currency || 'SAR'} onChange={(e) => setFormData({ ...formData, currency: e.target.value })} />
             <Select label="المرحلة" options={stages} value={formData.stage || 'LEAD'} onChange={(e) => setFormData({ ...formData, stage: e.target.value })} />

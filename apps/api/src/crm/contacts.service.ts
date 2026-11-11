@@ -19,6 +19,7 @@ const CONTACT_PAYLOAD_FIELDS = [
   'phone',
   'phone2',
   'companyName',
+  'companyId',
   'jobTitle',
   'idNumber',
   'vatNumber',
@@ -87,8 +88,15 @@ export class ContactsService {
     return contact;
   }
 
+  private async assertCompanyInTenant(tenantId: string, companyId?: string) {
+    if (!companyId) return;
+    const company = await this.db.company.findFirst({ where: { id: companyId, tenantId, isActive: true }, select: { id: true } });
+    if (!company) throw new BadRequestException('Company not found in your tenant');
+  }
+
   async create(tenantId: string | undefined, _userRole: string, dto: CreateContactDto) {
     const scopedTenantId = this.requireTenantId(tenantId);
+    await this.assertCompanyInTenant(scopedTenantId, dto.companyId);
     const data = pickContactPayload(dto);
     data.tenantId = scopedTenantId;
     return this.db.contact.create({ data: data as Prisma.ContactUncheckedCreateInput });
@@ -99,6 +107,7 @@ export class ContactsService {
     const where = withTenant({ id }, scopedTenantId);
     const contact = await this.db.contact.findFirst({ where });
     if (!contact) throw new NotFoundException('Contact not found');
+    await this.assertCompanyInTenant(scopedTenantId, dto.companyId);
     const data = pickContactPayload(dto as Record<string, unknown>);
     return this.db.contact.update({ where: { id }, data: data as Prisma.ContactUpdateInput });
   }

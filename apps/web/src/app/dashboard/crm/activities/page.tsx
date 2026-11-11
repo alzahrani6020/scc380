@@ -90,6 +90,7 @@ export default function ActivitiesPage() {
       contactId: contactId || '',
       dealId: dealId || '',
       scheduledAt: '',
+      remindAt: '',
       description: '',
       subject: '',
     });
@@ -106,6 +107,7 @@ export default function ActivitiesPage() {
       contactId: item.contactId || '',
       dealId: item.dealId || '',
       scheduledAt: item.scheduledAt ? new Date(item.scheduledAt).toISOString().slice(0, 16) : '',
+      remindAt: item.remindAt ? new Date(item.remindAt).toISOString().slice(0, 16) : '',
       completedAt: item.completedAt ? new Date(item.completedAt).toISOString().slice(0, 16) : '',
     });
     setIsModalOpen(true);
@@ -116,7 +118,7 @@ export default function ActivitiesPage() {
     setFormLoading(true);
     try {
       const payload = { ...formData };
-      for (const key of ['contactId', 'dealId', 'scheduledAt', 'completedAt', 'assignedToId', 'description']) {
+      for (const key of ['contactId', 'dealId', 'scheduledAt', 'completedAt', 'remindAt', 'assignedToId', 'description']) {
         if (payload[key] === '') delete payload[key];
       }
       if (editing) await api.patch(`/crm/activities/${editing.id}`, payload);
@@ -217,6 +219,7 @@ export default function ActivitiesPage() {
             <Select label="جهة الاتصال" options={contactOptions} value={formData.contactId || ''} onChange={(e) => setFormData({ ...formData, contactId: e.target.value })} />
             <Select label="الصفقة" options={dealOptions} value={formData.dealId || ''} onChange={(e) => setFormData({ ...formData, dealId: e.target.value })} />
             <Input label="موعد النشاط" type="datetime-local" value={formData.scheduledAt || ''} onChange={(e) => setFormData({ ...formData, scheduledAt: e.target.value })} />
+            <Input label="موعد التذكير" type="datetime-local" value={formData.remindAt || ''} onChange={(e) => setFormData({ ...formData, remindAt: e.target.value })} />
           </div>
           <Textarea label="الوصف" rows={3} value={formData.description || ''} onChange={(e) => setFormData({ ...formData, description: e.target.value })} />
           <div className="flex justify-end gap-3">
