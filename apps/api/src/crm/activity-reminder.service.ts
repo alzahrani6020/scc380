@@ -1,14 +1,20 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import type { PrismaClient } from '@prisma/client';
 import { Cron } from '@nestjs/schedule';
 import { prisma } from '@scc/database';
 
 @Injectable()
 export class ActivityReminderService {
   private readonly logger = new Logger(ActivityReminderService.name);
+  private readonly db: PrismaClient;
+
+  constructor(@Optional() @Inject('CRM_REMINDER_DB') db?: PrismaClient) {
+    this.db = db ?? prisma;
+  }
 
   @Cron('0 * * * * *')
   async deliverDueReminders() {
-    const due = await prisma.activity.findMany({
+    const due = await this.db.activity.findMany({
       where: {
         reminded: false,
         remindAt: { lte: new Date() },
@@ -27,7 +33,7 @@ export class ActivityReminderService {
 
     for (const activity of due) {
       try {
-        await prisma.$transaction(async (tx) => {
+        await this.db.$transaction(async (tx: any) => {
           const claimed = await tx.activity.updateMany({
             where: { id: activity.id, reminded: false },
             data: { reminded: true },
