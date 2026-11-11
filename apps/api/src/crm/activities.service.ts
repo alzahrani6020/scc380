@@ -7,12 +7,11 @@ export class ActivitiesService {
     return req.user?.role === 'SUPER_ADMIN' ? req.tenantId : req.user?.tenantId;
   }
 
-  /** Referential integrity: linked contact/deal/assignee must belong to the caller's tenant. */
   private async assertRefsInTenant(
     tenantId: string | null | undefined,
     refs: { contactId?: string; dealId?: string; assignedToId?: string },
   ) {
-    const scope = tenantWhere(tenantId ?? undefined);
+    const scope = tenantWhere(tenantId);
     if (refs.contactId) {
       const contact = await prisma.contact.findFirst({ where: { id: refs.contactId, ...scope } });
       if (!contact) throw new BadRequestException('Contact not found in your tenant');
@@ -22,15 +21,18 @@ export class ActivitiesService {
       if (!deal) throw new BadRequestException('Deal not found in your tenant');
     }
     if (refs.assignedToId) {
-      const user = await prisma.user.findFirst({ where: { id: refs.assignedToId, ...scope } });
+      const user = await prisma.user.findFirst({
+        where: { id: refs.assignedToId, ...scope, status: 'ACTIVE' },
+        select: { id: true },
+      });
       if (!user) throw new BadRequestException('Assignee not found in your tenant');
     }
   }
 
   async findAll(req: any, query: any) {
     const tenantId = this.tenantIdFor(req);
-    const page = Math.max(1, Number.parseInt(query.page || '1', 10) || 1);
-    const limit = Math.min(100, Math.max(1, Number.parseInt(query.limit || '25', 10) || 25));
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 25;
     const where: any = { ...tenantWhere(tenantId) };
     if (query.type) where.type = query.type;
     if (query.contactId) where.contactId = query.contactId;
@@ -50,8 +52,7 @@ export class ActivitiesService {
 
   async findOne(req: any, id: string) {
     const tenantId = this.tenantIdFor(req);
-    const where = { ...tenantWhere(tenantId), id };
-    const activity = await prisma.activity.findFirst({ where });
+    const activity = await prisma.activity.findFirst({ where: { ...tenantWhere(tenantId), id } });
     if (!activity) throw new NotFoundException('Activity not found');
     return activity;
   }
@@ -59,27 +60,30 @@ export class ActivitiesService {
   async create(req: any, dto: any) {
     const tenantId = this.tenantIdFor(req);
     await this.assertRefsInTenant(tenantId, dto);
-    const data = { ...dto, tenantId };
+    const data: any = { ...dto, tenantId };
     if (dto.scheduledAt) data.scheduledAt = new Date(dto.scheduledAt);
+    if (dto.remindAt) data.remindAt = new Date(dto.remindAt);
     return prisma.activity.create({ data });
   }
 
   async update(req: any, id: string, dto: any) {
     const tenantId = this.tenantIdFor(req);
-    const where = { ...tenantWhere(tenantId), id };
-    const existing = await prisma.activity.findFirst({ where });
+    const existing = await prisma.activity.findFirst({ where: { ...tenantWhere(tenantId), id } });
     if (!existing) throw new NotFoundException('Activity not found');
     await this.assertRefsInTenant(tenantId, dto);
-    const data = { ...dto };
+    const data: any = { ...dto };
     if (dto.scheduledAt) data.scheduledAt = new Date(dto.scheduledAt);
     if (dto.completedAt) data.completedAt = new Date(dto.completedAt);
+    if (dto.remindAt) {
+      data.remindAt = new Date(dto.remindAt);
+      data.reminded = false;
+    }
     return prisma.activity.update({ where: { id }, data });
   }
 
   async remove(req: any, id: string) {
     const tenantId = this.tenantIdFor(req);
-    const where = { ...tenantWhere(tenantId), id };
-    const existing = await prisma.activity.findFirst({ where });
+    const existing = await prisma.activity.findFirst({ where: { ...tenantWhere(tenantId), id } });
     if (!existing) throw new NotFoundException('Activity not found');
     return prisma.activity.delete({ where: { id } });
   }
