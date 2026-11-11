@@ -24,10 +24,15 @@ export class DealsService {
     }
   }
 
+  private tenantIdFor(req: any) {
+    return req.user?.role === 'SUPER_ADMIN' ? req.tenantId : req.user?.tenantId;
+  }
+
   async findAll(req: any, query: any) {
+    const tenantId = this.tenantIdFor(req);
     const page = Math.max(1, Number.parseInt(query.page || '1', 10) || 1);
     const limit = Math.min(100, Math.max(1, Number.parseInt(query.limit || '25', 10) || 25));
-    const where: any = { ...tenantWhere(req.user?.tenantId) };
+    const where: any = { ...tenantWhere(tenantId) };
     if (query.stage) where.stage = query.stage;
     if (query.assignedToId) where.assignedToId = query.assignedToId;
     if (query.search) {
@@ -49,24 +54,27 @@ export class DealsService {
   }
 
   async findOne(req: any, id: string) {
-    const where = { ...tenantWhere(req.user?.tenantId), id };
+    const tenantId = this.tenantIdFor(req);
+    const where = { ...tenantWhere(tenantId), id };
     const deal = await prisma.deal.findFirst({ where });
     if (!deal) throw new NotFoundException('Deal not found');
     return deal;
   }
 
   async create(req: any, dto: any) {
-    await this.assertRefsInTenant(req.user?.tenantId, dto);
-    const data = { ...dto, tenantId: req.user?.tenantId };
+    const tenantId = this.tenantIdFor(req);
+    await this.assertRefsInTenant(tenantId, dto);
+    const data = { ...dto, tenantId };
     if (dto.expectedClose) data.expectedClose = new Date(dto.expectedClose);
     return prisma.deal.create({ data });
   }
 
   async update(req: any, id: string, dto: any) {
-    const where = { ...tenantWhere(req.user?.tenantId), id };
+    const tenantId = this.tenantIdFor(req);
+    const where = { ...tenantWhere(tenantId), id };
     const existing = await prisma.deal.findFirst({ where });
     if (!existing) throw new NotFoundException('Deal not found');
-    await this.assertRefsInTenant(req.user?.tenantId, dto);
+    await this.assertRefsInTenant(tenantId, dto);
     const data = { ...dto };
     if (dto.expectedClose) data.expectedClose = new Date(dto.expectedClose);
     if (dto.actualClose) data.actualClose = new Date(dto.actualClose);
@@ -77,7 +85,8 @@ export class DealsService {
   }
 
   async remove(req: any, id: string) {
-    const where = { ...tenantWhere(req.user?.tenantId), id };
+    const tenantId = this.tenantIdFor(req);
+    const where = { ...tenantWhere(tenantId), id };
     const existing = await prisma.deal.findFirst({ where });
     if (!existing) throw new NotFoundException('Deal not found');
     return prisma.deal.delete({ where: { id } });
