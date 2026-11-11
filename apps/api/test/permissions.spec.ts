@@ -18,9 +18,14 @@ test('permission matrix: roles vs crm permissions', () => {
   assert.equal(hasPermission('READONLY', 'crm:write'), false);
   assert.equal(hasPermission('USER', 'hr:write'), false); // outside granted scope
   assert.equal(hasPermission('USER', 'notifications:read'), true);
+  assert.equal(hasPermission('USER', 'notifications:self-write'), true);
   assert.equal(hasPermission('USER', 'notifications:admin'), false);
   assert.equal(hasPermission('MANAGER', 'notifications:admin'), true);
   assert.equal(hasPermission('ADMIN', 'notifications:admin'), true);
+  assert.equal(hasPermission('AUDITOR', 'notifications:read'), true);
+  assert.equal(hasPermission('READONLY', 'notifications:read'), true);
+  assert.equal(hasPermission('AUDITOR', 'notifications:self-write'), false);
+  assert.equal(hasPermission('READONLY', 'notifications:self-write'), false);
 });
 
 class DummyController {
