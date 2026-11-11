@@ -6,7 +6,7 @@ const MAX_ROWS = 1000;
 const ALLOWED_TYPES = new Set(['CUSTOMER', 'LEAD', 'PROSPECT', 'PARTNER', 'SUPPLIER', 'VENDOR']);
 const ALLOWED_STATUSES = new Set(['ACTIVE', 'INACTIVE', 'CONVERTED', 'BLACKLISTED']);
 
-function parseCsv(input: string): string[][] {
+export function parseCsv(input: string): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
   let cell = '';
@@ -44,7 +44,7 @@ function parseCsv(input: string): string[][] {
   return rows.filter((r) => r.some((v) => v !== ''));
 }
 
-function csvCell(value: unknown): string {
+export function csvCell(value: unknown): string {
   const text = value == null ? '' : String(value);
   return /[",\n\r]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
 }
@@ -134,9 +134,13 @@ export class CrmCsvService {
       .filter((entry) => entry.item.email && existingEmails.has(String(entry.item.email).toLowerCase()))
       .map((entry) => ({ row: entry.row, email: entry.item.email }));
 
+    const invalidRows = new Set<number>([
+      ...errors.map((e) => e.row),
+      ...duplicates.map((d) => d.row),
+    ]);
     const preview = {
       totalRows: parsed.length,
-      validRows: parsed.length - errors.length - duplicates.length,
+      validRows: parsed.length - invalidRows.size,
       errors,
       duplicates,
     };
