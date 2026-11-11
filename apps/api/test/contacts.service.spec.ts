@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { ContactsService } from '../src/crm/contacts.service';
 import { deriveAuditAction } from '../src/common/interceptors/audit-log.interceptor';
