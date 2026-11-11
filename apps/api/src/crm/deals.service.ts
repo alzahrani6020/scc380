@@ -3,15 +3,30 @@ import { prisma, tenantWhere } from '@scc/database';
 
 @Injectable()
 export class DealsService {
-  /** Referential integrity: a deal may only point at a contact inside the caller's tenant. */
-  private async assertContactInTenant(tenantId: string | null | undefined, contactId: string) {
-    const contact = await prisma.contact.findFirst({
-      where: { id: contactId, ...tenantWhere(tenantId ?? undefined) },
-    });
-    if (!contact) throw new BadRequestException('Contact not found in your tenant');
+  /** Referential integrity: linked contact/assignee must belong to the caller's tenant. */
+  private async assertRefsInTenant(
+    tenantId: string | null | undefined,
+    refs: { contactId?: string; assignedToId?: string },
+  ) {
+    const scope = tenantWhere(tenantId);
+    if (refs.contactId) {
+      const contact = await prisma.contact.findFirst({
+        where: { id: refs.contactId, ...scope },
+      });
+      if (!contact) throw new BadRequestException('Contact not found in your tenant');
+    }
+    if (refs.assignedToId) {
+      const user = await prisma.user.findFirst({
+        where: { id: refs.assignedToId, ...scope, status: 'ACTIVE' },
+        select: { id: true },
+      });
+      if (!user) throw new BadRequestException('Assignee not found in your tenant');
+    }
   }
 
   async findAll(req: any, query: any) {
+    const page = Math.max(1, Number.parseInt(query.page || '1', 10) || 1);
+    const limit = Math.min(100, Math.max(1, Number.parseInt(query.limit || '25', 10) || 25));
     const where: any = { ...tenantWhere(req.user?.tenantId) };
     if (query.stage) where.stage = query.stage;
     if (query.assignedToId) where.assignedToId = query.assignedToId;
@@ -22,10 +37,15 @@ export class DealsService {
       ];
     }
     const [data, count] = await Promise.all([
-      prisma.deal.findMany({ where, orderBy: { createdAt: 'desc' }, take: 100 }),
+      prisma.deal.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
       prisma.deal.count({ where }),
     ]);
-    return { data, count };
+    return { data, count, page, limit };
   }
 
   async findOne(req: any, id: string) {
@@ -36,7 +56,7 @@ export class DealsService {
   }
 
   async create(req: any, dto: any) {
-    if (dto.contactId) await this.assertContactInTenant(req.user?.tenantId, dto.contactId);
+    await this.assertRefsInTenant(req.user?.tenantId, dto);
     const data = { ...dto, tenantId: req.user?.tenantId };
     if (dto.expectedClose) data.expectedClose = new Date(dto.expectedClose);
     return prisma.deal.create({ data });
@@ -46,7 +66,7 @@ export class DealsService {
     const where = { ...tenantWhere(req.user?.tenantId), id };
     const existing = await prisma.deal.findFirst({ where });
     if (!existing) throw new NotFoundException('Deal not found');
-    if (dto.contactId) await this.assertContactInTenant(req.user?.tenantId, dto.contactId);
+    await this.assertRefsInTenant(req.user?.tenantId, dto);
     const data = { ...dto };
     if (dto.expectedClose) data.expectedClose = new Date(dto.expectedClose);
     if (dto.actualClose) data.actualClose = new Date(dto.actualClose);
