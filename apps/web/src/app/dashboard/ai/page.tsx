@@ -32,7 +32,7 @@ export default function AiPage() {
           <Bot className="h-6 w-6 text-primary-400" />
           المساعد الذكي
         </h1>
-        <p className="text-slate-400 text-sm mt-1">AI Powered Assistant - مدعوم بنموذج Llama 3</p>
+        <p className="text-slate-400 text-sm mt-1">AI Powered Assistant - مدعوم ببيانات النظام والتحليلات الداخلية</p>
       </div>
 
       <div className="scc-card flex-1 flex flex-col overflow-hidden">
