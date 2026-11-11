@@ -24,16 +24,23 @@ export class ActivitiesService {
   }
 
   async findAll(req: any, query: any) {
+    const page = Math.max(1, Number.parseInt(query.page || '1', 10) || 1);
+    const limit = Math.min(100, Math.max(1, Number.parseInt(query.limit || '25', 10) || 25));
     const where: any = { ...tenantWhere(req.user?.tenantId) };
     if (query.type) where.type = query.type;
     if (query.contactId) where.contactId = query.contactId;
     if (query.dealId) where.dealId = query.dealId;
     if (query.assignedToId) where.assignedToId = query.assignedToId;
     const [data, count] = await Promise.all([
-      prisma.activity.findMany({ where, orderBy: { scheduledAt: 'asc' }, take: 200 }),
+      prisma.activity.findMany({
+        where,
+        orderBy: { scheduledAt: 'asc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
       prisma.activity.count({ where }),
     ]);
-    return { data, count };
+    return { data, count, page, limit };
   }
 
   async findOne(req: any, id: string) {
