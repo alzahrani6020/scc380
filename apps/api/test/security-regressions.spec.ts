@@ -75,3 +75,29 @@ test('analytics UI uses authenticated API and contains no production demo fallba
   assert.doesNotMatch(source, /Demo data/);
   assert.doesNotMatch(source, /Lead', count: 12/);
 });
+
+
+test('CRM relation apply step is guarded and non-destructive', () => {
+  const source = src('scripts/apply-crm-relations.cjs');
+  assert.match(source, /CRM_RELATIONS_APPLY_BLOCKED/);
+  assert.match(source, /violations !== 0/);
+  assert.match(source, /pg_constraint/);
+  assert.match(source, /expectedConstraints: constraints\.length/);
+  assert.match(source, /installedConstraints: rows\.length/);
+  assert.doesNotMatch(source, /(^|\n)\s*DROP\s+/i);
+  assert.doesNotMatch(source, /(^|\n)\s*TRUNCATE\s+/i);
+  assert.doesNotMatch(source, /(^|\n)\s*DELETE\s+FROM\s+/i);
+  assert.doesNotMatch(source, /(^|\n)\s*UPDATE\s+["a-z]/i);
+});
+
+test('CRM FK migration is additive only', () => {
+  const migration = readFileSync(
+    join(process.cwd(), '../../packages/database/prisma/migrations/20261111174000_add_crm_relations/migration.sql'),
+    'utf8',
+  );
+  assert.ok((migration.match(/ADD CONSTRAINT/g) ?? []).length === 6);
+  assert.doesNotMatch(migration, /(^|\n)\s*DROP\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*TRUNCATE\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*DELETE\s+FROM\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*UPDATE\s+["a-z]/i);
+});

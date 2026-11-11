@@ -82,16 +82,92 @@ const checks = {
   `,
 };
 
-(async () => {
+const constraints = [
+  {
+    name: 'contacts_assignedToId_fkey',
+    sql: `ALTER TABLE "contacts" ADD CONSTRAINT "contacts_assignedToId_fkey"
+      FOREIGN KEY ("assignedToId") REFERENCES "users"("id")
+      ON DELETE SET NULL ON UPDATE CASCADE`,
+  },
+  {
+    name: 'deals_contactId_fkey',
+    sql: `ALTER TABLE "deals" ADD CONSTRAINT "deals_contactId_fkey"
+      FOREIGN KEY ("contactId") REFERENCES "contacts"("id")
+      ON DELETE RESTRICT ON UPDATE CASCADE`,
+  },
+  {
+    name: 'deals_assignedToId_fkey',
+    sql: `ALTER TABLE "deals" ADD CONSTRAINT "deals_assignedToId_fkey"
+      FOREIGN KEY ("assignedToId") REFERENCES "users"("id")
+      ON DELETE SET NULL ON UPDATE CASCADE`,
+  },
+  {
+    name: 'activities_contactId_fkey',
+    sql: `ALTER TABLE "activities" ADD CONSTRAINT "activities_contactId_fkey"
+      FOREIGN KEY ("contactId") REFERENCES "contacts"("id")
+      ON DELETE SET NULL ON UPDATE CASCADE`,
+  },
+  {
+    name: 'activities_dealId_fkey',
+    sql: `ALTER TABLE "activities" ADD CONSTRAINT "activities_dealId_fkey"
+      FOREIGN KEY ("dealId") REFERENCES "deals"("id")
+      ON DELETE SET NULL ON UPDATE CASCADE`,
+  },
+  {
+    name: 'activities_assignedToId_fkey',
+    sql: `ALTER TABLE "activities" ADD CONSTRAINT "activities_assignedToId_fkey"
+      FOREIGN KEY ("assignedToId") REFERENCES "users"("id")
+      ON DELETE SET NULL ON UPDATE CASCADE`,
+  },
+];
+
+async function readIntegrity() {
   const result = {};
   for (const [name, sql] of Object.entries(checks)) {
     const rows = await prisma.$queryRawUnsafe(sql);
     result[name] = Number(rows?.[0]?.count || 0);
   }
-  console.log('CRM_INTEGRITY_AUDIT ' + JSON.stringify(result));
+  return result;
+}
+
+(async () => {
+  const integrity = await readIntegrity();
+  const violations = Object.values(integrity).reduce((sum, value) => sum + value, 0);
+
+  if (violations !== 0) {
+    console.error('CRM_RELATIONS_APPLY_BLOCKED ' + JSON.stringify(integrity));
+    return;
+  }
+
+  await prisma.$transaction(async (tx) => {
+    for (const constraint of constraints) {
+      const existing = await tx.$queryRawUnsafe(
+        `SELECT 1 FROM pg_constraint WHERE conname = $1 LIMIT 1`,
+        constraint.name,
+      );
+      if (existing.length === 0) {
+        await tx.$executeRawUnsafe(constraint.sql);
+      }
+    }
+  });
+
+  const names = constraints.map((item) => item.name);
+  const rows = await prisma.$queryRawUnsafe(
+    `SELECT conname FROM pg_constraint WHERE conname = ANY($1::text[]) ORDER BY conname`,
+    names,
+  );
+
+  console.log(
+    'CRM_RELATIONS_APPLY ' +
+      JSON.stringify({
+        integrity,
+        expectedConstraints: constraints.length,
+        installedConstraints: rows.length,
+      }),
+  );
 })()
   .catch((error) => {
-    console.error('CRM_INTEGRITY_AUDIT_ERROR', error?.message || error);
+    console.error('CRM_RELATIONS_APPLY_ERROR', error?.message || error);
     process.exitCode = 1;
   })
   .finally(async () => {
