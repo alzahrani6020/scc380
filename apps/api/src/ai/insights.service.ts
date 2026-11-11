@@ -13,11 +13,6 @@ export class InsightsService {
   /** Returns an Arabic answer when the question matches a known intent */
   async tryAnswer(message: string, tenantId: string | null): Promise<string | null> {
     const msg = message.trim();
-    // Request canary — logs the exact received bytes (hex) so any
-    // transmission/encoding corruption is visible in Render logs
-    const codes = [...msg].slice(0, 10).map((c) => c.codePointAt(0)?.toString(16)).join(',');
-    const greetingHit = /سلام|مرحبا|مرحباً|اهلا|أهلا|هاي|صباح|مساء/.test(msg);
-    this.logger.log(`TRYANSWER msg="${msg}" codes=[${codes}] len=${msg.length} greetingRegex=${greetingHit} tenant=${tenantId}`);
     try {
       if (this.matches(msg, [/متأخر/, /غير مسدد/, /مستحق/]) && this.matches(msg, [/فاتور/])) {
         return await this.overdueInvoices(tenantId);
