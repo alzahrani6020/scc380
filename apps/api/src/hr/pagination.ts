@@ -1,6 +1,7 @@
 export function parsePagination(query: any, defaultLimit = 200) {
   const page = Math.max(1, Number.parseInt(String(query?.page || '1'), 10) || 1);
-  const requestedLimit = Number.parseInt(String(query?.limit || defaultLimit), 10) || defaultLimit;
+  const parsedLimit = Number.parseInt(String(query?.limit ?? defaultLimit), 10);
+  const requestedLimit = Number.isNaN(parsedLimit) ? defaultLimit : parsedLimit;
   const limit = Math.min(200, Math.max(1, requestedLimit));
   return { page, limit, skip: (page - 1) * limit };
 }

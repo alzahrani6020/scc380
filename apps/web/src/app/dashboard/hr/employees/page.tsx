@@ -28,6 +28,7 @@ const empStatuses = [
 export default function HrPage() {
   const [employees, setEmployees] = useState<any[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -42,6 +43,7 @@ export default function HrPage() {
 
   useEffect(() => {
     api.get('/hr/departments').then(r => setDepartments(r.data.data || [])).catch(console.error);
+    api.get('/users?status=ACTIVE').then(r => setUsers(r.data.data || [])).catch(console.error);
   }, []);
 
   useEffect(() => {
@@ -94,6 +96,7 @@ export default function HrPage() {
       gosiSalary: item.gosiSalary ?? '',
       emergencyContactName: item.emergencyContactName || '',
       emergencyContactPhone: item.emergencyContactPhone || '',
+      userId: item.userId || '',
     });
     setIsModalOpen(true);
   };
@@ -126,10 +129,18 @@ export default function HrPage() {
         emergencyContactName: formData.emergencyContactName || undefined,
         emergencyContactPhone: formData.emergencyContactPhone || undefined,
       };
+      let employeeId: string;
       if (editing) {
         await api.patch(`/hr/employees/${editing.id}`, payload);
+        employeeId = editing.id;
       } else {
-        await api.post('/hr/employees', payload);
+        const created = await api.post('/hr/employees', payload);
+        employeeId = created.data.id;
+      }
+      if (formData.userId) {
+        await api.post(`/hr/employees/${employeeId}/link-user`, { userId: formData.userId });
+      } else if (editing?.userId) {
+        await api.delete(`/hr/employees/${employeeId}/link-user`);
       }
       setIsModalOpen(false);
       setPage(1);
@@ -148,6 +159,10 @@ export default function HrPage() {
   };
 
   const deptOptions = departments.map(d => ({ value: d.id, label: d.name }));
+  const userOptions = [
+    { value: '', label: 'بدون حساب مرتبط' },
+    ...users.map(u => ({ value: u.id, label: `${u.firstName} ${u.lastName} · ${u.email}` })),
+  ];
 
   return (
     <div className="space-y-6 animate-fade-in-up">
@@ -236,6 +251,7 @@ export default function HrPage() {
             <Input label="راتب التأمينات" type="number" value={formData.gosiSalary || ''} onChange={(e) => setFormData({ ...formData, gosiSalary: e.target.value })} />
             <Input label="جهة اتصال للطوارئ" value={formData.emergencyContactName || ''} onChange={(e) => setFormData({ ...formData, emergencyContactName: e.target.value })} />
             <Input label="هاتف الطوارئ" value={formData.emergencyContactPhone || ''} onChange={(e) => setFormData({ ...formData, emergencyContactPhone: e.target.value })} />
+            <Select label="حساب الخدمة الذاتية" options={userOptions} value={formData.userId || ''} onChange={(e) => setFormData({ ...formData, userId: e.target.value })} />
           </div>
           <div className="flex justify-end gap-3 pt-2">
             <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}><X className="h-4 w-4" /> إلغاء</Button>

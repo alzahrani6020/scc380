@@ -70,6 +70,9 @@ model Tenant {
   employeeLoanPayments EmployeeLoanPayment[]
   payrollRunLoanDeductions PayrollRunLoanDeduction[]
   endServiceSettlements EndServiceSettlement[]
+  hrRequests HrRequest[]
+  hrLifecycleCases HrLifecycleCase[]
+  hrLifecycleTasks HrLifecycleTask[]
   drivers       Driver[]
   fleetMaintenances FleetMaintenance[]
   fleetFuelLogs FleetFuelLog[]
@@ -186,6 +189,7 @@ model User {
   oauthAccounts OAuthAccount[]
   passwordResets PasswordResetToken[]
   auditLogs     AuditLog[]
+  employeeProfile Employee?
 
   assignedContacts   Contact[]  @relation("ContactAssignee")
   assignedDeals      Deal[]     @relation("DealAssignee")
@@ -930,6 +934,8 @@ model Employee {
   id            String    @id @default(cuid())
   tenantId      String
   tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId         String?   @unique
+  user           User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   employeeCode  String
   firstName     String
@@ -965,9 +971,12 @@ model Employee {
   documents      EmployeeDocument[]
   loans          EmployeeLoan[]
   endServiceSettlements EndServiceSettlement[]
+  hrRequests      HrRequest[]
+  lifecycleCases  HrLifecycleCase[]
 
   @@unique([tenantId, employeeCode])
   @@index([tenantId])
+  @@index([userId])
   @@map("employees")
 }
 
@@ -1104,6 +1113,83 @@ model EndServiceSettlement {
   @@index([tenantId, status])
   @@index([dueDate])
   @@map("end_service_settlements")
+}
+
+
+model HrRequest {
+  id            String    @id @default(cuid())
+  tenantId      String
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employeeId    String
+  employee      Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  type          String
+  subject       String
+  details       Json?     @default("{}")
+  status        String    @default("PENDING")
+  resolution    String?
+  reviewedById  String?
+  reviewedAt    DateTime?
+  cancelledAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@index([tenantId, employeeId])
+  @@index([tenantId, status])
+  @@index([type])
+  @@map("hr_requests")
+}
+
+model HrLifecycleCase {
+  id            String    @id @default(cuid())
+  tenantId      String
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employeeId    String
+  employee      Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  type          String
+  status        String    @default("OPEN")
+  startDate     DateTime  @default(now())
+  targetDate    DateTime?
+  completedAt   DateTime?
+  notes         String?
+  createdById   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  tasks         HrLifecycleTask[]
+
+  @@index([tenantId])
+  @@index([tenantId, employeeId])
+  @@index([tenantId, type, status])
+  @@map("hr_lifecycle_cases")
+}
+
+model HrLifecycleTask {
+  id            String          @id @default(cuid())
+  tenantId      String
+  tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  caseId        String
+  case          HrLifecycleCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  title         String
+  description   String?
+  status        String          @default("TODO")
+  order         Int             @default(0)
+  assignedToId  String?
+  dueDate       DateTime?
+  completedAt   DateTime?
+  completedById String?
+  notes         String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([tenantId])
+  @@index([caseId])
+  @@index([assignedToId])
+  @@index([status])
+  @@map("hr_lifecycle_tasks")
 }
 
 model Department {

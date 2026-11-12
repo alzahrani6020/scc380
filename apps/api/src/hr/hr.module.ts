@@ -28,6 +28,12 @@ import { EmployeeLoansController } from './employee-loans.controller';
 import { EmployeeLoansService } from './employee-loans.service';
 import { EndServiceSettlementsController } from './end-service-settlements.controller';
 import { EndServiceSettlementsService } from './end-service-settlements.service';
+import { HrSelfServiceController } from './self-service.controller';
+import { HrSelfService } from './self-service.service';
+import { HrRequestsController, HrSelfRequestsController } from './hr-requests.controller';
+import { HrRequestsService } from './hr-requests.service';
+import { HrLifecycleController } from './hr-lifecycle.controller';
+import { HrLifecycleService } from './hr-lifecycle.service';
 
 @Module({
   imports: [AccountingCoreModule],
@@ -46,6 +52,10 @@ import { EndServiceSettlementsService } from './end-service-settlements.service'
     EmployeeDocumentsController,
     EmployeeLoansController,
     EndServiceSettlementsController,
+    HrSelfServiceController,
+    HrRequestsController,
+    HrSelfRequestsController,
+    HrLifecycleController,
   ],
   providers: [
     EmployeesService,
@@ -62,6 +72,9 @@ import { EndServiceSettlementsService } from './end-service-settlements.service'
     EmployeeDocumentsService,
     EmployeeLoansService,
     EndServiceSettlementsService,
+    HrSelfService,
+    HrRequestsService,
+    HrLifecycleService,
   ],
 })
 export class HrModule {}
