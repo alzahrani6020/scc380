@@ -26,7 +26,9 @@ export class ShiftsService {
   }
 
   async create(req: any, dto: any) {
-    const data: any = { ...dto, tenantId: req.user?.tenantId };
+    const tenantId = req.user?.tenantId;
+    await this.assertEmployee(tenantId, dto.employeeId);
+    const data: any = { ...dto, tenantId };
     data.startTime = new Date(dto.startTime);
     data.endTime = new Date(dto.endTime);
     return prisma.shift.create({ data });
@@ -47,5 +49,10 @@ export class ShiftsService {
     const existing = await prisma.shift.findFirst({ where });
     if (!existing) throw new NotFoundException('Shift not found');
     return prisma.shift.delete({ where: { id } });
+  }
+
+  private async assertEmployee(tenantId: string, employeeId: string) {
+    const employee = await prisma.employee.findFirst({ where: { ...tenantWhere(tenantId), id: employeeId } });
+    if (!employee) throw new NotFoundException('Employee not found');
   }
 }
