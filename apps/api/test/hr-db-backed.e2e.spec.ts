@@ -6,6 +6,9 @@ import { LeavesService } from '../src/hr/leaves.service';
 import { AttendancesService } from '../src/hr/attendances.service';
 import { PayrollsService } from '../src/hr/payrolls.service';
 import { ShiftsService } from '../src/hr/shifts.service';
+import { ContractsService } from '../src/hr/contracts.service';
+import { LeavePoliciesService } from '../src/hr/leave-policies.service';
+import { LeaveBalancesService } from '../src/hr/leave-balances.service';
 
 test(
   'HR DB-backed E2E validates schema, tenant isolation and core lifecycles',
@@ -24,6 +27,9 @@ test(
     const attendance = new AttendancesService();
     const payrolls = new PayrollsService();
     const shifts = new ShiftsService();
+    const contracts = new ContractsService();
+    const leavePolicies = new LeavePoliciesService();
+    const leaveBalances = new LeaveBalancesService();
 
     const reqA: any = { user: { tenantId: tenantA.id, userId: `approver-${run}`, role: 'ADMIN' } };
     const reqB: any = { user: { tenantId: tenantB.id, userId: `approver-b-${run}`, role: 'ADMIN' } };
@@ -48,6 +54,20 @@ test(
       assert.ok(listA.data.some((row: any) => row.id === employeeA.id));
       assert.ok(!listA.data.some((row: any) => row.id === employeeB.id));
 
+      const annualPolicy = await leavePolicies.create(reqA, {
+        type: 'ANNUAL',
+        name: 'Annual Leave',
+        annualEntitlement: 5,
+        maxCarryForward: 2,
+        requiresApproval: true,
+        isActive: true,
+      });
+      assert.equal(annualPolicy.annualEntitlement, 5);
+
+      const initializedBalances = await leaveBalances.initialize(reqA, employeeA.id, 2026);
+      assert.equal(initializedBalances.length, 1);
+      assert.equal(initializedBalances[0].entitlement, 5);
+
       await assert.rejects(
         () => leaves.create(reqA, {
           employeeId: employeeB.id,
@@ -67,10 +87,54 @@ test(
         days: 2,
         reason: 'E2E',
       });
+      const reservedBalance = await prisma.leaveBalance.findUniqueOrThrow({
+        where: {
+          tenantId_employeeId_type_year: {
+            tenantId: tenantA.id,
+            employeeId: employeeA.id,
+            type: 'ANNUAL',
+            year: 2026,
+          },
+        },
+      });
+      assert.equal(reservedBalance.pending, 2);
+      assert.equal(reservedBalance.used, 0);
+
       const approvedLeave = await leaves.update(reqA, leaveA.id, { status: 'APPROVED' });
       assert.equal(approvedLeave.status, 'APPROVED');
       assert.equal(approvedLeave.approvedById, reqA.user.userId);
       assert.ok(approvedLeave.approvedAt);
+
+      const usedBalance = await prisma.leaveBalance.findUniqueOrThrow({
+        where: {
+          tenantId_employeeId_type_year: {
+            tenantId: tenantA.id,
+            employeeId: employeeA.id,
+            type: 'ANNUAL',
+            year: 2026,
+          },
+        },
+      });
+      assert.equal(usedBalance.pending, 0);
+      assert.equal(usedBalance.used, 2);
+
+      await assert.rejects(
+        () => leaves.create(reqA, {
+          employeeId: employeeA.id,
+          type: 'ANNUAL',
+          startDate: '2026-12-01T00:00:00.000Z',
+          endDate: '2026-12-05T00:00:00.000Z',
+          days: 4,
+        }),
+        /Insufficient leave balance/,
+      );
+
+      const adjusted = await leaveBalances.adjust(reqA, usedBalance.id, 2, 'E2E adjustment');
+      assert.equal(adjusted.adjustment, 2);
+      const adjustmentLog = await prisma.leaveBalanceAdjustment.findFirst({
+        where: { balanceId: usedBalance.id, amount: 2 },
+      });
+      assert.ok(adjustmentLog);
 
       const attendanceA = await attendance.create(reqA, {
         employeeId: employeeA.id,
@@ -142,6 +206,42 @@ test(
 
       const foreignPayroll = await payrolls.findAll(reqB, { employeeId: employeeA.id });
       assert.equal(foreignPayroll.count, 0);
+
+      const contract = await contracts.create(reqA, {
+        employeeId: employeeA.id,
+        contractNumber: `CTR-${run}`,
+        type: 'FIXED_TERM',
+        startDate: '2026-11-01T00:00:00.000Z',
+        endDate: '2027-10-31T00:00:00.000Z',
+        jobTitle: 'Senior Analyst',
+        basicSalary: 12000,
+        housingAllowance: 3000,
+        transportAllowance: 1200,
+      });
+      assert.equal(contract.status, 'DRAFT');
+
+      const activeContract = await contracts.activate(reqA, contract.id);
+      assert.equal(activeContract.status, 'ACTIVE');
+
+      const employeeAfterContract = await prisma.employee.findUniqueOrThrow({ where: { id: employeeA.id } });
+      assert.equal(employeeAfterContract.jobTitle, 'Senior Analyst');
+      assert.equal(Number(employeeAfterContract.basicSalary), 12000);
+
+      const secondContract = await contracts.create(reqA, {
+        employeeId: employeeA.id,
+        contractNumber: `CTR2-${run}`,
+        type: 'FIXED_TERM',
+        startDate: '2027-11-01T00:00:00.000Z',
+        endDate: '2028-10-31T00:00:00.000Z',
+      });
+      await assert.rejects(
+        () => contracts.activate(reqA, secondContract.id),
+        /Employee already has an active contract/,
+      );
+
+      const terminatedContract = await contracts.terminate(reqA, contract.id, 'E2E termination');
+      assert.equal(terminatedContract.status, 'TERMINATED');
+      assert.ok(terminatedContract.terminatedAt);
 
       const terminated = await employees.terminate(tenantA.id, employeeA.id);
       assert.equal(terminated.status, 'TERMINATED');
