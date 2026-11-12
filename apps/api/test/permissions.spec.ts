@@ -29,6 +29,15 @@ test('permission matrix: roles vs crm and hr permissions', () => {
   assert.equal(hasPermission('READONLY', 'hr:read'), true);
   assert.equal(hasPermission('READONLY', 'hr:write'), false);
 
+  assert.equal(hasPermission('ADMIN', 'erp:read'), true);
+  assert.equal(hasPermission('ADMIN', 'erp:write'), true);
+  assert.equal(hasPermission('MANAGER', 'erp:read'), true);
+  assert.equal(hasPermission('MANAGER', 'erp:write'), false);
+  assert.equal(hasPermission('USER', 'erp:read'), true);
+  assert.equal(hasPermission('USER', 'erp:write'), false);
+  assert.equal(hasPermission('AUDITOR', 'erp:read'), true);
+  assert.equal(hasPermission('AUDITOR', 'erp:write'), false);
+
   assert.equal(hasPermission('USER', 'notifications:read'), true);
   assert.equal(hasPermission('USER', 'notifications:self-write'), true);
   assert.equal(hasPermission('USER', 'notifications:admin'), false);
@@ -52,6 +61,12 @@ class DummyController {
 
   @RequirePermissions('hr:read')
   hrRead() {}
+
+  @RequirePermissions('erp:write')
+  erpWrite() {}
+
+  @RequirePermissions('erp:read')
+  erpRead() {}
 }
 
 function ctx(user: any, handler: string): ExecutionContext {
@@ -86,6 +101,17 @@ test('PermissionsGuard enforces hr read/write boundaries', () => {
   assert.throws(() => guard.canActivate(ctx({ role: 'USER' }, 'hrRead')), ForbiddenException);
   assert.equal(guard.canActivate(ctx({ role: 'AUDITOR' }, 'hrRead')), true);
   assert.throws(() => guard.canActivate(ctx({ role: 'AUDITOR' }, 'hrWrite')), ForbiddenException);
+});
+
+test('PermissionsGuard enforces ERP finance read/write boundaries', () => {
+  const guard = new PermissionsGuard(new Reflector());
+  assert.equal(guard.canActivate(ctx({ role: 'ADMIN' }, 'erpWrite')), true);
+  assert.equal(guard.canActivate(ctx({ role: 'MANAGER' }, 'erpRead')), true);
+  assert.throws(() => guard.canActivate(ctx({ role: 'MANAGER' }, 'erpWrite')), ForbiddenException);
+  assert.equal(guard.canActivate(ctx({ role: 'USER' }, 'erpRead')), true);
+  assert.throws(() => guard.canActivate(ctx({ role: 'USER' }, 'erpWrite')), ForbiddenException);
+  assert.equal(guard.canActivate(ctx({ role: 'AUDITOR' }, 'erpRead')), true);
+  assert.throws(() => guard.canActivate(ctx({ role: 'AUDITOR' }, 'erpWrite')), ForbiddenException);
 });
 
 test('PermissionsGuard allows USER/AUDITOR boundary correctly', () => {
