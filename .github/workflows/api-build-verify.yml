@@ -86,7 +86,7 @@ jobs:
       - name: Apply test database migrations
         run: pnpm --filter @scc/database exec prisma migrate deploy --schema prisma/schema.prisma
 
-      - name: Run DB-backed CRM and HR tenant E2E
+      - name: Run DB-backed CRM, HR and Accounting E2E
         run: pnpm --filter @scc/api test:db-e2e
 
       - name: Build API dependency graph
