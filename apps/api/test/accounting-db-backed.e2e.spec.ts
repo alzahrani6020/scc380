@@ -713,6 +713,219 @@ test(
         1,
       );
 
+      // AR/AP aging E2E isolated tenant keeps bucket totals deterministic.
+      const agingSupplierB = await prisma.supplier.create({
+        data: {
+          tenantId: tenantB.id,
+          name: 'Aging Supplier B',
+          code: `AGING-SUP-${run}`,
+          isActive: true,
+        },
+      });
+
+      const arCurrent = await prisma.invoice.create({
+        data: {
+          tenantId: tenantB.id,
+          invoiceNumber: `AR-CURRENT-${run}`,
+          contactId: contactB.id,
+          type: 'STANDARD',
+          status: 'SENT',
+          subtotal: 100,
+          taxAmount: 0,
+          total: 100,
+          issueDate: new Date('2026-12-01T12:00:00.000Z'),
+          dueDate: new Date('2027-01-15T23:59:59.999Z'),
+        },
+      });
+      const ar30 = await prisma.invoice.create({
+        data: {
+          tenantId: tenantB.id,
+          invoiceNumber: `AR-30-${run}`,
+          contactId: contactB.id,
+          type: 'STANDARD',
+          status: 'PARTIAL',
+          subtotal: 200,
+          taxAmount: 0,
+          total: 200,
+          issueDate: new Date('2026-11-15T12:00:00.000Z'),
+          dueDate: new Date('2026-12-15T23:59:59.999Z'),
+        },
+      });
+      const ar60 = await prisma.invoice.create({
+        data: {
+          tenantId: tenantB.id,
+          invoiceNumber: `AR-60-${run}`,
+          contactId: contactB.id,
+          type: 'STANDARD',
+          status: 'SENT',
+          subtotal: 300,
+          taxAmount: 0,
+          total: 300,
+          issueDate: new Date('2026-10-01T12:00:00.000Z'),
+          dueDate: new Date('2026-11-15T23:59:59.999Z'),
+        },
+      });
+      const ar90plus = await prisma.invoice.create({
+        data: {
+          tenantId: tenantB.id,
+          invoiceNumber: `AR-90PLUS-${run}`,
+          contactId: contactB.id,
+          type: 'STANDARD',
+          status: 'OVERDUE',
+          subtotal: 400,
+          taxAmount: 0,
+          total: 400,
+          issueDate: new Date('2026-08-01T12:00:00.000Z'),
+          dueDate: new Date('2026-09-01T23:59:59.999Z'),
+        },
+      });
+      await prisma.payment.createMany({
+        data: [
+          {
+            tenantId: tenantB.id,
+            invoiceId: ar30.id,
+            amount: 50,
+            status: 'COMPLETED',
+            paidAt: new Date('2026-12-20T12:00:00.000Z'),
+          },
+          {
+            tenantId: tenantB.id,
+            invoiceId: ar60.id,
+            amount: 100,
+            status: 'COMPLETED',
+            paidAt: new Date('2027-01-05T12:00:00.000Z'),
+          },
+        ],
+      });
+
+      const arAging = await reports.getReceivablesAging(
+        tenantB.id,
+        'ADMIN',
+        '2026-12-31',
+      );
+      assert.equal(arAging.totalOutstanding, 950);
+      assert.deepEqual(arAging.buckets, {
+        current: 100,
+        days1to30: 150,
+        days31to60: 300,
+        days61to90: 0,
+        days91plus: 400,
+      });
+      assert.equal(arAging.parties.length, 1);
+      assert.equal(arAging.parties[0].partyId, contactB.id);
+      assert.equal(arAging.parties[0].invoiceCount, 4);
+      assert.equal(arAging.parties[0].outstanding, 950);
+      assert.equal(
+        arAging.invoices.find((row) => row.id === ar60.id)?.paidAmount,
+        0,
+      );
+      assert.equal(
+        arAging.invoices.find((row) => row.id === ar90plus.id)?.bucket,
+        'days91plus',
+      );
+      assert.equal(
+        arAging.invoices.some((row) => row.id === arCurrent.id),
+        true,
+      );
+
+      const apCurrent = await prisma.supplierInvoice.create({
+        data: {
+          tenantId: tenantB.id,
+          invoiceNumber: `AP-CURRENT-${run}`,
+          supplierId: agingSupplierB.id,
+          issueDate: new Date('2026-12-01T12:00:00.000Z'),
+          dueDate: null,
+          subtotal: 120,
+          taxAmount: 0,
+          total: 120,
+        },
+      });
+      const ap60 = await prisma.supplierInvoice.create({
+        data: {
+          tenantId: tenantB.id,
+          invoiceNumber: `AP-60-${run}`,
+          supplierId: agingSupplierB.id,
+          issueDate: new Date('2026-11-01T12:00:00.000Z'),
+          dueDate: new Date('2026-11-20T23:59:59.999Z'),
+          subtotal: 250,
+          taxAmount: 0,
+          total: 250,
+        },
+      });
+      const ap90 = await prisma.supplierInvoice.create({
+        data: {
+          tenantId: tenantB.id,
+          invoiceNumber: `AP-90-${run}`,
+          supplierId: agingSupplierB.id,
+          issueDate: new Date('2026-09-01T12:00:00.000Z'),
+          dueDate: new Date('2026-10-15T23:59:59.999Z'),
+          subtotal: 400,
+          taxAmount: 0,
+          total: 400,
+          status: 'PARTIAL',
+        },
+      });
+      const ap90plus = await prisma.supplierInvoice.create({
+        data: {
+          tenantId: tenantB.id,
+          invoiceNumber: `AP-90PLUS-${run}`,
+          supplierId: agingSupplierB.id,
+          issueDate: new Date('2026-08-01T12:00:00.000Z'),
+          dueDate: new Date('2026-09-01T23:59:59.999Z'),
+          subtotal: 500,
+          taxAmount: 0,
+          total: 500,
+        },
+      });
+      await prisma.supplierPayment.createMany({
+        data: [
+          {
+            tenantId: tenantB.id,
+            supplierId: agingSupplierB.id,
+            supplierInvoiceId: ap90.id,
+            amount: 100,
+            paymentDate: new Date('2026-12-01T12:00:00.000Z'),
+          },
+          {
+            tenantId: tenantB.id,
+            supplierId: agingSupplierB.id,
+            supplierInvoiceId: ap90plus.id,
+            amount: 100,
+            paymentDate: new Date('2027-01-05T12:00:00.000Z'),
+          },
+        ],
+      });
+
+      const apAging = await reports.getPayablesAging(
+        tenantB.id,
+        'ADMIN',
+        '2026-12-31',
+      );
+      assert.equal(apAging.totalOutstanding, 1170);
+      assert.deepEqual(apAging.buckets, {
+        current: 120,
+        days1to30: 0,
+        days31to60: 250,
+        days61to90: 300,
+        days91plus: 500,
+      });
+      assert.equal(apAging.parties.length, 1);
+      assert.equal(apAging.parties[0].partyId, agingSupplierB.id);
+      assert.equal(apAging.parties[0].outstanding, 1170);
+      assert.equal(
+        apAging.invoices.find((row) => row.id === ap90plus.id)?.paidAmount,
+        0,
+      );
+      assert.equal(
+        apAging.invoices.find((row) => row.id === apCurrent.id)?.bucket,
+        'current',
+      );
+
+      await assert.rejects(
+        () => reports.getReceivablesAging(tenantB.id, 'ADMIN', 'not-a-date'),
+        /Invalid asOfDate/,
+      );
+
       const jan2027 = await periods.create(reqA, {
         name: 'January 2027',
         year: 2027,
