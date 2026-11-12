@@ -39,9 +39,23 @@ export class ChartOfAccountsService {
   }
 
   async remove(req: any, id: string) {
-    const where = { ...tenantWhere(req.user?.tenantId), id };
+    const tenantId = req.user?.tenantId;
+    const where = { ...tenantWhere(tenantId), id };
     const existing = await prisma.chartOfAccount.findFirst({ where });
     if (!existing) throw new NotFoundException('Account not found');
+
+    const [ledgerCount, childCount] = await Promise.all([
+      prisma.journalEntry.count({ where: { tenantId, accountId: id } }),
+      prisma.chartOfAccount.count({ where: { tenantId, parentId: id } }),
+    ]);
+
+    if (ledgerCount > 0) {
+      throw new ConflictException('Account has journal history and cannot be deleted; deactivate it instead');
+    }
+    if (childCount > 0) {
+      throw new ConflictException('Account has child accounts and cannot be deleted');
+    }
+
     return prisma.chartOfAccount.delete({ where: { id } });
   }
 }

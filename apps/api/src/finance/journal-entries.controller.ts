@@ -2,7 +2,7 @@ import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, Re
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { JournalEntriesService } from './journal-entries.service';
-import { IsString, IsOptional, IsNumber } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsDateString, IsIn } from 'class-validator';
 
 class CreateJEDto {
   @IsString() entryNumber: string;
@@ -12,13 +12,25 @@ class CreateJEDto {
   @IsNumber() creditAmount: number;
   @IsString() accountId: string;
   @IsString() @IsOptional() type?: string;
+  @IsDateString() @IsOptional() date?: string;
+  @IsIn(['DRAFT', 'POSTED']) @IsOptional() status?: string;
 }
 
 class UpdateJEDto {
   @IsString() @IsOptional() description?: string;
+  @IsString() @IsOptional() reference?: string;
   @IsNumber() @IsOptional() debitAmount?: number;
   @IsNumber() @IsOptional() creditAmount?: number;
-  @IsString() @IsOptional() status?: string;
+  @IsString() @IsOptional() accountId?: string;
+  @IsDateString() @IsOptional() date?: string;
+  @IsIn(['DRAFT', 'POSTED']) @IsOptional() status?: string;
+}
+
+class ReverseJEDto {
+  @IsString() entryNumber: string;
+  @IsDateString() @IsOptional() date?: string;
+  @IsString() @IsOptional() description?: string;
+  @IsString() @IsOptional() reference?: string;
 }
 
 @ApiTags('Finance - Journal Entries')
@@ -36,6 +48,11 @@ export class JournalEntriesController {
 
   @Post()
   create(@Req() req: any, @Body() dto: CreateJEDto) { return this.service.create(req, dto); }
+
+  @Post(':id/reverse')
+  reverse(@Req() req: any, @Param('id') id: string, @Body() dto: ReverseJEDto) {
+    return this.service.reverse(req, id, dto);
+  }
 
   @Patch(':id')
   update(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateJEDto) { return this.service.update(req, id, dto); }
