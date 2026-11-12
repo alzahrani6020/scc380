@@ -70,6 +70,8 @@ let csvImportExecute = null;
 let failNextOverview = false;
 let invalidCsvPreview = false;
 let invalidCsvExecuteAttempted = false;
+let failNextCompanyList = false;
+let failNextContactList = false;
 let pipelinePost = null;
 let pipelinePatch = null;
 let pipelineDeleteId = null;
@@ -215,8 +217,18 @@ async function installApiMock(page) {
     }
     if (method === 'GET' && path === '/crm/contacts') {
       contactListQueries.push(queryObject(url));
+      if (failNextContactList) {
+        failNextContactList = false;
+        await route.fulfill(json({ message: 'forced contact list failure' }, 500));
+        return;
+      }
       const data = lifecycleMode && lifecycle.contact ? [lifecycle.contact, contact] : [contact];
-      await route.fulfill(json({ data, count: data.length, page: 1, limit: Number(url.searchParams.get('limit') || 20) }));
+      await route.fulfill(json({
+        data,
+        count: lifecycleMode ? data.length : 60,
+        page: Number(url.searchParams.get('page') || 1),
+        limit: Number(url.searchParams.get('limit') || 25),
+      }));
       return;
     }
     if (method === 'POST' && path === '/crm/contacts') {
@@ -283,8 +295,18 @@ async function installApiMock(page) {
     }
     if (method === 'GET' && path === '/crm/companies') {
       companyListQueries.push(queryObject(url));
+      if (failNextCompanyList) {
+        failNextCompanyList = false;
+        await route.fulfill(json({ message: 'forced company list failure' }, 500));
+        return;
+      }
       const data = lifecycleMode && lifecycle.company ? [lifecycle.company, company] : [company];
-      await route.fulfill(json({ data, count: data.length, page: 1, limit: Number(url.searchParams.get('limit') || 20) }));
+      await route.fulfill(json({
+        data,
+        count: lifecycleMode ? data.length : 60,
+        page: Number(url.searchParams.get('page') || 1),
+        limit: Number(url.searchParams.get('limit') || 25),
+      }));
       return;
     }
     if (method === 'POST' && path === '/crm/companies') {
@@ -699,6 +721,86 @@ async function testContactCrudAndCsv(page) {
   await waitUntil(() => contactDeleteId === 'ct1', 'Contact DELETE was not sent');
 }
 
+
+async function testCompanyQueryAndRecovery(page) {
+  companyListQueries.length = 0;
+
+  await page.goto(`${BASE}/dashboard/crm/companies`);
+  await page.getByText('Browser Company', { exact: true }).waitFor();
+  await waitUntil(
+    () => companyListQueries.some((q) => q.page === '1' && q.limit === '25'),
+    'Companies did not request page=1&limit=25',
+  );
+  await page.getByText('صفحة 1 من 3 — إجمالي 60', { exact: true }).waitFor();
+
+  await page.getByPlaceholder('بحث بالاسم أو السجل أو الرقم الضريبي...').fill('needle-company');
+  await waitUntil(
+    () => companyListQueries.some((q) => q.search === 'needle-company' && q.page === '1' && q.limit === '25'),
+    'Companies search was not sent server-side after debounce',
+  );
+
+  await page.getByRole('button', { name: 'التالي', exact: true }).click();
+  await waitUntil(
+    () => companyListQueries.some((q) => q.search === 'needle-company' && q.page === '2' && q.limit === '25'),
+    'Companies page 2 did not preserve server-side search',
+  );
+  await page.getByText('صفحة 2 من 3 — إجمالي 60', { exact: true }).waitFor();
+
+  failNextCompanyList = true;
+  await page.goto(`${BASE}/dashboard/crm/companies`);
+  await page.getByText('تعذر تحميل الشركات. تحقق من الاتصال بالخادم.', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'إعادة المحاولة', exact: true }).click();
+  await page.getByText('Browser Company', { exact: true }).waitFor();
+}
+
+async function testContactQueryAndRecovery(page) {
+  contactListQueries.length = 0;
+
+  await page.goto(`${BASE}/dashboard/crm/contacts`);
+  await page.getByText('Ali A', { exact: true }).waitFor();
+  await waitUntil(
+    () => contactListQueries.some((q) => q.page === '1' && q.limit === '25'),
+    'Contacts did not request page=1&limit=25',
+  );
+
+  await page.getByPlaceholder('البحث في العملاء...').fill('needle-contact');
+  await waitUntil(
+    () => contactListQueries.some((q) => q.search === 'needle-contact' && q.page === '1'),
+    'Contacts search was not sent server-side after debounce',
+  );
+
+  await page.getByLabel('تصفية حسب النوع').selectOption('LEAD');
+  await waitUntil(
+    () => contactListQueries.some((q) => q.search === 'needle-contact' && q.type === 'LEAD' && q.page === '1'),
+    'Contacts type filter was not sent server-side',
+  );
+
+  await page.getByLabel('تصفية حسب الحالة').selectOption('ACTIVE');
+  await waitUntil(
+    () => contactListQueries.some((q) => q.search === 'needle-contact' && q.type === 'LEAD' && q.status === 'ACTIVE' && q.page === '1'),
+    'Contacts status filter was not sent server-side',
+  );
+
+  await page.getByRole('button', { name: 'التالي', exact: true }).click();
+  await waitUntil(
+    () => contactListQueries.some((q) =>
+      q.search === 'needle-contact' &&
+      q.type === 'LEAD' &&
+      q.status === 'ACTIVE' &&
+      q.page === '2' &&
+      q.limit === '25'
+    ),
+    'Contacts page 2 did not preserve filters',
+  );
+  await page.getByText('صفحة 2 من 3 — إجمالي 60', { exact: true }).waitFor();
+
+  failNextContactList = true;
+  await page.goto(`${BASE}/dashboard/crm/contacts`);
+  await page.getByText('تعذر تحميل جهات الاتصال. تحقق من الاتصال بالخادم.', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'إعادة المحاولة', exact: true }).click();
+  await page.getByText('Ali A', { exact: true }).waitFor();
+}
+
 async function testCompanyCrud(page) {
   companyPost = null;
   companyPatch = null;
@@ -1028,6 +1130,8 @@ try {
   await testContactCrudAndCsv(page);
   await testInvalidCsvGuard(page);
   await testOverviewRecoveryAndQuickLinks(page);
+  await testCompanyQueryAndRecovery(page);
+  await testContactQueryAndRecovery(page);
   await testCompanyCrud(page);
   await testPipelineAndStageCrud(page);
   await testCrmLifecycle(page);
