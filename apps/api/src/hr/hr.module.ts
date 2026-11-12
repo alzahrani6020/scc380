@@ -13,6 +13,12 @@ import { ShiftsController } from './shifts.controller';
 import { ShiftsService } from './shifts.service';
 import { HrDashboardController } from './dashboard.controller';
 import { HrDashboardService } from './dashboard.service';
+import { ContractsController } from './contracts.controller';
+import { ContractsService } from './contracts.service';
+import { LeavePoliciesController } from './leave-policies.controller';
+import { LeavePoliciesService } from './leave-policies.service';
+import { LeaveBalancesController } from './leave-balances.controller';
+import { LeaveBalancesService } from './leave-balances.service';
 
 @Module({
   controllers: [
@@ -23,6 +29,9 @@ import { HrDashboardService } from './dashboard.service';
     PayrollsController,
     ShiftsController,
     HrDashboardController,
+    ContractsController,
+    LeavePoliciesController,
+    LeaveBalancesController,
   ],
   providers: [
     EmployeesService,
@@ -32,6 +41,9 @@ import { HrDashboardService } from './dashboard.service';
     PayrollsService,
     ShiftsService,
     HrDashboardService,
+    ContractsService,
+    LeavePoliciesService,
+    LeaveBalancesService,
   ],
 })
 export class HrModule {}

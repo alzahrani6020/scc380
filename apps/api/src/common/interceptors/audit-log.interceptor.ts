@@ -42,6 +42,9 @@ function getEntityType(path: string): string {
   if (hasPath(path, '/hr/payrolls')) return 'PAYROLL';
   if (hasPath(path, '/hr/departments')) return 'DEPARTMENT';
   if (hasPath(path, '/hr/shifts')) return 'SHIFT';
+  if (hasPath(path, '/hr/contracts')) return 'EMPLOYEE_CONTRACT';
+  if (hasPath(path, '/hr/leave-policies')) return 'LEAVE_POLICY';
+  if (hasPath(path, '/hr/leave-balances')) return 'LEAVE_BALANCE';
   if (hasPath(path, '/notifications')) return 'NOTIFICATION';
 
   const segments = path.split('/').filter(Boolean);
@@ -64,6 +67,9 @@ export function deriveAuditAction(method: string, path: string): string {
   if (hasPath(path, '/hr/payrolls')) return 'PAYROLL_' + suffix;
   if (hasPath(path, '/hr/departments')) return 'DEPARTMENT_' + suffix;
   if (hasPath(path, '/hr/shifts')) return 'SHIFT_' + suffix;
+  if (hasPath(path, '/hr/contracts')) return 'EMPLOYEE_CONTRACT_' + suffix;
+  if (hasPath(path, '/hr/leave-policies')) return 'LEAVE_POLICY_' + suffix;
+  if (hasPath(path, '/hr/leave-balances')) return 'LEAVE_BALANCE_' + suffix;
   if (hasPath(path, '/notifications')) return 'NOTIFICATION_' + suffix;
   return method;
 }
@@ -84,6 +90,9 @@ async function loadPreviousValue(request: any, method: string, path: string) {
   if (hasPath(path, '/hr/payrolls')) return prisma.payroll.findFirst({ where });
   if (hasPath(path, '/hr/departments')) return prisma.department.findFirst({ where });
   if (hasPath(path, '/hr/shifts')) return prisma.shift.findFirst({ where });
+  if (hasPath(path, '/hr/contracts')) return prisma.employeeContract.findFirst({ where });
+  if (hasPath(path, '/hr/leave-policies')) return prisma.leavePolicy.findFirst({ where });
+  if (hasPath(path, '/hr/leave-balances')) return prisma.leaveBalance.findFirst({ where });
   if (hasPath(path, '/notifications')) {
     const notificationWhere: any = { ...where };
     if (request.user?.role !== 'SUPER_ADMIN') notificationWhere.userId = request.user?.userId;
