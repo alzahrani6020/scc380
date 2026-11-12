@@ -710,7 +710,7 @@ async function testContactCompanySelectorContracts(page) {
     () => companyListQueries.some((q) => q.search === 'Beyond100' && q.limit === '20' && q.active === 'true'),
     'Contact company selector did not perform server-side company search',
   );
-  await page.getByRole('button', { name: 'بدون شركة مرتبطة', exact: true }).click();
+  await page.getByRole('listbox').getByRole('button', { name: 'بدون شركة مرتبطة', exact: true }).click();
   await page.getByRole('button', { name: 'إلغاء', exact: true }).click();
 
   const card = page.locator('.scc-card-hover').filter({ hasText: 'Ali A' }).first();
