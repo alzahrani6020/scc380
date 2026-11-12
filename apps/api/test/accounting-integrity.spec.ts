@@ -183,3 +183,16 @@ test('supplier AP schema reconciliation is additive and startup-gated', () => {
   assert.match(startup, /SUPPLIER_AP_BLOCKED/);
   assert.match(startup, /await verifySupplierApPreconditions\(applied\)/);
 });
+
+
+test('supplier AP posting requires explicit item accounts and uses atomic dual-write', () => {
+  const service = src('src/supplier-invoice/supplier-invoice.service.ts');
+  assert.match(service, /كل بند في فاتورة المورد يحتاج accountId/);
+  assert.match(service, /sourceType:\s*'SUPPLIER_INVOICE'/);
+  assert.match(service, /sourceType:\s*'SUPPLIER_PAYMENT'/);
+  assert.match(service, /ACCOUNTS_PAYABLE/);
+  assert.match(service, /VAT_RECEIVABLE/);
+  assert.match(service, /postInTransaction\(tx/);
+  assert.match(service, /resolvePaymentAccountInTransaction/);
+  assert.match(service, /فاتورة المورد مُرحّلة محاسبياً/);
+});
