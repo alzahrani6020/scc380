@@ -56,3 +56,20 @@ test('chart accounts with ledger history cannot be deleted', () => {
   assert.match(service, /prisma\.journalEntry\.count/);
   assert.match(service, /cannot be deleted; deactivate it instead/);
 });
+
+
+test('journal header-line migration is additive and preserves legacy journal table', () => {
+  const migration = readFileSync(
+    join(process.cwd(), '../../packages/database/prisma/migrations/20261112162000_add_journal_header_lines/migration.sql'),
+    'utf8',
+  );
+  assert.match(migration, /CREATE TABLE "journal_entry_headers"/);
+  assert.match(migration, /CREATE TABLE "journal_entry_lines"/);
+  assert.match(migration, /journal_entry_lines_amount_check/);
+  assert.match(migration, /REFERENCES "journal_entries"/) === false;
+  assert.doesNotMatch(migration, /(^|\n)\s*DROP\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*TRUNCATE\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*DELETE\s+FROM\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*UPDATE\s+["a-z]/i);
+  assert.doesNotMatch(migration, /ALTER TABLE "journal_entries"/i);
+});
