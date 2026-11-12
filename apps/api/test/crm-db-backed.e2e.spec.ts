@@ -125,10 +125,13 @@ test(
       data: {
         tenantId: tenantA.id,
         title: `Deal A ${run}`,
+        description: 'Clear me',
         contactId: contactA.id,
         companyId: companyA.id,
         pipelineId: pipelineA.id,
         pipelineStageId: stageA.id,
+        value: 125000,
+        expectedClose: new Date('2026-12-31T12:00:00.000Z'),
       },
     });
     const dealB = await prisma.deal.create({
@@ -143,7 +146,16 @@ test(
     });
 
     const activityA = await prisma.activity.create({
-      data: { tenantId: tenantA.id, type: 'TASK', subject: `Activity A ${run}`, contactId: contactA.id, dealId: dealA.id },
+      data: {
+        tenantId: tenantA.id,
+        type: 'TASK',
+        subject: `Activity A ${run}`,
+        description: 'Clear activity fields',
+        contactId: contactA.id,
+        dealId: dealA.id,
+        scheduledAt: new Date('2026-12-20T09:00:00.000Z'),
+        remindAt: new Date('2026-12-20T08:00:00.000Z'),
+      },
     });
     const activityB = await prisma.activity.create({
       data: { tenantId: tenantB.id, type: 'TASK', subject: `Activity B ${run}`, contactId: contactB.id, dealId: dealB.id },
@@ -230,6 +242,44 @@ test(
       assert.equal(createActivity.status, 201);
       const createdActivity = await json(createActivity);
       assert.equal(createdActivity.tenantId, tenantA.id);
+
+      const clearDeal = await http(base, tenantA.id, `/crm/deals/${dealA.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          description: null,
+          companyId: null,
+          pipelineId: null,
+          pipelineStageId: null,
+          value: null,
+          expectedClose: null,
+        }),
+      });
+      assert.equal(clearDeal.status, 200);
+      const clearedDeal = await prisma.deal.findUniqueOrThrow({ where: { id: dealA.id } });
+      assert.equal(clearedDeal.description, null);
+      assert.equal(clearedDeal.companyId, null);
+      assert.equal(clearedDeal.pipelineId, null);
+      assert.equal(clearedDeal.pipelineStageId, null);
+      assert.equal(clearedDeal.value, null);
+      assert.equal(clearedDeal.expectedClose, null);
+
+      const clearActivity = await http(base, tenantA.id, `/crm/activities/${activityA.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          description: null,
+          contactId: null,
+          dealId: null,
+          scheduledAt: null,
+          remindAt: null,
+        }),
+      });
+      assert.equal(clearActivity.status, 200);
+      const clearedActivity = await prisma.activity.findUniqueOrThrow({ where: { id: activityA.id } });
+      assert.equal(clearedActivity.description, null);
+      assert.equal(clearedActivity.contactId, null);
+      assert.equal(clearedActivity.dealId, null);
+      assert.equal(clearedActivity.scheduledAt, null);
+      assert.equal(clearedActivity.remindAt, null);
 
       const crossContactDeal = await http(base, tenantA.id, '/crm/deals', {
         method: 'POST',
