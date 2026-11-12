@@ -5,7 +5,7 @@ import Link from 'next/link';
 import api from '@/lib/api';
 import {
   Briefcase, Users, ClipboardList, CalendarDays, Wallet, Network,
-  Clock3, UserCheck, UserX, TimerReset, Home, AlertTriangle, RefreshCw, FileText, Coins, ReceiptText
+  Clock3, UserCheck, UserX, TimerReset, Home, AlertTriangle, RefreshCw, FileText, Coins, ReceiptText, BriefcaseBusiness, Target, GraduationCap
 } from 'lucide-react';
 
 export default function HrDashboardPage() {
@@ -60,6 +60,9 @@ export default function HrDashboardPage() {
     { label: 'المستندات', href: '/dashboard/hr/documents', icon: FileText },
     { label: 'السلف والقروض', href: '/dashboard/hr/loans', icon: Coins },
     { label: 'المخالصة', href: '/dashboard/hr/settlements', icon: ReceiptText },
+    { label: 'التوظيف', href: '/dashboard/hr/recruitment', icon: BriefcaseBusiness },
+    { label: 'الأداء', href: '/dashboard/hr/performance', icon: Target },
+    { label: 'التدريب', href: '/dashboard/hr/training', icon: GraduationCap },
     { label: 'الإدارات', href: '/dashboard/hr/departments', icon: Network },
   ];
 
@@ -134,7 +137,7 @@ export default function HrDashboardPage() {
 
       <div className="scc-card">
         <h2 className="text-white font-semibold mb-4">الوصول السريع</h2>
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-9 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-12 gap-3">
           {quickLinks.map((item) => (
             <Link key={item.href} href={item.href} className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 hover:border-primary-500/40 transition-colors">
               <item.icon className="h-5 w-5 text-primary-400 mb-2" />
