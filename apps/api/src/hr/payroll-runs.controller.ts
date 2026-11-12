@@ -41,38 +41,38 @@ export class PayrollRunsController {
   constructor(private readonly service: PayrollRunsService) {}
 
   @Get()
-  @RequirePermissions('hr:read')
+  @RequirePermissions('hr:payroll:read')
   findAll(@Req() req: any, @Query() query: any) { return this.service.findAll(req, query); }
 
   @Get(':id')
-  @RequirePermissions('hr:read')
+  @RequirePermissions('hr:payroll:read')
   findOne(@Req() req: any, @Param('id') id: string) { return this.service.findOne(req, id); }
 
   @Post()
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:payroll:write')
   create(@Req() req: any, @Body() dto: CreatePayrollRunDto) { return this.service.create(req, dto); }
 
   @Patch(':id/items/:itemId')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:payroll:write')
   updateItem(@Req() req: any, @Param('id') id: string, @Param('itemId') itemId: string, @Body() dto: UpdatePayrollRunItemDto) {
     return this.service.updateItem(req, id, itemId, dto);
   }
 
   @Post(':id/approve')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:payroll:write')
   approve(@Req() req: any, @Param('id') id: string) { return this.service.approve(req, id); }
 
   @Post(':id/pay')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:payroll:write')
   pay(@Req() req: any, @Param('id') id: string) { return this.service.pay(req, id); }
 
   @Post(':id/post-accounting')
-  @RequirePermissions('hr:write', 'erp:write')
+  @RequirePermissions('hr:payroll:write', 'erp:write')
   postAccounting(@Req() req: any, @Param('id') id: string, @Body() dto: PostPayrollAccountingDto) {
     return this.service.postAccounting(req, id, dto);
   }
 
   @Delete(':id')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:payroll:write')
   remove(@Req() req: any, @Param('id') id: string) { return this.service.removeDraft(req, id); }
 }
