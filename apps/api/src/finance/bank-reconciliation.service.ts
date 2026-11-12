@@ -365,7 +365,7 @@ export class BankReconciliationService {
         }),
       ]);
 
-      const candidates = [
+      const candidates: Array<{ modernId?: string; legacyId?: string }> = [
         ...modern
           .filter((x) => Math.abs(this.signedAmount(x.debitAmount, x.creditAmount) - amount) < 0.01)
           .map((x) => ({ modernId: x.id })),
