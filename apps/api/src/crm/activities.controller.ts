@@ -3,13 +3,13 @@ import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard, RequirePermissions } from '../auth/guards/permissions.guard';
 import { ActivitiesService } from './activities.service';
-import { IsString, IsOptional, IsEnum, IsISO8601, MaxLength } from 'class-validator';
+import { IsString, IsOptional, IsEnum, IsISO8601, MaxLength, MinLength } from 'class-validator';
 import { ActivityType } from '@prisma/client';
 import { ListActivitiesQueryDto } from './dto/list-activities-query.dto';
 
 class CreateActivityDto {
   @IsEnum(ActivityType) type: ActivityType;
-  @IsString() @MaxLength(150) subject: string;
+  @IsString() @MinLength(1) @MaxLength(150) subject: string;
   @IsString() @MaxLength(2000) @IsOptional() description?: string;
   @IsString() @MaxLength(50) @IsOptional() contactId?: string;
   @IsString() @MaxLength(50) @IsOptional() dealId?: string;
@@ -20,7 +20,7 @@ class CreateActivityDto {
 
 class UpdateActivityDto {
   @IsEnum(ActivityType) @IsOptional() type?: ActivityType;
-  @IsString() @MaxLength(150) @IsOptional() subject?: string;
+  @IsString() @MinLength(1) @MaxLength(150) @IsOptional() subject?: string;
   @IsString() @MaxLength(2000) @IsOptional() description?: string;
   @IsString() @MaxLength(50) @IsOptional() contactId?: string;
   @IsString() @MaxLength(50) @IsOptional() dealId?: string;
