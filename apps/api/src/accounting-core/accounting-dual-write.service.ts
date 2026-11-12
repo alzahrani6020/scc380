@@ -15,7 +15,7 @@ export class AccountingDualWriteService {
       await tx.journalEntry.createMany({
         data: input.lines.map((line, index) => ({
           tenantId: input.tenantId,
-          entryNumber: `${input.entryNumber}-L${index + 1}`,
+          entryNumber: `LEG-${input.tenantId}-${input.entryNumber}-L${index + 1}`,
           date,
           description: line.description || input.description,
           reference: input.reference,
