@@ -27,31 +27,31 @@ export class DepartmentsController {
   constructor(private readonly service: DepartmentsService) {}
 
   @Get()
-  @RequirePermissions('hr:read')
+  @RequirePermissions('hr:org:read')
   findAll(@Req() req: any, @Query('search') search?: string) {
     return this.service.findAll(req, search);
   }
 
   @Get(':id')
-  @RequirePermissions('hr:read')
+  @RequirePermissions('hr:org:read')
   findOne(@Req() req: any, @Param('id') id: string) {
     return this.service.findOne(req, id);
   }
 
   @Post()
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:org:write')
   create(@Req() req: any, @Body() dto: CreateDepartmentDto) {
     return this.service.create(req, dto);
   }
 
   @Patch(':id')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:org:write')
   update(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateDepartmentDto) {
     return this.service.update(req, id, dto);
   }
 
   @Delete(':id')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:org:write')
   remove(@Req() req: any, @Param('id') id: string) {
     return this.service.remove(req, id);
   }
