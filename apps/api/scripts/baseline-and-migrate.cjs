@@ -326,6 +326,8 @@ async function resolveIfNeeded(applied, migration, verify) {
     await verifyHrIntegrityPreconditions(applied);
   }
 
+  await verifyAccountingCorePreconditions(applied);
+
   console.log('PRISMA_MIGRATE_DEPLOY_START');
   runPrisma(['migrate', 'deploy']);
   console.log('PRISMA_MIGRATE_DEPLOY_PASS');
