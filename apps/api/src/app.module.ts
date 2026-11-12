@@ -32,6 +32,7 @@ import { InventoryModule } from './inventory/inventory.module';
 import { PosModule } from './pos/pos.module';
 import { ReportsModule } from './reports/reports.module';
 import { AutoJournalModule } from './auto-journal/auto-journal.module';
+import { AccountingCoreModule } from './accounting-core/accounting-core.module';
 import { SupplierModule } from './supplier/supplier.module';
 import { BranchModule } from './branch/branch.module';
 import { SupplierInvoiceModule } from './supplier-invoice/supplier-invoice.module';
@@ -77,6 +78,7 @@ import { RealEstateModule } from './real-estate/real-estate.module';
     PosModule,
     ReportsModule,
     AutoJournalModule,
+    AccountingCoreModule,
     SupplierModule,
     BranchModule,
     SupplierInvoiceModule,
