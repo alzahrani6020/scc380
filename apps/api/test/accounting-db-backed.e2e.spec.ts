@@ -7,6 +7,7 @@ import { AccountMappingService } from '../src/accounting-core/account-mapping.se
 import { InvoicesService } from '../src/erp/invoices.service';
 import { PaymentsService } from '../src/finance/payments.service';
 import { SupplierInvoiceService } from '../src/supplier-invoice/supplier-invoice.service';
+import { ExpensesService } from '../src/finance/expenses.service';
 
 test(
   'Accounting DB-backed E2E validates balanced posting, periods, mapping, tenant isolation and dual-write',
@@ -86,6 +87,7 @@ test(
       const invoices = new InvoicesService(mapping, dualWrite);
       const payments = new PaymentsService(mapping, dualWrite);
       const supplierInvoices = new SupplierInvoiceService(mapping, dualWrite);
+      const expenses = new ExpensesService(mapping, dualWrite);
       const reqA: any = { user: { tenantId: tenantA.id, role: 'ADMIN' } };
 
       const mapped = await mapping.resolve(tenantA.id, ['CASH', 'SALES_REVENUE']);
@@ -531,6 +533,80 @@ test(
           where: { id: bankSupplierInvoice.id },
         }))!.paidAmount),
         0,
+      );
+
+      const approvedExpense = await expenses.create(reqA, {
+        category: 'OFFICE',
+        amount: 75,
+        currency: 'SAR',
+        description: 'Office expense E2E',
+        incurredAt: '2026-11-18T12:00:00.000Z',
+        status: 'APPROVED',
+        debitAccountId: expenseA.id,
+        creditAccountId: cashA.id,
+      });
+      const expenseHeader = await prisma.journalEntryHeader.findFirst({
+        where: { tenantId: tenantA.id, sourceType: 'EXPENSE', sourceId: approvedExpense.id },
+        include: { lines: true },
+      });
+      assert.ok(expenseHeader);
+      assert.equal(expenseHeader.lines.length, 2);
+      assert.deepEqual(
+        new Set(expenseHeader.lines.map(line => line.accountId)),
+        new Set([expenseA.id, cashA.id]),
+      );
+      assert.equal(
+        expenseHeader.lines.reduce((sum, line) => sum + Number(line.debitAmount), 0),
+        75,
+      );
+      assert.equal(
+        expenseHeader.lines.reduce((sum, line) => sum + Number(line.creditAmount), 0),
+        75,
+      );
+
+      await assert.rejects(
+        () => expenses.update(reqA, approvedExpense.id, { amount: 1 }),
+        /Expense is posted/,
+      );
+      await assert.rejects(
+        () => expenses.remove(reqA, approvedExpense.id),
+        /Posted expense cannot be deleted/,
+      );
+
+      const pendingExpense = await expenses.create(reqA, {
+        category: 'OTHER',
+        amount: 25,
+        currency: 'SAR',
+        description: 'Pending expense E2E',
+        incurredAt: '2026-11-19T12:00:00.000Z',
+        status: 'PENDING',
+      });
+      assert.equal(
+        await prisma.journalEntryHeader.count({
+          where: { tenantId: tenantA.id, sourceType: 'EXPENSE', sourceId: pendingExpense.id },
+        }),
+        0,
+      );
+      await assert.rejects(
+        () => expenses.update(reqA, pendingExpense.id, { status: 'APPROVED' }),
+        /requires debitAccountId and creditAccountId/,
+      );
+      assert.equal(
+        (await prisma.expense.findUnique({ where: { id: pendingExpense.id } }))!.status,
+        'PENDING',
+      );
+
+      const postedPendingExpense = await expenses.update(reqA, pendingExpense.id, {
+        status: 'APPROVED',
+        debitAccountId: expenseA.id,
+        creditAccountId: cashA.id,
+      });
+      assert.equal(postedPendingExpense.status, 'APPROVED');
+      assert.equal(
+        await prisma.journalEntryHeader.count({
+          where: { tenantId: tenantA.id, sourceType: 'EXPENSE', sourceId: pendingExpense.id },
+        }),
+        1,
       );
 
       const dual = await dualWrite.post({
