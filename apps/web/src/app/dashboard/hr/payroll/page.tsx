@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import api from '@/lib/api';
-import { Receipt, Search, Wallet, Pencil, Trash2, X } from 'lucide-react';
+import { Receipt, Search, Wallet, Pencil, Trash2, X, CheckCircle2 } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
 import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
@@ -40,41 +40,66 @@ export default function PayrollPage() {
   const openCreate = () => {
     setEditing(null);
     const employeeId = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('employeeId') : null;
-    setFormData({ employeeId: employeeId || undefined, month: new Date().getMonth() + 1, year: new Date().getFullYear(), status: 'DRAFT' });
+    setFormData({ employeeId: employeeId || undefined, month: new Date().getMonth() + 1, year: new Date().getFullYear() });
     setIsModalOpen(true);
   };
 
   const openEdit = (item: any) => {
     setEditing(item);
-    setFormData({ ...item });
+    setFormData({
+      employeeId: item.employeeId,
+      month: item.month,
+      year: item.year,
+      basicSalary: item.basicSalary,
+      housingAllowance: item.housingAllowance,
+      transportAllowance: item.transportAllowance,
+      otherAllowances: item.otherAllowances,
+      gosiDeduction: item.gosiDeduction,
+      taxDeduction: item.taxDeduction,
+      otherDeductions: item.otherDeductions,
+      status: item.status,
+    });
     setIsModalOpen(true);
   };
 
   const calculateNet = () => {
-    const basic = parseFloat(formData.basicSalary) || 0;
-    const housing = parseFloat(formData.housingAllowance) || 0;
-    const transport = parseFloat(formData.transportAllowance) || 0;
-    const other = parseFloat(formData.otherAllowances) || 0;
-    const gosi = parseFloat(formData.gosiDeduction) || 0;
-    const tax = parseFloat(formData.taxDeduction) || 0;
-    const otherDed = parseFloat(formData.otherDeductions) || 0;
+    const basic = Number(formData.basicSalary) || 0;
+    const housing = Number(formData.housingAllowance) || 0;
+    const transport = Number(formData.transportAllowance) || 0;
+    const other = Number(formData.otherAllowances) || 0;
+    const gosi = Number(formData.gosiDeduction) || 0;
+    const tax = Number(formData.taxDeduction) || 0;
+    const otherDed = Number(formData.otherDeductions) || 0;
     return basic + housing + transport + other - gosi - tax - otherDed;
   };
+
+  const numeric = (value: any) => value === '' || value == null ? 0 : Number(value);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormLoading(true);
     try {
-      const payload = { ...formData, netSalary: calculateNet() };
+      const commonPayload = {
+        month: Number(formData.month),
+        year: Number(formData.year),
+        basicSalary: numeric(formData.basicSalary),
+        housingAllowance: numeric(formData.housingAllowance),
+        transportAllowance: numeric(formData.transportAllowance),
+        otherAllowances: numeric(formData.otherAllowances),
+        gosiDeduction: numeric(formData.gosiDeduction),
+        taxDeduction: numeric(formData.taxDeduction),
+        otherDeductions: numeric(formData.otherDeductions),
+        netSalary: calculateNet(),
+      };
       if (editing) {
-        await api.patch(`/hr/payrolls/${editing.id}`, payload);
+        await api.patch(`/hr/payrolls/${editing.id}`, { ...commonPayload, status: formData.status });
       } else {
-        await api.post('/hr/payrolls', payload);
+        await api.post('/hr/payrolls', { employeeId: formData.employeeId, ...commonPayload });
       }
       setIsModalOpen(false);
       fetchData();
     } catch (err) {
-      alert('حدث خطأ');
+      alert('تعذر حفظ سجل الراتب');
     } finally {
       setFormLoading(false);
     }
@@ -82,7 +107,16 @@ export default function PayrollPage() {
 
   const handleDelete = async (id: string) => {
     if (!confirm('هل أنت متأكد؟')) return;
-    await api.delete(`/hr/payrolls/${id}`);
+    try {
+      await api.delete(`/hr/payrolls/${id}`);
+      fetchData();
+    } catch {
+      alert('لا يمكن حذف راتب مدفوع');
+    }
+  };
+
+  const handleApprove = async (id: string) => {
+    await api.patch(`/hr/payrolls/${id}`, { status: 'APPROVED' });
     fetchData();
   };
 
@@ -117,6 +151,8 @@ export default function PayrollPage() {
         <div className="flex items-center justify-center h-64">
           <div className="w-10 h-10 border-4 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
         </div>
+      ) : filtered.length === 0 ? (
+        <div className="scc-card text-center py-12 text-slate-400">لا توجد سجلات رواتب مطابقة.</div>
       ) : (
         <div className="space-y-3">
           {filtered.map((p) => (
@@ -133,16 +169,13 @@ export default function PayrollPage() {
               <div className="flex items-center gap-3">
                 <div className="text-left">
                   <p className="text-white font-bold text-sm">{Number(p.netSalary).toLocaleString()} ر.س</p>
-                  <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                    p.status === 'PAID' ? 'bg-emerald-500/20 text-emerald-400' :
-                    p.status === 'APPROVED' ? 'bg-blue-500/20 text-blue-400' :
-                    'bg-amber-500/20 text-amber-400'
-                  }`}>{payrollStatuses.find(s => s.value === p.status)?.label || p.status}</span>
+                  <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium ${p.status === 'PAID' ? 'bg-emerald-500/20 text-emerald-400' : p.status === 'APPROVED' ? 'bg-blue-500/20 text-blue-400' : 'bg-amber-500/20 text-amber-400'}`}>{payrollStatuses.find(s => s.value === p.status)?.label || p.status}</span>
                 </div>
-                {p.status !== 'PAID' && <Button size="sm" onClick={() => handlePay(p.id)}><Wallet className="h-3 w-3" /> دفع</Button>}
+                {p.status === 'DRAFT' && <Button size="sm" onClick={() => handleApprove(p.id)}><CheckCircle2 className="h-3 w-3" /> اعتماد</Button>}
+                {p.status === 'APPROVED' && <Button size="sm" onClick={() => handlePay(p.id)}><Wallet className="h-3 w-3" /> دفع</Button>}
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => openEdit(p)} className="p-1.5 rounded-lg hover:bg-primary-500/10 text-primary-400"><Pencil className="h-4 w-4" /></button>
-                  <button onClick={() => handleDelete(p.id)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-400"><Trash2 className="h-4 w-4" /></button>
+                  {p.status !== 'PAID' && <button onClick={() => openEdit(p)} className="p-1.5 rounded-lg hover:bg-primary-500/10 text-primary-400"><Pencil className="h-4 w-4" /></button>}
+                  {p.status !== 'PAID' && <button onClick={() => handleDelete(p.id)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-400"><Trash2 className="h-4 w-4" /></button>}
                 </div>
               </div>
             </div>
@@ -152,7 +185,7 @@ export default function PayrollPage() {
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editing ? 'تعديل راتب' : 'راتب جديد'} size="lg">
         <form onSubmit={handleSubmit} className="space-y-4">
-          <Select label="الموظف" required options={empOptions} value={formData.employeeId || ''} onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })} />
+          <Select label="الموظف" required disabled={!!editing} options={empOptions} value={formData.employeeId || ''} onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })} />
           <div className="grid grid-cols-2 gap-4">
             <Input label="الشهر" type="number" min="1" max="12" required value={formData.month || ''} onChange={(e) => setFormData({ ...formData, month: e.target.value })} />
             <Input label="السنة" type="number" required value={formData.year || ''} onChange={(e) => setFormData({ ...formData, year: e.target.value })} />
@@ -165,7 +198,6 @@ export default function PayrollPage() {
             <Input label="خصم التأمينات" type="number" value={formData.gosiDeduction || ''} onChange={(e) => setFormData({ ...formData, gosiDeduction: e.target.value })} />
             <Input label="خصم الضريبة" type="number" value={formData.taxDeduction || ''} onChange={(e) => setFormData({ ...formData, taxDeduction: e.target.value })} />
             <Input label="خصومات أخرى" type="number" value={formData.otherDeductions || ''} onChange={(e) => setFormData({ ...formData, otherDeductions: e.target.value })} />
-            <Select label="الحالة" options={payrollStatuses} value={formData.status || 'DRAFT'} onChange={(e) => setFormData({ ...formData, status: e.target.value })} />
           </div>
           <div className="bg-slate-800/50 rounded-xl p-4">
             <div className="flex justify-between text-base font-bold">
