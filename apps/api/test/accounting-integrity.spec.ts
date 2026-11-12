@@ -138,6 +138,7 @@ test('invoice schema reconciliation is additive only', () => {
   );
   assert.match(migration, /ADD COLUMN IF NOT EXISTS "zatcaSignedXml"/);
   assert.match(migration, /ADD COLUMN IF NOT EXISTS "retentionUntil"/);
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS "productId"/);
   assert.doesNotMatch(migration, /(^|\n)\s*DROP\s+/i);
   assert.doesNotMatch(migration, /(^|\n)\s*TRUNCATE\s+/i);
   assert.doesNotMatch(migration, /(^|\n)\s*DELETE\s+FROM\s+/i);
