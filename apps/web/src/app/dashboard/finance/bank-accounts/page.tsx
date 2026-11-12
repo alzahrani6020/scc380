@@ -6,10 +6,11 @@ import { Landmark, Plus, Pencil, Trash2, X, Star } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
+import Select from '@/components/ui/Select';
 
 export default function BankAccountsPage(){
- const [items,setItems]=useState<any[]>([]),[loading,setLoading]=useState(true),[open,setOpen]=useState(false),[editing,setEditing]=useState<any>(null),[saving,setSaving]=useState(false),[form,setForm]=useState<any>({currency:'SAR'});
- const load=()=>api.get('/finance/bank-accounts').then(r=>setItems(r.data.data||[])).finally(()=>setLoading(false));
+ const [items,setItems]=useState<any[]>([]),[accounts,setAccounts]=useState<any[]>([]),[loading,setLoading]=useState(true),[open,setOpen]=useState(false),[editing,setEditing]=useState<any>(null),[saving,setSaving]=useState(false),[form,setForm]=useState<any>({currency:'SAR'});
+ const load=()=>Promise.all([api.get('/finance/bank-accounts').then(r=>setItems(r.data.data||[])),api.get('/finance/chart-of-accounts').then(r=>setAccounts((r.data.data||[]).filter((a:any)=>a.type==='ASSET'&&a.isActive!==false)))]).finally(()=>setLoading(false));
  useEffect(()=>{load().catch(console.error)},[]);
  const create=()=>{setEditing(null);setForm({currency:'SAR',isDefault:false});setOpen(true)};
  const edit=(x:any)=>{setEditing(x);setForm({...x});setOpen(true)};
@@ -21,14 +22,15 @@ export default function BankAccountsPage(){
   {loading?<div className="h-64 flex items-center justify-center text-slate-400">جاري التحميل...</div>:<div className="grid grid-cols-1 md:grid-cols-2 gap-4">{items.map(x=><div key={x.id} className="scc-card-hover">
    <div className="flex justify-between"><div><p className="text-white font-bold">{x.bankName}</p><p className="text-slate-400 text-sm">{x.accountName}</p></div>{x.isDefault&&<Star className="h-5 w-5 text-amber-400 fill-current"/>}</div>
    <div className="mt-4 space-y-1 text-sm text-slate-400"><p>الحساب: <span className="text-white">{x.accountNumber}</span></p><p>IBAN: <span className="text-white">{x.iban||'—'}</span></p><p>الرصيد: <span className="text-primary-400 font-bold">{Number(x.balance||0).toLocaleString()} {x.currency||'SAR'}</span></p></div>
-   <div className="mt-4 flex gap-3">{!x.isDefault&&<button onClick={()=>makeDefault(x.id)} className="text-amber-400 text-sm">تعيين افتراضي</button>}<button onClick={()=>edit(x)} className="text-primary-400"><Pencil className="h-4 w-4"/></button><button onClick={()=>remove(x.id)} className="text-red-400"><Trash2 className="h-4 w-4"/></button></div>
+   <div className="mt-3 text-xs text-slate-500">GL: {accounts.find((a:any)=>a.id===x.chartAccountId)?.code || 'غير مربوط'}</div>
+   <div className="mt-4 flex gap-3"><a href={`/dashboard/finance/bank-reconciliation?bankAccountId=${x.id}`} className="text-emerald-400 text-sm">تسوية بنكية</a>{!x.isDefault&&<button onClick={()=>makeDefault(x.id)} className="text-amber-400 text-sm">تعيين افتراضي</button>}<button onClick={()=>edit(x)} className="text-primary-400"><Pencil className="h-4 w-4"/></button><button onClick={()=>remove(x.id)} className="text-red-400"><Trash2 className="h-4 w-4"/></button></div>
   </div>)}</div>}
   <Modal isOpen={open} onClose={()=>setOpen(false)} title={editing?'تعديل حساب':'حساب بنكي جديد'}><form onSubmit={submit} className="space-y-4">
    <Input label="اسم البنك" required value={form.bankName||''} onChange={e=>setForm({...form,bankName:e.target.value})}/>
    <Input label="اسم الحساب" required value={form.accountName||''} onChange={e=>setForm({...form,accountName:e.target.value})}/>
    {!editing&&<Input label="رقم الحساب" required value={form.accountNumber||''} onChange={e=>setForm({...form,accountNumber:e.target.value})}/>}
    {!editing&&<Input label="IBAN" value={form.iban||''} onChange={e=>setForm({...form,iban:e.target.value})}/>}
-   {editing&&<Input label="الرصيد" type="number" value={form.balance||''} onChange={e=>setForm({...form,balance:e.target.value})}/>}
+   {editing&&<Input label="الرصيد" type="number" value={form.balance||''} onChange={e=>setForm({...form,balance:e.target.value})}/>}<Select label="حساب دفتر الأستاذ" options={[{value:'',label:'غير مربوط'},...accounts.map((a:any)=>({value:a.id,label:`${a.code} — ${a.name}`}))]} value={form.chartAccountId||''} onChange={e=>setForm({...form,chartAccountId:e.target.value||undefined})}/>
    <div className="flex justify-end gap-3"><Button type="button" variant="ghost" onClick={()=>setOpen(false)}><X className="h-4 w-4"/>إلغاء</Button><Button type="submit" isLoading={saving}>{editing?'حفظ':'إنشاء'}</Button></div>
   </form></Modal>
  </div>;
