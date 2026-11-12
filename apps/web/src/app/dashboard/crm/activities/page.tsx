@@ -38,6 +38,8 @@ export default function ActivitiesPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [formLoading, setFormLoading] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [operationError, setOperationError] = useState<string | null>(null);
   const [formData, setFormData] = useState<any>({ type: 'TASK' });
   const abortRef = useRef<AbortController | null>(null);
 
@@ -127,6 +129,8 @@ export default function ActivitiesPage() {
 
   const openCreate = () => {
     setEditing(null);
+    setFormError(null);
+    setOperationError(null);
     setFormData({
       type: 'TASK',
       contactId: contactId || '',
@@ -141,6 +145,8 @@ export default function ActivitiesPage() {
 
   const openEdit = (item: any) => {
     setEditing(item);
+    setFormError(null);
+    setOperationError(null);
     // Only DTO-whitelisted fields — the API rejects unknown fields (forbidNonWhitelisted)
     setFormData({
       type: item.type || 'TASK',
@@ -158,6 +164,7 @@ export default function ActivitiesPage() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormLoading(true);
+    setFormError(null);
     try {
       const payload = { ...formData };
       // Preserve the distinction between "unchanged" and "explicitly cleared".
@@ -176,6 +183,8 @@ export default function ActivitiesPage() {
       else await api.post('/crm/activities', payload);
       setIsModalOpen(false);
       fetchActivities(page, debouncedSearch, type, contactId, dealId);
+    } catch {
+      setFormError('تعذر حفظ النشاط. تحقق من البيانات أو الاتصال بالخادم.');
     } finally {
       setFormLoading(false);
     }
@@ -183,17 +192,27 @@ export default function ActivitiesPage() {
 
   const remove = async (id: string) => {
     if (!confirm('هل تريد حذف هذا النشاط؟')) return;
-    await api.delete(`/crm/activities/${id}`);
-    if (items.length === 1 && page > 1) {
-      setPage(page - 1);
-    } else {
-      fetchActivities(page, debouncedSearch, type, contactId, dealId);
+    setOperationError(null);
+    try {
+      await api.delete(`/crm/activities/${id}`);
+      if (items.length === 1 && page > 1) {
+        setPage(page - 1);
+      } else {
+        fetchActivities(page, debouncedSearch, type, contactId, dealId);
+      }
+    } catch {
+      setOperationError('تعذر حذف النشاط. قد يكون مرتبطًا ببيانات أخرى أو تعذر الاتصال بالخادم.');
     }
   };
 
   const markCompleted = async (item: any) => {
-    await api.patch(`/crm/activities/${item.id}`, { completedAt: new Date().toISOString() });
-    fetchActivities(page, debouncedSearch, type, contactId, dealId);
+    setOperationError(null);
+    try {
+      await api.patch(`/crm/activities/${item.id}`, { completedAt: new Date().toISOString() });
+      fetchActivities(page, debouncedSearch, type, contactId, dealId);
+    } catch {
+      setOperationError('تعذر إكمال النشاط. حاول مرة أخرى.');
+    }
   };
 
   const hasActiveFilters = Boolean(debouncedSearch || type || contactId || dealId);
@@ -211,6 +230,13 @@ export default function ActivitiesPage() {
         </div>
         <Button onClick={openCreate}><Plus className="h-5 w-5" /> نشاط جديد</Button>
       </div>
+
+      {operationError && (
+        <div className="scc-card border-red-500/30 text-red-400 flex items-center gap-2">
+          <AlertCircle className="h-5 w-5 shrink-0" />
+          <span>{operationError}</span>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
         <div className="relative md:col-span-1">
@@ -340,6 +366,7 @@ export default function ActivitiesPage() {
             <Input label="موعد التذكير" type="datetime-local" value={formData.remindAt || ''} onChange={(e) => setFormData({ ...formData, remindAt: e.target.value })} />
           </div>
           <Textarea label="الوصف" rows={3} value={formData.description || ''} onChange={(e) => setFormData({ ...formData, description: e.target.value })} />
+          {formError && <p className="text-sm text-red-400">{formError}</p>}
           <div className="flex justify-end gap-3">
             <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}><X className="h-4 w-4" /> إلغاء</Button>
             <Button type="submit" isLoading={formLoading}>{editing ? 'حفظ' : 'إنشاء'}</Button>
