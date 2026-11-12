@@ -17,6 +17,8 @@ export default function EmployeeProfilePage() {
   const [attendance, setAttendance] = useState<any[]>([]);
   const [leaves, setLeaves] = useState<any[]>([]);
   const [payrolls, setPayrolls] = useState<any[]>([]);
+  const [contracts, setContracts] = useState<any[]>([]);
+  const [leaveBalances, setLeaveBalances] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -29,7 +31,9 @@ export default function EmployeeProfilePage() {
       api.get(`/hr/leaves?employeeId=${encodeURIComponent(id)}`),
       api.get(`/hr/payrolls?employeeId=${encodeURIComponent(id)}`),
       api.get('/hr/departments'),
-    ]).then(([empRes, attRes, leaveRes, payRes, deptRes]) => {
+      api.get(`/hr/contracts?employeeId=${encodeURIComponent(id)}`),
+      api.get(`/hr/leave-balances?employeeId=${encodeURIComponent(id)}&year=${new Date().getFullYear()}`),
+    ]).then(([empRes, attRes, leaveRes, payRes, deptRes, contractRes, balanceRes]) => {
       const emp = empRes.data;
       const departments = deptRes.data?.data || [];
       setEmployee(emp);
@@ -37,6 +41,8 @@ export default function EmployeeProfilePage() {
       setAttendance(attRes.data?.data || []);
       setLeaves(leaveRes.data?.data || []);
       setPayrolls(payRes.data?.data || []);
+      setContracts(contractRes.data?.data || []);
+      setLeaveBalances(balanceRes.data?.data || []);
     }).catch((e) => {
       console.error(e);
       setError('تعذر تحميل ملف الموظف');
@@ -51,8 +57,10 @@ export default function EmployeeProfilePage() {
     const lateDays = attendance.filter((a) => a.status === 'LATE').length;
     const paidPayrolls = payrolls.filter((p) => p.status === 'PAID');
     const lastPayroll = payrolls[0] || null;
-    return { approvedLeaveDays, presentDays, lateDays, paidPayrolls, lastPayroll };
-  }, [attendance, leaves, payrolls]);
+    const activeContract = contracts.find((c) => c.status === 'ACTIVE') || null;
+    const availableLeaveDays = leaveBalances.reduce((sum, b) => sum + Number(b.available || 0), 0);
+    return { approvedLeaveDays, presentDays, lateDays, paidPayrolls, lastPayroll, activeContract, availableLeaveDays };
+  }, [attendance, leaves, payrolls, contracts, leaveBalances]);
 
   if (loading) {
     return <div className="h-72 flex items-center justify-center"><RefreshCw className="h-8 w-8 animate-spin text-primary-400" /></div>;
@@ -135,10 +143,23 @@ export default function EmployeeProfilePage() {
           <p className="text-2xl font-bold text-white">{totals.paidPayrolls.length}</p>
           <p className="text-slate-400 text-sm">مسيرات مدفوعة</p>
         </Link>
-        <div className="scc-card">
+        <Link href={`/dashboard/hr/contracts?employeeId=${employee.id}`} className="scc-card-hover">
           <Briefcase className="h-5 w-5 text-violet-400 mb-3" />
-          <p className="text-lg font-bold text-white">{totals.lastPayroll ? `${totals.lastPayroll.month}/${totals.lastPayroll.year}` : '—'}</p>
-          <p className="text-slate-400 text-sm">آخر مسير راتب</p>
+          <p className="text-lg font-bold text-white">{totals.activeContract ? totals.activeContract.contractNumber : '—'}</p>
+          <p className="text-slate-400 text-sm">العقد النشط</p>
+        </Link>
+      </div>
+
+      <div className="scc-card">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <h3 className="text-white font-semibold">رصيد الإجازات الحالي</h3>
+            <p className="text-slate-400 text-sm mt-1">إجمالي الأيام المتاحة عبر السياسات المهيأة</p>
+          </div>
+          <div className="flex items-center gap-4">
+            <p className="text-2xl font-bold text-emerald-400">{totals.availableLeaveDays}</p>
+            <Link href={`/dashboard/hr/leave-balances?employeeId=${employee.id}`} className="text-primary-400 text-sm hover:text-primary-300">تفاصيل الرصيد</Link>
+          </div>
         </div>
       </div>
 
