@@ -15,7 +15,7 @@ import {
   Contact, Handshake, LayoutGrid, FileSignature, Banknote,
   ReceiptText, ListTree, PiggyBank, NotebookText, GitBranch,
   PackagePlus, Gauge, Globe, ListChecks, Lock, Coins, CarFront,
-  Network, UserCog, FileInput, Building, Clock3,
+  Network, UserCog, FileInput, Building, Clock3, CalendarRange,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -49,6 +49,8 @@ const navigation: NavEntry[] = [
   { name: 'الحضور', href: '/dashboard/hr/attendance', icon: ClipboardList },
   { name: 'الورديات', href: '/dashboard/hr/shifts', icon: Clock3 },
   { name: 'الإجازات', href: '/dashboard/hr/leaves', icon: CalendarDays },
+  { name: 'أرصدة الإجازات', href: '/dashboard/hr/leave-balances', icon: CalendarRange },
+  { name: 'العقود', href: '/dashboard/hr/contracts', icon: FileSignature },
   { name: 'الرواتب', href: '/dashboard/hr/payroll', icon: Wallet },
   { name: 'الإدارات', href: '/dashboard/hr/departments', icon: Network },
 
