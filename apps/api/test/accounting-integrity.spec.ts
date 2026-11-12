@@ -96,3 +96,13 @@ test('account mapping is tenant-aware and supports explicit tenant overrides', (
   assert.match(service, /Missing active accounting mappings/);
   assert.doesNotMatch(service, /findFirst\(\{\s*where:\s*\{\s*code:/);
 });
+
+
+test('dual write is atomic and preserves deterministic legacy line numbers', () => {
+  const service = src('src/accounting-core/accounting-dual-write.service.ts');
+  assert.match(service, /prisma\.\$transaction/);
+  assert.match(service, /postInTransaction\(tx, input\)/);
+  assert.match(service, /tx\.journalEntry\.createMany/);
+  assert.match(service, /entryNumber: \`\$\{input\.entryNumber\}-L\$\{index \+ 1\}\`/);
+  assert.match(service, /status:\s*JournalStatus\.POSTED/);
+});
