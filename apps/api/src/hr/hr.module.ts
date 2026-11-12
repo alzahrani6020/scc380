@@ -22,6 +22,8 @@ import { LeaveBalancesService } from './leave-balances.service';
 import { PayrollRunsController } from './payroll-runs.controller';
 import { PayrollRunsService } from './payroll-runs.service';
 import { AccountingCoreModule } from '../accounting-core/accounting-core.module';
+import { EmployeeDocumentsController } from './employee-documents.controller';
+import { EmployeeDocumentsService } from './employee-documents.service';
 
 @Module({
   imports: [AccountingCoreModule],
@@ -37,6 +39,7 @@ import { AccountingCoreModule } from '../accounting-core/accounting-core.module'
     LeavePoliciesController,
     LeaveBalancesController,
     PayrollRunsController,
+    EmployeeDocumentsController,
   ],
   providers: [
     EmployeesService,
@@ -50,6 +53,7 @@ import { AccountingCoreModule } from '../accounting-core/accounting-core.module'
     LeavePoliciesService,
     LeaveBalancesService,
     PayrollRunsService,
+    EmployeeDocumentsService,
   ],
 })
 export class HrModule {}

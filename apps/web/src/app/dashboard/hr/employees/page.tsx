@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import api from '@/lib/api';
-import { Briefcase, Plus, Search, Pencil, UserMinus, X, Phone, Mail, Calendar, FileText } from 'lucide-react';
+import { Briefcase, Plus, Search, Pencil, UserMinus, X, Phone, Mail, Calendar, FileText, FolderOpen } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
 import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
@@ -192,6 +192,7 @@ export default function HrPage() {
                   <p className="text-slate-400 text-sm">{emp.jobTitle || '—'}</p>
                 </div>
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Link href={`/dashboard/hr/documents?employeeId=${emp.id}`} className="p-1.5 rounded-lg hover:bg-emerald-500/10 text-emerald-400" title="مستندات الموظف"><FolderOpen className="h-4 w-4" /></Link>
                   <button onClick={() => window.open('/dashboard/templates?search=عقد+عمل', '_blank')} className="p-1.5 rounded-lg hover:bg-blue-500/10 text-blue-400" title="تصدير كنموذج"><FileText className="h-4 w-4" /></button>
                   <button onClick={() => openEdit(emp)} className="p-1.5 rounded-lg hover:bg-primary-500/10 text-primary-400"><Pencil className="h-4 w-4" /></button>
                   {emp.status !== 'TERMINATED' && <button onClick={() => handleTerminate(emp.id)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-400" title="إنهاء الخدمة"><UserMinus className="h-4 w-4" /></button>}

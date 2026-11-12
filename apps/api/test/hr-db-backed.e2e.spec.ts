@@ -10,6 +10,7 @@ import { ContractsService } from '../src/hr/contracts.service';
 import { LeavePoliciesService } from '../src/hr/leave-policies.service';
 import { LeaveBalancesService } from '../src/hr/leave-balances.service';
 import { PayrollRunsService } from '../src/hr/payroll-runs.service';
+import { EmployeeDocumentsService } from '../src/hr/employee-documents.service';
 
 test(
   'HR DB-backed E2E validates schema, tenant isolation and core lifecycles',
@@ -32,6 +33,7 @@ test(
     const leavePolicies = new LeavePoliciesService();
     const leaveBalances = new LeaveBalancesService();
     const payrollRuns = new PayrollRunsService();
+    const employeeDocuments = new EmployeeDocumentsService();
 
     const reqA: any = { user: { tenantId: tenantA.id, userId: `approver-${run}`, role: 'ADMIN' } };
     const reqB: any = { user: { tenantId: tenantB.id, userId: `approver-b-${run}`, role: 'ADMIN' } };
@@ -279,6 +281,37 @@ test(
       await assert.rejects(
         () => payrollRuns.create(reqA, { year: 2026, month: 12 }),
         /Payroll run already exists for this period/,
+      );
+
+
+      const uploadedDocument = await employeeDocuments.create(reqA, {
+        employeeId: employeeA.id,
+        type: 'NATIONAL_ID',
+        title: 'National ID',
+        fileName: 'national-id.pdf',
+        mimeType: 'application/pdf',
+        contentBase64: Buffer.from('%PDF-1.4 E2E').toString('base64'),
+        expiresAt: '2026-11-20T00:00:00.000Z',
+      });
+      assert.equal(uploadedDocument.employeeId, employeeA.id);
+      assert.ok(uploadedDocument.checksumSha256);
+
+      const documentFile = await employeeDocuments.getFile(reqA, uploadedDocument.id);
+      assert.equal(Buffer.from(documentFile.content).toString(), '%PDF-1.4 E2E');
+
+      const foreignDocuments = await employeeDocuments.findAll(reqB, { employeeId: employeeA.id });
+      assert.equal(foreignDocuments.count, 0);
+
+      await assert.rejects(
+        () => employeeDocuments.create(reqA, {
+          employeeId: employeeB.id,
+          type: 'NATIONAL_ID',
+          title: 'Foreign employee document',
+          fileName: 'x.pdf',
+          mimeType: 'application/pdf',
+          contentBase64: Buffer.from('x').toString('base64'),
+        }),
+        /Employee not found/,
       );
 
       const terminated = await employees.terminate(tenantA.id, employeeA.id);
