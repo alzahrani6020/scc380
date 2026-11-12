@@ -169,6 +169,32 @@ async function verifyAccountingCorePreconditions(applied) {
 }
 
 
+async function verifyAccountingDependenciesPreconditions(applied) {
+  const migration = '20261112164000_reconcile_accounting_dependencies';
+  if (applied.has(migration)) return;
+
+  assertEnumCompatibility(
+    'AccountType',
+    await enumValues('AccountType'),
+    ['ASSET','LIABILITY','EQUITY','REVENUE','EXPENSE'],
+  );
+
+  const required = {
+    chart_of_accounts: ['id','tenantId','code','name','type','balance','isActive','createdAt','updatedAt'],
+    financial_periods: ['id','tenantId','name','year','startDate','endDate','isClosed','createdAt'],
+    journal_entries: ['id','tenantId','entryNumber','date','description','debitAmount','creditAmount','accountId','type','status','createdAt'],
+  };
+
+  for (const [table, columns] of Object.entries(required)) {
+    if ((await tableExists(table)) && !(await columnsPresent(table, columns))) {
+      throw new Error(`ACCOUNTING_DEPENDENCIES_BLOCKED incomplete columns: ${table}`);
+    }
+  }
+
+  console.log('ACCOUNTING_DEPENDENCIES_PREFLIGHT_PASS');
+}
+
+
 async function verifyPaymentSchemaPreconditions(applied) {
   const migration = '20261112165000_reconcile_customer_payments';
   if (applied.has(migration)) return;
@@ -447,6 +473,7 @@ async function resolveIfNeeded(applied, migration, verify) {
   }
 
   await verifyAccountingCorePreconditions(applied);
+  await verifyAccountingDependenciesPreconditions(applied);
   await verifyPaymentSchemaPreconditions(applied);
   await verifySupplierApPreconditions(applied);
 
