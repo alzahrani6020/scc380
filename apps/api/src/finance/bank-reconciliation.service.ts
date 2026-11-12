@@ -167,6 +167,87 @@ export class BankReconciliationService {
     if (used) throw new ConflictException('Ledger item is already matched to another statement line');
   }
 
+  async getMatchCandidates(req: any, reconciliationId: string, lineId: string) {
+    const tenantId = req.user?.tenantId;
+    const reconciliation = await this.getReconciliation(tenantId, reconciliationId);
+    const line = reconciliation.lines.find((x) => x.id === lineId);
+    if (!line) throw new NotFoundException('Statement line not found');
+
+    const bank = await this.getBankAccount(tenantId, reconciliation.bankAccountId);
+    const from = new Date(line.transactionDate);
+    from.setUTCDate(from.getUTCDate() - 14);
+    const to = new Date(line.transactionDate);
+    to.setUTCDate(to.getUTCDate() + 14);
+    const amount = Number(line.amount);
+
+    const [modern, legacy] = await Promise.all([
+      prisma.journalEntryLine.findMany({
+        where: {
+          tenantId,
+          accountId: bank.chartAccountId!,
+          journalEntry: { tenantId, status: 'POSTED', date: { gte: from, lte: to } },
+        },
+        include: {
+          journalEntry: {
+            select: { date: true, description: true, reference: true, entryNumber: true },
+          },
+        },
+        orderBy: { createdAt: 'asc' },
+      }),
+      prisma.journalEntry.findMany({
+        where: {
+          tenantId,
+          accountId: bank.chartAccountId!,
+          status: 'POSTED',
+          NOT: { entryNumber: { startsWith: 'LEG-' } },
+          date: { gte: from, lte: to },
+        },
+        orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
+      }),
+    ]);
+
+    const candidates: any[] = [];
+    for (const item of modern) {
+      const signed = this.signedAmount(item.debitAmount, item.creditAmount);
+      if (Math.abs(signed - amount) >= 0.01) continue;
+      try {
+        await this.assertTargetAvailable(tenantId, item.id, undefined, line.id);
+        candidates.push({
+          kind: 'MODERN',
+          id: item.id,
+          date: item.journalEntry.date,
+          entryNumber: item.journalEntry.entryNumber,
+          description: item.description || item.journalEntry.description,
+          reference: item.journalEntry.reference,
+          amount: signed,
+        });
+      } catch (error) {
+        if (!(error instanceof ConflictException)) throw error;
+      }
+    }
+
+    for (const item of legacy) {
+      const signed = this.signedAmount(item.debitAmount, item.creditAmount);
+      if (Math.abs(signed - amount) >= 0.01) continue;
+      try {
+        await this.assertTargetAvailable(tenantId, undefined, item.id, line.id);
+        candidates.push({
+          kind: 'LEGACY',
+          id: item.id,
+          date: item.date,
+          entryNumber: item.entryNumber,
+          description: item.description,
+          reference: item.reference,
+          amount: signed,
+        });
+      } catch (error) {
+        if (!(error instanceof ConflictException)) throw error;
+      }
+    }
+
+    return { statementLine: line, candidates };
+  }
+
   async matchLine(req: any, reconciliationId: string, lineId: string, dto: any) {
     const tenantId = req.user?.tenantId;
     const reconciliation = await this.getReconciliation(tenantId, reconciliationId);
