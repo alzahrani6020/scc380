@@ -91,7 +91,6 @@ export class PaymentsService {
       reference: string | null;
       paidAt: Date;
     },
-    excludePaymentId?: string,
   ) {
     if (payment.status !== 'COMPLETED') return;
 
@@ -246,7 +245,7 @@ export class PaymentsService {
     return prisma.$transaction(async tx => {
       const updated = await tx.payment.update({ where: { id }, data });
       if (becomesCompleted) {
-        await this.applyCompletedPayment(tx, tenantId, updated, id);
+        await this.applyCompletedPayment(tx, tenantId, updated);
       }
       return updated;
     });
