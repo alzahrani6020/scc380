@@ -6,14 +6,14 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard, RequirePermissions } from '../auth/guards/permissions.guard';
 import { CompaniesService } from './companies.service';
 
-class ListCompaniesQueryDto {
+export class ListCompaniesQueryDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) page: number = 1;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100) limit: number = 25;
   @IsOptional() @IsString() @MaxLength(100) search?: string;
   @IsOptional() @IsBooleanString() active?: string;
 }
 
-class CreateCompanyDto {
+export class CreateCompanyDto {
   @IsString() @MinLength(1) @MaxLength(150) name: string;
   @IsOptional() @IsString() @MaxLength(200) legalName?: string;
   @IsOptional() @IsString() @MaxLength(50) crNumber?: string;
@@ -27,7 +27,7 @@ class CreateCompanyDto {
   @IsOptional() @IsBoolean() isActive?: boolean;
 }
 
-class UpdateCompanyDto {
+export class UpdateCompanyDto {
   @IsOptional() @IsString() @MinLength(1) @MaxLength(150) name?: string;
   @IsOptional() @IsString() @MaxLength(200) legalName?: string;
   @IsOptional() @IsString() @MaxLength(50) crNumber?: string;
