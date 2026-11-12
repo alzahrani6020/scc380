@@ -12,6 +12,8 @@ import { BankAccountsService } from './bank-accounts.service';
 import { PurchaseOrdersController } from './purchase-orders.controller';
 import { PurchaseOrdersService } from './purchase-orders.service';
 import { AccountingCoreModule } from '../accounting-core/accounting-core.module';
+import { FinancialPeriodsController } from './financial-periods.controller';
+import { FinancialPeriodsService } from './financial-periods.service';
 
 @Module({
   imports: [AccountingCoreModule],
@@ -22,6 +24,7 @@ import { AccountingCoreModule } from '../accounting-core/accounting-core.module'
     JournalEntriesController,
     BankAccountsController,
     PurchaseOrdersController,
+    FinancialPeriodsController,
   ],
   providers: [
     PaymentsService,
@@ -30,6 +33,7 @@ import { AccountingCoreModule } from '../accounting-core/accounting-core.module'
     JournalEntriesService,
     BankAccountsService,
     PurchaseOrdersService,
+    FinancialPeriodsService,
   ],
 })
 export class FinanceModule {}

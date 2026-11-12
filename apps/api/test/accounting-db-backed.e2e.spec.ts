@@ -9,6 +9,7 @@ import { PaymentsService } from '../src/finance/payments.service';
 import { SupplierInvoiceService } from '../src/supplier-invoice/supplier-invoice.service';
 import { ExpensesService } from '../src/finance/expenses.service';
 import { ReportsService } from '../src/reports/reports.service';
+import { FinancialPeriodsService } from '../src/finance/financial-periods.service';
 
 test(
   'Accounting DB-backed E2E validates balanced posting, periods, mapping, tenant isolation and dual-write',
@@ -90,6 +91,7 @@ test(
       const supplierInvoices = new SupplierInvoiceService(mapping, dualWrite);
       const expenses = new ExpensesService(mapping, dualWrite);
       const reports = new ReportsService();
+      const periods = new FinancialPeriodsService();
       const reqA: any = { user: { tenantId: tenantA.id, role: 'ADMIN' } };
 
       const mapped = await mapping.resolve(tenantA.id, ['CASH', 'SALES_REVENUE']);
@@ -706,6 +708,105 @@ test(
         unifiedLedger.entries.filter(entry => entry.reference === `DUAL-${run}`).length,
         1,
       );
+
+      const jan2027 = await periods.create(reqA, {
+        name: 'January 2027',
+        year: 2027,
+        month: 1,
+        startDate: '2027-01-01T00:00:00.000Z',
+        endDate: '2027-01-31T23:59:59.999Z',
+      });
+      assert.equal(jan2027.isClosed, false);
+
+      await assert.rejects(
+        () =>
+          periods.create(reqA, {
+            name: 'Overlapping January 2027',
+            year: 2027,
+            month: 2,
+            startDate: '2027-01-15T00:00:00.000Z',
+            endDate: '2027-02-15T23:59:59.999Z',
+          }),
+        /overlaps/,
+      );
+
+      const draftLegacy = await prisma.journalEntry.create({
+        data: {
+          tenantId: tenantA.id,
+          entryNumber: `DRAFT-PERIOD-${run}`,
+          date: new Date('2027-01-05T12:00:00.000Z'),
+          description: 'Draft legacy period close blocker',
+          debitAmount: 1,
+          creditAmount: 0,
+          accountId: cashA.id,
+          status: 'DRAFT',
+        },
+      });
+
+      await assert.rejects(
+        () => periods.close(reqA, jan2027.id),
+        /draft journal entries/,
+      );
+
+      await prisma.journalEntry.delete({ where: { id: draftLegacy.id } });
+
+      await posting.post({
+        tenantId: tenantA.id,
+        entryNumber: `JV-PERIOD-${run}`,
+        date: new Date('2027-01-10T12:00:00.000Z'),
+        description: 'Balanced period close test',
+        sourceType: 'PERIOD_E2E',
+        sourceId: `period-${run}`,
+        lines: [
+          { accountId: cashA.id, debitAmount: 20 },
+          { accountId: revenueA.id, creditAmount: 20 },
+        ],
+      });
+
+      const closedJan = await periods.close(reqA, jan2027.id);
+      assert.equal(closedJan.isClosed, true);
+      assert.ok(closedJan.closedAt);
+
+      await assert.rejects(
+        () =>
+          posting.post({
+            tenantId: tenantA.id,
+            entryNumber: `JV-PERIOD-CLOSED-${run}`,
+            date: new Date('2027-01-11T12:00:00.000Z'),
+            description: 'Closed period reject test',
+            lines: [
+              { accountId: cashA.id, debitAmount: 5 },
+              { accountId: revenueA.id, creditAmount: 5 },
+            ],
+          }),
+        /Financial period "January 2027" is closed/,
+      );
+
+      await assert.rejects(
+        () =>
+          periods.reopen(
+            { user: { tenantId: tenantA.id, role: 'MANAGER' } },
+            jan2027.id,
+          ),
+        /Only ADMIN or SUPER_ADMIN/,
+      );
+
+      const reopenedJan = await periods.reopen(reqA, jan2027.id);
+      assert.equal(reopenedJan.isClosed, false);
+      assert.equal(reopenedJan.closedAt, null);
+
+      const postAfterReopen = await posting.post({
+        tenantId: tenantA.id,
+        entryNumber: `JV-PERIOD-REOPEN-${run}`,
+        date: new Date('2027-01-12T12:00:00.000Z'),
+        description: 'Reopened period posting',
+        lines: [
+          { accountId: cashA.id, debitAmount: 5 },
+          { accountId: revenueA.id, creditAmount: 5 },
+        ],
+      });
+      assert.equal(postAfterReopen.status, 'POSTED');
+
 
     } finally {
       await prisma.tenant.deleteMany({ where: { id: { in: [tenantA.id, tenantB.id] } } });
