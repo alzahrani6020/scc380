@@ -74,6 +74,19 @@ model Tenant {
   hrLifecycleCases HrLifecycleCase[]
   hrLifecycleTasks HrLifecycleTask[]
   assetCustodyAssignments AssetCustodyAssignment[]
+  recruitmentCandidates RecruitmentCandidate[] @relation("CandidateHiredEmployee")
+  performanceReviews PerformanceReview[]
+  performanceGoals PerformanceGoal[]
+  trainingEnrollments TrainingEnrollment[]
+  recruitmentJobOpenings RecruitmentJobOpening[]
+  recruitmentCandidates RecruitmentCandidate[]
+  recruitmentInterviews RecruitmentInterview[]
+  performanceCycles PerformanceCycle[]
+  performanceReviews PerformanceReview[]
+  performanceGoals PerformanceGoal[]
+  trainingCourses TrainingCourse[]
+  trainingSessions TrainingSession[]
+  trainingEnrollments TrainingEnrollment[]
   drivers       Driver[]
   fleetMaintenances FleetMaintenance[]
   fleetFuelLogs FleetFuelLog[]
@@ -1194,6 +1207,243 @@ model HrLifecycleTask {
   @@map("hr_lifecycle_tasks")
 }
 
+
+model RecruitmentJobOpening {
+  id              String      @id @default(cuid())
+  tenantId        String
+  tenant          Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  departmentId    String?
+  department      Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+
+  title           String
+  code            String?
+  status          String      @default("DRAFT")
+  headcount       Int         @default(1)
+  employmentType  String?
+  location        String?
+  description     String?
+  requirements    String?
+  ownerUserId     String?
+  openedAt        DateTime?
+  closedAt        DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  candidates      RecruitmentCandidate[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([departmentId])
+  @@map("recruitment_job_openings")
+}
+
+model RecruitmentCandidate {
+  id                  String                @id @default(cuid())
+  tenantId            String
+  tenant              Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  jobOpeningId        String
+  jobOpening          RecruitmentJobOpening @relation(fields: [jobOpeningId], references: [id], onDelete: Cascade)
+  hiredEmployeeId     String?
+  hiredEmployee       Employee?             @relation("CandidateHiredEmployee", fields: [hiredEmployeeId], references: [id], onDelete: SetNull)
+
+  firstName           String
+  lastName            String
+  email               String?
+  phone               String?
+  source              String?
+  status              String                @default("APPLIED")
+  rating              Decimal?              @db.Decimal(4,2)
+  notes               String?
+  offerSalary         Decimal?              @db.Decimal(18,2)
+  offerDate           DateTime?
+  resumeFileName      String?
+  resumeMimeType      String?
+  resumeSizeBytes     Int?
+  resumeChecksumSha256 String?
+  resumeContent       Bytes?
+  hiredAt             DateTime?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  interviews          RecruitmentInterview[]
+
+  @@index([tenantId])
+  @@index([tenantId, jobOpeningId])
+  @@index([tenantId, status])
+  @@index([email])
+  @@map("recruitment_candidates")
+}
+
+model RecruitmentInterview {
+  id              String               @id @default(cuid())
+  tenantId        String
+  tenant          Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  candidateId     String
+  candidate       RecruitmentCandidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  scheduledAt     DateTime
+  interviewerUserId String?
+  type            String?
+  status          String               @default("SCHEDULED")
+  score           Decimal?             @db.Decimal(4,2)
+  feedback        String?
+  completedAt     DateTime?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  @@index([tenantId])
+  @@index([candidateId])
+  @@index([scheduledAt])
+  @@map("recruitment_interviews")
+}
+
+model PerformanceCycle {
+  id              String              @id @default(cuid())
+  tenantId        String
+  tenant          Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name            String
+  status          String              @default("DRAFT")
+  startDate       DateTime
+  endDate         DateTime
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  reviews         PerformanceReview[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("performance_cycles")
+}
+
+model PerformanceReview {
+  id              String           @id @default(cuid())
+  tenantId        String
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  cycleId         String
+  cycle           PerformanceCycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  employeeId      String
+  employee        Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  reviewerUserId  String?
+  status          String           @default("DRAFT")
+  overallRating   Decimal?         @db.Decimal(4,2)
+  managerSummary  String?
+  employeeComment String?
+  submittedAt     DateTime?
+  acknowledgedAt  DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  goals           PerformanceGoal[]
+
+  @@unique([cycleId, employeeId])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([employeeId])
+  @@map("performance_reviews")
+}
+
+model PerformanceGoal {
+  id              String            @id @default(cuid())
+  tenantId        String
+  tenant          Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  reviewId        String
+  review          PerformanceReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  employeeId      String
+  employee        Employee          @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  title           String
+  description     String?
+  weight          Decimal           @db.Decimal(5,2)
+  target          String?
+  result          String?
+  rating          Decimal?          @db.Decimal(4,2)
+  status          String            @default("OPEN")
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([tenantId])
+  @@index([reviewId])
+  @@index([employeeId])
+  @@map("performance_goals")
+}
+
+model TrainingCourse {
+  id              String            @id @default(cuid())
+  tenantId        String
+  tenant          Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  title           String
+  code            String?
+  provider        String?
+  hours           Decimal?          @db.Decimal(8,2)
+  deliveryMode    String?
+  cost            Decimal?          @db.Decimal(18,2)
+  certificateRequired Boolean       @default(false)
+  description     String?
+  status          String            @default("ACTIVE")
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  sessions        TrainingSession[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("training_courses")
+}
+
+model TrainingSession {
+  id              String         @id @default(cuid())
+  tenantId        String
+  tenant          Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  courseId        String
+  course          TrainingCourse @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  startAt         DateTime
+  endAt           DateTime
+  capacity        Int?
+  location        String?
+  trainer         String?
+  status          String         @default("SCHEDULED")
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  enrollments     TrainingEnrollment[]
+
+  @@index([tenantId])
+  @@index([courseId])
+  @@index([startAt])
+  @@map("training_sessions")
+}
+
+model TrainingEnrollment {
+  id              String          @id @default(cuid())
+  tenantId        String
+  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sessionId       String
+  session         TrainingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  employeeId      String
+  employee        Employee        @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  status          String          @default("NOMINATED")
+  score           Decimal?        @db.Decimal(5,2)
+  completedAt     DateTime?
+  certificateNumber String?
+  certificateUrl  String?
+  notes           String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@unique([sessionId, employeeId])
+  @@index([tenantId])
+  @@index([employeeId])
+  @@index([status])
+  @@map("training_enrollments")
+}
+
 model Department {
   id            String    @id @default(cuid())
   tenantId      String
@@ -1205,6 +1455,8 @@ model Department {
   managerId     String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+
+  recruitmentJobOpenings RecruitmentJobOpening[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
