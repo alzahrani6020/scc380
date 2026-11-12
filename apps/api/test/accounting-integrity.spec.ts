@@ -66,7 +66,7 @@ test('journal header-line migration is additive and preserves legacy journal tab
   assert.match(migration, /CREATE TABLE "journal_entry_headers"/);
   assert.match(migration, /CREATE TABLE "journal_entry_lines"/);
   assert.match(migration, /journal_entry_lines_amount_check/);
-  assert.match(migration, /REFERENCES "journal_entries"/) === false;
+  assert.doesNotMatch(migration, /REFERENCES "journal_entries"/);
   assert.doesNotMatch(migration, /(^|\n)\s*DROP\s+/i);
   assert.doesNotMatch(migration, /(^|\n)\s*TRUNCATE\s+/i);
   assert.doesNotMatch(migration, /(^|\n)\s*DELETE\s+FROM\s+/i);
