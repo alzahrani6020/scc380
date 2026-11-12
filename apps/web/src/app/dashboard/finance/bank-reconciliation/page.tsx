@@ -16,6 +16,9 @@ export default function BankReconciliationPage() {
   const [loading,setLoading]=useState(true);
   const [open,setOpen]=useState(false);
   const [lineOpen,setLineOpen]=useState(false);
+  const [matchOpen,setMatchOpen]=useState(false);
+  const [matchLine,setMatchLine]=useState<any>(null);
+  const [candidates,setCandidates]=useState<any[]>([]);
   const [saving,setSaving]=useState(false);
   const [form,setForm]=useState<any>({});
   const [line,setLine]=useState<any>({});
@@ -67,6 +70,40 @@ export default function BankReconciliationPage() {
     finally{setSaving(false)}
   };
 
+  const openMatch=async(statementLine:any)=>{
+    if(!selected)return;
+    try{
+      const r=await api.get(`/finance/bank-reconciliations/${selected.id}/lines/${statementLine.id}/candidates`);
+      setMatchLine(statementLine);
+      setCandidates(r.data?.candidates||[]);
+      setMatchOpen(true);
+    }catch(err:any){alert(err.response?.data?.message||'تعذر تحميل مرشحي المطابقة')}
+  };
+
+  const applyMatch=async(candidate:any)=>{
+    if(!selected||!matchLine)return;
+    setSaving(true);
+    try{
+      await api.post(
+        `/finance/bank-reconciliations/${selected.id}/lines/${matchLine.id}/match`,
+        candidate.kind==='MODERN'
+          ? {journalEntryLineId:candidate.id}
+          : {legacyJournalEntryId:candidate.id},
+      );
+      setMatchOpen(false);setCandidates([]);setMatchLine(null);
+      await loadOne(selected.id);
+    }catch(err:any){alert(err.response?.data?.message||'تعذر تطبيق المطابقة')}
+    finally{setSaving(false)}
+  };
+
+  const unmatch=async(statementLine:any)=>{
+    if(!selected)return;
+    try{
+      await api.post(`/finance/bank-reconciliations/${selected.id}/lines/${statementLine.id}/unmatch`);
+      await loadOne(selected.id);
+    }catch(err:any){alert(err.response?.data?.message||'تعذر إلغاء المطابقة')}
+  };
+
   const action=async(path:string)=>{
     if(!selected)return;
     try{
@@ -113,7 +150,7 @@ export default function BankReconciliationPage() {
           <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden">
             <table className="w-full text-sm">
               <thead><tr className="bg-slate-800/50 text-slate-400 border-b border-slate-800"><th className="p-3 text-right">التاريخ</th><th className="p-3 text-right">الوصف</th><th className="p-3 text-right">المرجع</th><th className="p-3 text-left">المبلغ</th><th className="p-3 text-center">المطابقة</th></tr></thead>
-              <tbody>{(selected.lines||[]).map((x:any)=><tr key={x.id} className="border-b border-slate-800/50"><td className="p-3">{new Date(x.transactionDate).toLocaleDateString('ar-SA')}</td><td className="p-3">{x.description||'—'}</td><td className="p-3 text-slate-400">{x.reference||'—'}</td><td className={`p-3 text-left font-bold ${Number(x.amount)>=0?'text-emerald-400':'text-red-400'}`}>{Number(x.amount).toLocaleString()}</td><td className="p-3 text-center"><span className={x.status==='MATCHED'?'text-emerald-400':'text-amber-400'}>{x.status==='MATCHED'?'مطابق':'غير مطابق'}</span></td></tr>)}
+              <tbody>{(selected.lines||[]).map((x:any)=><tr key={x.id} className="border-b border-slate-800/50"><td className="p-3">{new Date(x.transactionDate).toLocaleDateString('ar-SA')}</td><td className="p-3">{x.description||'—'}</td><td className="p-3 text-slate-400">{x.reference||'—'}</td><td className={`p-3 text-left font-bold ${Number(x.amount)>=0?'text-emerald-400':'text-red-400'}`}>{Number(x.amount).toLocaleString()}</td><td className="p-3 text-center"><div className="flex items-center justify-center gap-2"><span className={x.status==='MATCHED'?'text-emerald-400':'text-amber-400'}>{x.status==='MATCHED'?'مطابق':'غير مطابق'}</span>{selected.status!=='COMPLETED'&&(x.status==='MATCHED'?<button onClick={()=>unmatch(x)} className="text-xs text-slate-400 hover:text-white">إلغاء</button>:<button onClick={()=>openMatch(x)} className="text-xs text-primary-400 hover:text-primary-300">مطابقة يدوية</button>)}</div></td></tr>)}
               {(selected.lines||[]).length===0&&<tr><td colSpan={5} className="p-8 text-center text-slate-500">لا توجد سطور كشف</td></tr>}
               </tbody>
             </table>
@@ -137,5 +174,23 @@ export default function BankReconciliationPage() {
       <Input label="معرف البنك الخارجي" value={line.externalId||''} onChange={e=>setLine({...line,externalId:e.target.value})}/>
       <div className="flex justify-end gap-3"><Button type="button" variant="ghost" onClick={()=>setLineOpen(false)}><X className="h-4 w-4"/>إلغاء</Button><Button type="submit" isLoading={saving}>إضافة</Button></div>
     </form></Modal>
+
+    <Modal isOpen={matchOpen} onClose={()=>setMatchOpen(false)} title="مطابقة حركة كشف البنك">
+      <div className="space-y-3">
+        {matchLine&&<div className="p-3 rounded-lg bg-slate-800 text-sm"><p className="text-slate-400">حركة الكشف</p><p className="text-white font-bold mt-1">{Number(matchLine.amount).toLocaleString()} — {matchLine.reference||matchLine.description||'بدون مرجع'}</p></div>}
+        {candidates.map((candidate:any)=><button
+          key={`${candidate.kind}:${candidate.id}`}
+          disabled={saving}
+          onClick={()=>applyMatch(candidate)}
+          className="w-full text-right p-3 rounded-lg border border-slate-700 bg-slate-900 hover:border-primary-500 disabled:opacity-50"
+        >
+          <div className="flex items-center justify-between"><span className="text-white font-medium">{candidate.entryNumber}</span><span className="text-emerald-400 font-bold">{Number(candidate.amount).toLocaleString()}</span></div>
+          <p className="text-slate-400 text-xs mt-1">{new Date(candidate.date).toLocaleDateString('ar-SA')} — {candidate.description||'—'}</p>
+          <p className="text-slate-500 text-xs mt-1">{candidate.kind==='MODERN'?'قيد حديث':'قيد تاريخي'}{candidate.reference?` — ${candidate.reference}`:''}</p>
+        </button>)}
+        {candidates.length===0&&<div className="p-6 text-center text-slate-500">لا يوجد قيد مؤهل بنفس المبلغ ضمن ±14 يومًا. راجع القيد أو تاريخ كشف البنك.</div>}
+        <div className="flex justify-end"><Button type="button" variant="ghost" onClick={()=>setMatchOpen(false)}><X className="h-4 w-4"/>إغلاق</Button></div>
+      </div>
+    </Modal>
   </div>;
 }
