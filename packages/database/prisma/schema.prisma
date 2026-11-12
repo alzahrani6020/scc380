@@ -51,6 +51,8 @@ model Tenant {
   expenses      Expense[]
   chartOfAccounts ChartOfAccount[]
   journalEntries JournalEntry[]
+  journalEntryHeaders JournalEntryHeader[]
+  journalEntryLines JournalEntryLine[]
   bankAccounts  BankAccount[]
   purchaseOrders PurchaseOrder[]
   leaves        Leave[]
@@ -604,6 +606,7 @@ model ChartOfAccount {
   updatedAt     DateTime  @updatedAt
 
   ledgerEntries JournalEntry[]
+  journalEntryLines JournalEntryLine[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -631,6 +634,69 @@ model JournalEntry {
   @@index([date])
   @@index([accountId])
   @@map("journal_entries")
+}
+
+model JournalEntryHeader {
+  id            String        @id @default(cuid())
+  tenantId      String
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  entryNumber   String
+  date          DateTime      @default(now())
+  description   String
+  reference     String?
+  type          JournalType   @default(GENERAL)
+  status        JournalStatus @default(DRAFT)
+  sourceType    String?
+  sourceId      String?
+  reversalOfId  String?
+  reversalOf    JournalEntryHeader? @relation("JournalEntryReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversals     JournalEntryHeader[] @relation("JournalEntryReversal")
+  postedAt      DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  lines         JournalEntryLine[]
+
+  @@unique([tenantId, entryNumber])
+  @@unique([tenantId, sourceType, sourceId])
+  @@index([tenantId, date])
+  @@index([tenantId, status])
+  @@index([reversalOfId])
+  @@map("journal_entry_headers")
+}
+
+model JournalEntryLine {
+  id            String    @id @default(cuid())
+  tenantId      String
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  journalEntryId String
+  journalEntry  JournalEntryHeader @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  lineNumber    Int
+  accountId     String
+  chartAccount  ChartOfAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  debitAmount   Decimal   @default(0) @db.Decimal(18, 2)
+  creditAmount  Decimal   @default(0) @db.Decimal(18, 2)
+  description   String?
+
+  costCenterId  String?
+  costCenter    CostCenter? @relation(fields: [costCenterId], references: [id], onDelete: Restrict)
+  projectId     String?
+  project       Project? @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  branchId      String?
+  branch        Branch? @relation(fields: [branchId], references: [id], onDelete: Restrict)
+
+  createdAt     DateTime  @default(now())
+
+  @@unique([journalEntryId, lineNumber])
+  @@index([tenantId])
+  @@index([accountId])
+  @@index([costCenterId])
+  @@index([projectId])
+  @@index([branchId])
+  @@map("journal_entry_lines")
 }
 
 model BankAccount {
@@ -712,6 +778,7 @@ model Branch {
   posSessions   PosSession[]
   posOrders     PosOrder[]
   bankAccounts  BankAccount[]
+  journalEntryLines JournalEntryLine[]
 
   @@index([tenantId])
   @@index([code])
@@ -1686,6 +1753,7 @@ model Project {
   updatedAt     DateTime  @updatedAt
 
   tasks         Task[]
+  journalEntryLines JournalEntryLine[]
 
   @@index([tenantId])
   @@index([status])
@@ -2837,6 +2905,8 @@ model CostCenter {
   
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+
+  journalEntryLines JournalEntryLine[]
 
   @@index([tenantId])
   @@map("cost_centers")
