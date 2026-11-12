@@ -35,22 +35,22 @@ export class AttendancesController {
   constructor(private readonly service: AttendancesService) {}
 
   @Get()
-  @RequirePermissions('hr:read')
+  @RequirePermissions('hr:attendance:read')
   findAll(@Req() req: any, @Query() query: any) { return this.service.findAll(req, query); }
 
   @Get(':id')
-  @RequirePermissions('hr:read')
+  @RequirePermissions('hr:attendance:read')
   findOne(@Req() req: any, @Param('id') id: string) { return this.service.findOne(req, id); }
 
   @Post()
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:attendance:write')
   create(@Req() req: any, @Body() dto: CreateAttendanceDto) { return this.service.create(req, dto); }
 
   @Patch(':id')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:attendance:write')
   update(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateAttendanceDto) { return this.service.update(req, id, dto); }
 
   @Delete(':id')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:attendance:write')
   remove(@Req() req: any, @Param('id') id: string) { return this.service.remove(req, id); }
 }
