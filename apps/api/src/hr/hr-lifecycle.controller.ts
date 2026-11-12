@@ -38,34 +38,34 @@ export class HrLifecycleController {
   constructor(private readonly service: HrLifecycleService) {}
 
   @Get()
-  @RequirePermissions('hr:read')
+  @RequirePermissions('hr:lifecycle:read')
   list(@Req() req: any, @Query() query: any) { return this.service.list(req, query); }
 
   @Get(':id')
-  @RequirePermissions('hr:read')
+  @RequirePermissions('hr:lifecycle:read')
   findOne(@Req() req: any, @Param('id') id: string) { return this.service.findOne(req, id); }
 
   @Post()
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:lifecycle:write')
   create(@Req() req: any, @Body() dto: CreateLifecycleDto) { return this.service.create(req, dto); }
 
   @Post(':id/tasks')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:lifecycle:write')
   addTask(@Req() req: any, @Param('id') id: string, @Body() dto: CreateLifecycleTaskDto) {
     return this.service.addTask(req, id, dto);
   }
 
   @Patch(':id/tasks/:taskId')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:lifecycle:write')
   updateTask(@Req() req: any, @Param('id') id: string, @Param('taskId') taskId: string, @Body() dto: UpdateLifecycleTaskDto) {
     return this.service.updateTask(req, id, taskId, dto);
   }
 
   @Post(':id/complete')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:lifecycle:write')
   complete(@Req() req: any, @Param('id') id: string) { return this.service.complete(req, id); }
 
   @Post(':id/cancel')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:lifecycle:write')
   cancel(@Req() req: any, @Param('id') id: string) { return this.service.cancel(req, id); }
 }
