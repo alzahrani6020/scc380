@@ -39,7 +39,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Install Playwright transiently
-        run: pnpm add -Dw playwright@1.56.1 --lockfile=false
+        run: pnpm add -Dw playwright@1.65.0 --lockfile=false
 
       - name: Install Chromium
         run: pnpm exec playwright install --with-deps chromium
