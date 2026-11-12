@@ -38,7 +38,14 @@ const activity = {
   deal: { id: 'd1', title: 'Browser Deal' },
 };
 
-const contact = { id: 'ct1', firstName: 'Ali', lastName: 'A', email: 'ali@example.test' };
+const contact = {
+  id: 'ct1',
+  firstName: 'Ali',
+  lastName: 'A',
+  email: 'ali@example.test',
+  companyId: 'co1',
+  company: { id: 'co1', name: 'Browser Company' },
+};
 const company = { id: 'co1', name: 'Browser Company', isActive: true };
 const pipeline = {
   id: 'p1',
@@ -683,6 +690,40 @@ async function testOverviewRecoveryAndQuickLinks(page) {
   }
 }
 
+
+async function testContactCompanySelectorContracts(page) {
+  companyListQueries.length = 0;
+
+  await page.goto(`${BASE}/dashboard/crm/contacts`);
+  await page.getByText('Ali A', { exact: true }).waitFor();
+
+  assert.equal(
+    companyListQueries.some((q) => q.limit === '100'),
+    false,
+    'Contacts still preloaded companies with limit=100',
+  );
+
+  await page.getByRole('button', { name: 'إضافة جهة اتصال', exact: true }).click();
+  await comboboxByLabel(page, 'الشركة').click();
+  await page.getByPlaceholder('ابحث عن شركة...').fill('Beyond100');
+  await waitUntil(
+    () => companyListQueries.some((q) => q.search === 'Beyond100' && q.limit === '20' && q.active === 'true'),
+    'Contact company selector did not perform server-side company search',
+  );
+  await page.getByRole('listbox').getByRole('button', { name: 'بدون شركة مرتبطة', exact: true }).click();
+  await page.getByRole('button', { name: 'إلغاء', exact: true }).click();
+
+  const card = page.locator('.scc-card-hover').filter({ hasText: 'Ali A' }).first();
+  await card.hover();
+  await card.locator('button').first().click();
+  await page.getByRole('heading', { name: 'تعديل جهة اتصال', exact: true }).waitFor();
+  await waitUntil(
+    async () => (await comboboxByLabel(page, 'الشركة').textContent())?.includes('Browser Company'),
+    'Contact edit did not resolve the linked company label by ID',
+  );
+  await page.getByRole('button', { name: 'إلغاء', exact: true }).click();
+}
+
 async function testContactCrudAndCsv(page) {
   contactPost = null;
   contactPatch = null;
@@ -699,7 +740,7 @@ async function testContactCrudAndCsv(page) {
   await fieldByLabel(page, 'الاسم الأول', 'input').fill('Created');
   await fieldByLabel(page, 'الاسم الأخير', 'input').fill('Contact');
   await fieldByLabel(page, 'البريد الإلكتروني', 'input').fill('created@example.test');
-  await fieldByLabel(page, 'الشركة', 'select').selectOption('co1');
+  await chooseComboboxOption(page, 'الشركة', 'ابحث عن شركة...', 'Browser', 'Browser Company');
   await page.getByRole('button', { name: 'إنشاء', exact: true }).click();
   await waitUntil(() => Boolean(contactPost), 'Contact POST was not sent');
   assert.equal(contactPost.firstName, 'Created');
@@ -712,7 +753,7 @@ async function testContactCrudAndCsv(page) {
   await card.locator('button').first().click();
   await page.getByRole('heading', { name: 'تعديل جهة اتصال', exact: true }).waitFor();
   await fieldByLabel(page, 'المسمى الوظيفي', 'input').fill('CFO');
-  await fieldByLabel(page, 'الشركة', 'select').selectOption('');
+  await clearCombobox(page, 'الشركة', 'بدون شركة مرتبطة');
   await page.getByRole('button', { name: 'حفظ التعديلات', exact: true }).click();
   await waitUntil(() => Boolean(contactPatch), 'Contact PATCH was not sent');
   assert.equal(contactPatch.jobTitle, 'CFO');
@@ -991,7 +1032,7 @@ async function testCrmLifecycle(page) {
   await page.getByRole('button', { name: 'إضافة جهة اتصال', exact: true }).click();
   await fieldByLabel(page, 'الاسم الأول', 'input').fill('Lifecycle');
   await fieldByLabel(page, 'الاسم الأخير', 'input').fill('Contact');
-  await fieldByLabel(page, 'الشركة', 'select').selectOption('co-life');
+  await chooseComboboxOption(page, 'الشركة', 'ابحث عن شركة...', 'Lifecycle', 'Lifecycle Company');
   await page.getByRole('button', { name: 'إنشاء', exact: true }).click();
   await waitUntil(() => lifecycle.contact?.id === 'ct-life', 'Lifecycle contact was not created');
   assert.equal(lifecycle.contact.companyId, 'co-life');
@@ -1204,6 +1245,7 @@ try {
   await testActivityQueryContracts(page);
   await testDealCrudAndErrors(page);
   await testActivityCrudAndErrors(page);
+  await testContactCompanySelectorContracts(page);
   await testContactCrudAndCsv(page);
   await testInvalidCsvGuard(page);
   await testOverviewRecoveryAndQuickLinks(page);

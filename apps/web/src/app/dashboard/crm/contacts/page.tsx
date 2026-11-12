@@ -8,6 +8,7 @@ import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
 import Button from '@/components/ui/Button';
 import Textarea from '@/components/ui/Textarea';
+import AsyncCombobox, { type AsyncComboboxOption } from '@/components/ui/AsyncCombobox';
 
 const PAGE_SIZE = 25;
 
@@ -32,7 +33,6 @@ const statusFilterOptions = [{ value: '', label: 'كل الحالات' }, ...con
 
 export default function CrmPage() {
   const [contacts, setContacts] = useState<any[]>([]);
-  const [companies, setCompanies] = useState<any[]>([]);
   const [csvLoading, setCsvLoading] = useState(false);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -74,8 +74,21 @@ export default function CrmPage() {
       });
   }, []);
 
-  useEffect(() => {
-    api.get('/crm/companies?limit=100').then((res) => setCompanies(res.data?.data || [])).catch(() => {});
+  const loadCompanies = useCallback(async (query: string, signal: AbortSignal): Promise<AsyncComboboxOption[]> => {
+    const params = new URLSearchParams({ limit: '20', active: 'true' });
+    if (query) params.set('search', query);
+    const res = await api.get('/crm/companies?' + params.toString(), { signal });
+    return (res.data?.data || []).map((company: any) => ({ value: company.id, label: company.name }));
+  }, []);
+
+  const resolveCompany = useCallback(async (id: string, signal: AbortSignal): Promise<AsyncComboboxOption | null> => {
+    try {
+      const res = await api.get('/crm/companies/' + id, { signal });
+      return res.data ? { value: res.data.id, label: res.data.name } : null;
+    } catch (err: any) {
+      if (err?.code === 'ERR_CANCELED') throw err;
+      return null;
+    }
   }, []);
 
   // Debounce the search box (400ms) before it becomes a server query.
@@ -288,7 +301,7 @@ export default function CrmPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <h3 className="font-bold text-white truncate">{contact.firstName} {contact.lastName}</h3>
-                    <p className="text-slate-400 text-sm">{companies.find((x) => x.id === contact.companyId)?.name || contact.companyName || '—'}</p>
+                    <p className="text-slate-400 text-sm">{contact.company?.name || contact.companyName || '—'}</p>
                   </div>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button onClick={() => openEdit(contact)} className="p-1.5 rounded-lg hover:bg-primary-500/10 text-primary-400"><Pencil className="h-4 w-4" /></button>
@@ -329,7 +342,16 @@ export default function CrmPage() {
             <Input label="البريد الإلكتروني" type="email" value={formData.email || ''} onChange={(e) => setFormData({ ...formData, email: e.target.value })} />
             <Input label="الهاتف" value={formData.phone || ''} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} />
             <Input label="الهاتف 2" value={formData.phone2 || ''} onChange={(e) => setFormData({ ...formData, phone2: e.target.value })} />
-            <Select label="الشركة" options={[{ value: '', label: 'بدون شركة مرتبطة' }, ...companies.map((x) => ({ value: x.id, label: x.name }))]} value={formData.companyId || ''} onChange={(e) => setFormData({ ...formData, companyId: e.target.value })} />
+            <AsyncCombobox
+              label="الشركة"
+              value={formData.companyId || ''}
+              onChange={(value) => setFormData({ ...formData, companyId: value })}
+              loadOptions={loadCompanies}
+              resolveValue={resolveCompany}
+              placeholder="بدون شركة مرتبطة"
+              searchPlaceholder="ابحث عن شركة..."
+              clearLabel="بدون شركة مرتبطة"
+            />
             <Input label="اسم الشركة (نص قديم/حر)" value={formData.companyName || ''} onChange={(e) => setFormData({ ...formData, companyName: e.target.value })} />
             <Input label="المسمى الوظيفي" value={formData.jobTitle || ''} onChange={(e) => setFormData({ ...formData, jobTitle: e.target.value })} />
             <Input label="رقم الهوية" value={formData.idNumber || ''} onChange={(e) => setFormData({ ...formData, idNumber: e.target.value })} />

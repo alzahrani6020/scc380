@@ -75,6 +75,11 @@ export class ContactsService {
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
+        include: {
+          company: {
+            select: { id: true, name: true },
+          },
+        },
       }),
       this.db.contact.count({ where }),
     ]);
