@@ -56,3 +56,33 @@ test('chart accounts with ledger history cannot be deleted', () => {
   assert.match(service, /prisma\.journalEntry\.count/);
   assert.match(service, /cannot be deleted; deactivate it instead/);
 });
+
+
+test('journal header-line migration is additive and preserves legacy journal table', () => {
+  const migration = readFileSync(
+    join(process.cwd(), '../../packages/database/prisma/migrations/20261112162000_add_journal_header_lines/migration.sql'),
+    'utf8',
+  );
+  assert.match(migration, /CREATE TABLE "journal_entry_headers"/);
+  assert.match(migration, /CREATE TABLE "journal_entry_lines"/);
+  assert.match(migration, /journal_entry_lines_amount_check/);
+  assert.doesNotMatch(migration, /REFERENCES "journal_entries"/);
+  assert.doesNotMatch(migration, /(^|\n)\s*DROP\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*TRUNCATE\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*DELETE\s+FROM\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*UPDATE\s+["a-z]/i);
+  assert.doesNotMatch(migration, /ALTER TABLE "journal_entries"/i);
+});
+
+test('accounting posting core enforces balanced transactional double-entry', () => {
+  const service = src('src/accounting-core/accounting-posting.service.ts');
+  assert.match(service, /lines\.length < 2/);
+  assert.match(service, /exactly one side must be positive/);
+  assert.match(service, /Journal is not balanced/);
+  assert.match(service, /prisma\.\$transaction/);
+  assert.match(service, /financialPeriod\.findFirst/);
+  assert.match(service, /journalEntryHeader\.create/);
+  assert.match(service, /status:\s*JournalStatus\.POSTED/);
+  assert.match(service, /sourceType/);
+  assert.match(service, /sourceId/);
+});
