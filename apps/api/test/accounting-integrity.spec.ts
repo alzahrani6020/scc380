@@ -185,7 +185,7 @@ test('supplier AP schema reconciliation is additive and startup-gated', () => {
 });
 
 
-test('supplier AP posting requires explicit item accounts and uses atomic dual-write', () => {
+test('supplier AP posting policy requires explicit item accounts and atomic dual-write', () => {
   const service = src('src/supplier-invoice/supplier-invoice.service.ts');
   assert.match(service, /كل بند في فاتورة المورد يحتاج accountId/);
   assert.match(service, /sourceType:\s*'SUPPLIER_INVOICE'/);
