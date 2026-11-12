@@ -1,21 +1,38 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { prisma, tenantWhere } from '@scc/database';
+import { pagedResult, parsePagination } from './pagination';
 
 @Injectable()
 export class ShiftsService {
   async findAll(req: any, query: any) {
     const where: any = { ...tenantWhere(req.user?.tenantId) };
     if (query.employeeId) where.employeeId = query.employeeId;
+    if (query.search) {
+      where.OR = [
+        { name: { contains: query.search, mode: 'insensitive' } },
+        {
+          employee: {
+            OR: [
+              { firstName: { contains: query.search, mode: 'insensitive' } },
+              { lastName: { contains: query.search, mode: 'insensitive' } },
+              { employeeCode: { contains: query.search, mode: 'insensitive' } },
+            ],
+          },
+        },
+      ];
+    }
+    const { page, limit, skip } = parsePagination(query);
     const [data, count] = await Promise.all([
       prisma.shift.findMany({
         where,
         include: { employee: { select: { firstName: true, lastName: true, employeeCode: true } } },
         orderBy: { startTime: 'asc' },
-        take: 200,
+        skip,
+        take: limit,
       }),
       prisma.shift.count({ where }),
     ]);
-    return { data, count };
+    return pagedResult(data, count, page, limit);
   }
 
   async findOne(req: any, id: string) {
