@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import api from '@/lib/api';
-import { ClipboardList, Plus, Search, CheckCircle2, XCircle, Clock, Pencil, Trash2, X } from 'lucide-react';
+import { ClipboardList, Plus, Search, Pencil, Trash2, X } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
 import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
@@ -50,10 +50,14 @@ export default function AttendancePage() {
   const openEdit = (item: any) => {
     setEditing(item);
     setFormData({
-      ...item,
+      employeeId: item.employeeId,
       date: item.date ? new Date(item.date).toISOString().split('T')[0] : '',
       checkIn: item.checkIn ? new Date(item.checkIn).toISOString().slice(0, 16) : '',
       checkOut: item.checkOut ? new Date(item.checkOut).toISOString().slice(0, 16) : '',
+      status: item.status,
+      notes: item.notes || '',
+      workHours: item.workHours ?? '',
+      overtimeHours: item.overtimeHours ?? '',
     });
     setIsModalOpen(true);
   };
@@ -62,15 +66,24 @@ export default function AttendancePage() {
     e.preventDefault();
     setFormLoading(true);
     try {
+      const commonPayload = {
+        date: formData.date || undefined,
+        checkIn: formData.checkIn || undefined,
+        checkOut: formData.checkOut || undefined,
+        status: formData.status,
+        notes: formData.notes || undefined,
+        workHours: formData.workHours === '' || formData.workHours == null ? undefined : Number(formData.workHours),
+        overtimeHours: formData.overtimeHours === '' || formData.overtimeHours == null ? undefined : Number(formData.overtimeHours),
+      };
       if (editing) {
-        await api.patch(`/hr/attendances/${editing.id}`, formData);
+        await api.patch(`/hr/attendances/${editing.id}`, commonPayload);
       } else {
-        await api.post('/hr/attendances', formData);
+        await api.post('/hr/attendances', { employeeId: formData.employeeId, ...commonPayload });
       }
       setIsModalOpen(false);
       fetchData();
     } catch (err) {
-      alert('حدث خطأ');
+      alert('تعذر حفظ سجل الحضور');
     } finally {
       setFormLoading(false);
     }
@@ -115,6 +128,8 @@ export default function AttendancePage() {
         <div className="flex items-center justify-center h-64">
           <div className="w-10 h-10 border-4 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
         </div>
+      ) : filtered.length === 0 ? (
+        <div className="scc-card text-center py-12 text-slate-400">لا توجد سجلات حضور مطابقة.</div>
       ) : (
         <div className="space-y-3">
           {filtered.map((a) => (
@@ -148,7 +163,7 @@ export default function AttendancePage() {
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editing ? 'تعديل سجل' : 'تسجيل حضور'}>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <Select label="الموظف" required options={empOptions} value={formData.employeeId || ''} onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })} />
+          <Select label="الموظف" required disabled={!!editing} options={empOptions} value={formData.employeeId || ''} onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })} />
           <Input label="التاريخ" type="date" required value={formData.date || ''} onChange={(e) => setFormData({ ...formData, date: e.target.value })} />
           <div className="grid grid-cols-2 gap-4">
             <Input label="دخول" type="datetime-local" value={formData.checkIn || ''} onChange={(e) => setFormData({ ...formData, checkIn: e.target.value })} />
@@ -157,6 +172,7 @@ export default function AttendancePage() {
           <Select label="الحالة" options={attendanceStatuses} value={formData.status || 'PRESENT'} onChange={(e) => setFormData({ ...formData, status: e.target.value })} />
           <Input label="ساعات العمل" type="number" step="0.5" value={formData.workHours || ''} onChange={(e) => setFormData({ ...formData, workHours: e.target.value })} />
           <Input label="ساعات إضافية" type="number" step="0.5" value={formData.overtimeHours || ''} onChange={(e) => setFormData({ ...formData, overtimeHours: e.target.value })} />
+          <Input label="ملاحظات" value={formData.notes || ''} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} />
           <div className="flex justify-end gap-3 pt-2">
             <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}><X className="h-4 w-4" /> إلغاء</Button>
             <Button type="submit" isLoading={formLoading}>{editing ? 'حفظ' : 'تسجيل'}</Button>
