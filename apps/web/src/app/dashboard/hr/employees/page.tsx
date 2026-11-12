@@ -8,6 +8,7 @@ import Modal from '@/components/ui/Modal';
 import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
 import Button from '@/components/ui/Button';
+import PaginationControls from '@/components/hr/PaginationControls';
 
 const empTypes = [
   { value: 'FULL_TIME', label: 'دوام كامل' },
@@ -29,21 +30,39 @@ export default function HrPage() {
   const [departments, setDepartments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [departmentFilter, setDepartmentFilter] = useState('');
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [formLoading, setFormLoading] = useState(false);
   const [formData, setFormData] = useState<any>({});
 
   useEffect(() => {
-    fetchData();
+    api.get('/hr/departments').then(r => setDepartments(r.data.data || [])).catch(console.error);
   }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => fetchData(), 350);
+    return () => clearTimeout(timer);
+  }, [page, search, statusFilter, departmentFilter]);
 
   const fetchData = () => {
     setLoading(true);
-    Promise.all([
-      api.get('/hr/employees').then(r => setEmployees(r.data.data || [])),
-      api.get('/hr/departments').then(r => setDepartments(r.data.data || [])),
-    ]).catch(console.error).finally(() => setLoading(false));
+    const params = new URLSearchParams({ page: String(page), limit: '25' });
+    if (search.trim()) params.set('search', search.trim());
+    if (statusFilter) params.set('status', statusFilter);
+    if (departmentFilter) params.set('departmentId', departmentFilter);
+    api.get('/hr/employees?' + params.toString())
+      .then(r => {
+        setEmployees(r.data.data || []);
+        setTotal(Number(r.data.count || 0));
+        setTotalPages(Number(r.data.totalPages || 1));
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
   };
 
   const openCreate = () => {
@@ -113,6 +132,7 @@ export default function HrPage() {
         await api.post('/hr/employees', payload);
       }
       setIsModalOpen(false);
+      setPage(1);
       fetchData();
     } catch (err) {
       alert('تعذر حفظ بيانات الموظف');
@@ -124,12 +144,8 @@ export default function HrPage() {
   const handleTerminate = async (id: string) => {
     if (!confirm('سيتم إنهاء خدمة الموظف مع الاحتفاظ بسجلاته. هل تريد المتابعة؟')) return;
     await api.delete(`/hr/employees/${id}`);
-    fetchData();
+    if (employees.length === 1 && page > 1) setPage(page - 1); else fetchData();
   };
-
-  const filtered = employees.filter((e) =>
-    `${e.firstName} ${e.lastName}`.includes(search) || e.email?.includes(search) || e.employeeCode?.includes(search)
-  );
 
   const deptOptions = departments.map(d => ({ value: d.id, label: d.name }));
 
@@ -141,19 +157,23 @@ export default function HrPage() {
             <Briefcase className="h-6 w-6 text-primary-400" />
             مكين - الموارد البشرية
           </h1>
-          <p className="text-slate-400 text-sm mt-1">منصة مكين لإدارة الموارد البشرية داخل SCC 380 — {employees.length} موظف</p>
+          <p className="text-slate-400 text-sm mt-1">منصة مكين لإدارة الموارد البشرية داخل SCC 380 — {total} موظف</p>
         </div>
         <Button onClick={openCreate}><Plus className="h-5 w-5" /> إضافة موظف</Button>
       </div>
-      <div className="relative">
-        <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-500" />
-        <input type="text" placeholder="البحث..." className="scc-input pr-10" value={search} onChange={(e) => setSearch(e.target.value)} />
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="relative">
+          <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-500" />
+          <input type="text" placeholder="البحث بالاسم أو الكود أو المسمى..." className="scc-input pr-10" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+        </div>
+        <Select label="" options={[{ value: '', label: 'كل الحالات' }, ...empStatuses]} value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }} />
+        <Select label="" options={[{ value: '', label: 'كل الإدارات' }, ...deptOptions]} value={departmentFilter} onChange={(e) => { setDepartmentFilter(e.target.value); setPage(1); }} />
       </div>
       {loading ? (
         <div className="flex items-center justify-center h-64">
           <div className="w-10 h-10 border-4 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
         </div>
-      ) : filtered.length === 0 ? (
+      ) : employees.length === 0 ? (
         <div className="scc-card text-center py-14">
           <Briefcase className="h-10 w-10 text-slate-600 mx-auto mb-3" />
           <p className="text-white font-medium">لا يوجد موظفون مطابقون.</p>
@@ -161,7 +181,7 @@ export default function HrPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map((emp) => (
+          {employees.map((emp) => (
             <div key={emp.id} className="scc-card-hover group">
               <div className="flex items-start gap-4">
                 <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg shrink-0">
@@ -190,6 +210,7 @@ export default function HrPage() {
           ))}
         </div>
       )}
+      <PaginationControls page={page} totalPages={totalPages} total={total} onPageChange={setPage} />
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editing ? 'تعديل موظف' : 'موظف جديد'} size="xl">
         <form onSubmit={handleSubmit} className="space-y-4">
