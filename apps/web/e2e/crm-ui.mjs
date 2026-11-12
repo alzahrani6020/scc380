@@ -78,7 +78,13 @@ let failNextOverview = false;
 let invalidCsvPreview = false;
 let invalidCsvExecuteAttempted = false;
 let failNextCompanyList = false;
+let failNextCompanyPost = false;
+let failNextCompanyDelete = false;
 let failNextContactList = false;
+let failNextContactPost = false;
+let failNextContactDelete = false;
+let failNextCsvExport = false;
+let failNextCsvImportPreview = false;
 let failNextPipelineList = false;
 let failNextPipelinePost = false;
 let failNextStagePost = false;
@@ -270,6 +276,11 @@ async function installApiMock(page) {
     }
     if (method === 'POST' && path === '/crm/contacts') {
       contactPost = req.postDataJSON();
+      if (failNextContactPost) {
+        failNextContactPost = false;
+        await route.fulfill(json({ message: 'forced contact save failure' }, 500));
+        return;
+      }
       const created = { id: lifecycleMode ? 'ct-life' : 'ct-new', ...contactPost };
       if (lifecycleMode) lifecycle.contact = created;
       await route.fulfill(json(created, 201));
@@ -281,11 +292,21 @@ async function installApiMock(page) {
       return;
     }
     if (method === 'DELETE' && path === '/crm/contacts/ct1') {
+      if (failNextContactDelete) {
+        failNextContactDelete = false;
+        await route.fulfill(json({ message: 'forced contact delete failure' }, 409));
+        return;
+      }
       contactDeleteId = 'ct1';
       await route.fulfill({ status: 204 });
       return;
     }
     if (method === 'GET' && path === '/crm/csv/contacts') {
+      if (failNextCsvExport) {
+        failNextCsvExport = false;
+        await route.fulfill(json({ message: 'forced CSV export failure' }, 500));
+        return;
+      }
       csvExportRequested = true;
       await route.fulfill({
         status: 200,
@@ -298,6 +319,11 @@ async function installApiMock(page) {
       const body = req.postDataJSON();
       if (body.dryRun) {
         csvImportPreview = body;
+        if (failNextCsvImportPreview) {
+          failNextCsvImportPreview = false;
+          await route.fulfill(json({ message: 'forced CSV import failure' }, 500));
+          return;
+        }
         if (invalidCsvPreview) {
           invalidCsvPreview = false;
           await route.fulfill(json({
@@ -348,6 +374,11 @@ async function installApiMock(page) {
     }
     if (method === 'POST' && path === '/crm/companies') {
       companyPost = req.postDataJSON();
+      if (failNextCompanyPost) {
+        failNextCompanyPost = false;
+        await route.fulfill(json({ message: 'forced company save failure' }, 500));
+        return;
+      }
       const created = { id: lifecycleMode ? 'co-life' : 'co-new', ...companyPost };
       if (lifecycleMode) lifecycle.company = created;
       await route.fulfill(json(created, 201));
@@ -359,6 +390,11 @@ async function installApiMock(page) {
       return;
     }
     if (method === 'DELETE' && path === '/crm/companies/co1') {
+      if (failNextCompanyDelete) {
+        failNextCompanyDelete = false;
+        await route.fulfill(json({ message: 'forced company delete failure' }, 409));
+        return;
+      }
       companyDeleteId = 'co1';
       await route.fulfill({ status: 204 });
       return;
@@ -722,6 +758,61 @@ async function testContactCompanySelectorContracts(page) {
     'Contact edit did not resolve the linked company label by ID',
   );
   await page.getByRole('button', { name: 'إلغاء', exact: true }).click();
+}
+
+
+async function testContactActionErrorRecovery(page) {
+  await page.goto(`${BASE}/dashboard/crm/contacts`);
+  await page.getByText('Ali A', { exact: true }).waitFor();
+
+  failNextContactPost = true;
+  await page.getByRole('button', { name: 'إضافة جهة اتصال', exact: true }).click();
+  await fieldByLabel(page, 'الاسم الأول', 'input').fill('Failing');
+  await fieldByLabel(page, 'الاسم الأخير', 'input').fill('Contact');
+  await page.getByRole('button', { name: 'إنشاء', exact: true }).click();
+  await page.getByText('تعذر حفظ جهة الاتصال. تحقق من البيانات أو الاتصال بالخادم.', { exact: true }).waitFor();
+  await page.getByRole('heading', { name: 'إضافة جهة اتصال', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'إلغاء', exact: true }).click();
+
+  failNextContactDelete = true;
+  let card = page.locator('.scc-card-hover').filter({ hasText: 'Ali A' }).first();
+  await card.hover();
+  page.once('dialog', (dialog) => dialog.accept());
+  await card.locator('button').last().click();
+  await page.getByText('تعذر حذف جهة الاتصال. قد تكون مرتبطة ببيانات أخرى أو تعذر الاتصال بالخادم.', { exact: true }).waitFor();
+  await page.getByText('Ali A', { exact: true }).waitFor();
+
+  failNextCsvExport = true;
+  await page.getByRole('button', { name: 'تصدير CSV', exact: true }).click();
+  await page.getByText('تعذر تصدير جهات الاتصال إلى CSV.', { exact: true }).waitFor();
+
+  failNextCsvImportPreview = true;
+  await page.locator('#crm-csv-import').setInputFiles({
+    name: 'failing.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from('firstName,lastName,email\nFailing,Import,failing@example.test\n'),
+  });
+  await page.getByText('تعذر استيراد ملف CSV. تحقق من الملف أو الاتصال بالخادم.', { exact: true }).waitFor();
+}
+
+async function testCompanyActionErrorRecovery(page) {
+  await page.goto(`${BASE}/dashboard/crm/companies`);
+  await page.getByText('Browser Company', { exact: true }).waitFor();
+
+  failNextCompanyPost = true;
+  await page.getByRole('button', { name: 'شركة جديدة', exact: true }).click();
+  await fieldByLabel(page, 'الاسم', 'input').fill('Failing Company');
+  await page.getByRole('button', { name: 'إنشاء', exact: true }).click();
+  await page.getByText('تعذر حفظ الشركة. تحقق من البيانات أو الاتصال بالخادم.', { exact: true }).waitFor();
+  await page.getByRole('heading', { name: 'شركة جديدة', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'إلغاء', exact: true }).click();
+
+  failNextCompanyDelete = true;
+  const card = page.locator('.scc-card-hover').filter({ hasText: 'Browser Company' }).first();
+  page.once('dialog', (dialog) => dialog.accept());
+  await card.locator('button').last().click();
+  await page.getByText('تعذر حذف الشركة. قد تكون مرتبطة ببيانات أخرى أو تعذر الاتصال بالخادم.', { exact: true }).waitFor();
+  await page.getByText('Browser Company', { exact: true }).waitFor();
 }
 
 async function testContactCrudAndCsv(page) {
@@ -1246,11 +1337,13 @@ try {
   await testDealCrudAndErrors(page);
   await testActivityCrudAndErrors(page);
   await testContactCompanySelectorContracts(page);
+  await testContactActionErrorRecovery(page);
   await testContactCrudAndCsv(page);
   await testInvalidCsvGuard(page);
   await testOverviewRecoveryAndQuickLinks(page);
   await testCompanyQueryAndRecovery(page);
   await testContactQueryAndRecovery(page);
+  await testCompanyActionErrorRecovery(page);
   await testCompanyCrud(page);
   await testPipelineErrorRecovery(page);
   await testPipelineAndStageCrud(page);

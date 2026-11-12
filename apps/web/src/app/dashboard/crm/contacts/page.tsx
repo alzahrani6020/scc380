@@ -45,6 +45,8 @@ export default function CrmPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<any>(null);
   const [formLoading, setFormLoading] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [operationError, setOperationError] = useState<string | null>(null);
   const [formData, setFormData] = useState<any>({});
   const abortRef = useRef<AbortController | null>(null);
 
@@ -113,12 +115,16 @@ export default function CrmPage() {
 
   const openCreate = () => {
     setEditingContact(null);
+    setFormError(null);
+    setOperationError(null);
     setFormData({ type: 'CUSTOMER', status: 'ACTIVE', country: 'SA' });
     setIsModalOpen(true);
   };
 
   const openEdit = (contact: any) => {
     setEditingContact(contact);
+    setFormError(null);
+    setOperationError(null);
     // Only DTO-whitelisted fields — the API rejects unknown fields (forbidNonWhitelisted)
     setFormData({
       firstName: contact.firstName || '',
@@ -145,6 +151,7 @@ export default function CrmPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormLoading(true);
+    setFormError(null);
     try {
       const payload = { ...formData };
       if (payload.companyId === '') {
@@ -158,9 +165,8 @@ export default function CrmPage() {
       }
       setIsModalOpen(false);
       fetchContacts(page, debouncedSearch, typeFilter, statusFilter);
-    } catch (err) {
-      console.error(err);
-      alert('حدث خطأ');
+    } catch {
+      setFormError('تعذر حفظ جهة الاتصال. تحقق من البيانات أو الاتصال بالخادم.');
     } finally {
       setFormLoading(false);
     }
@@ -168,6 +174,7 @@ export default function CrmPage() {
 
   const handleDelete = async (id: string) => {
     if (!confirm('هل أنت متأكد من الحذف؟')) return;
+    setOperationError(null);
     try {
       await api.delete(`/crm/contacts/${id}`);
       if (contacts.length === 1 && page > 1) {
@@ -175,13 +182,14 @@ export default function CrmPage() {
       } else {
         fetchContacts(page, debouncedSearch, typeFilter, statusFilter);
       }
-    } catch (err) {
-      console.error(err);
+    } catch {
+      setOperationError('تعذر حذف جهة الاتصال. قد تكون مرتبطة ببيانات أخرى أو تعذر الاتصال بالخادم.');
     }
   };
 
   const exportCsv = async () => {
     setCsvLoading(true);
+    setOperationError(null);
     try {
       const res = await api.get('/crm/csv/contacts', { responseType: 'blob' });
       const url = URL.createObjectURL(new Blob([res.data], { type: 'text/csv;charset=utf-8' }));
@@ -192,6 +200,8 @@ export default function CrmPage() {
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
+    } catch {
+      setOperationError('تعذر تصدير جهات الاتصال إلى CSV.');
     } finally {
       setCsvLoading(false);
     }
@@ -200,6 +210,7 @@ export default function CrmPage() {
   const importCsv = async (file?: File) => {
     if (!file) return;
     setCsvLoading(true);
+    setOperationError(null);
     try {
       const csv = await file.text();
       const preview = await api.post('/crm/csv/contacts/import', { csv, dryRun: true });
@@ -214,6 +225,8 @@ export default function CrmPage() {
       alert('تم استيراد ' + result.data.imported + ' وتجاوز ' + result.data.skippedDuplicates + ' مكرر.');
       fetchContacts(1, debouncedSearch, typeFilter, statusFilter);
       setPage(1);
+    } catch {
+      setOperationError('تعذر استيراد ملف CSV. تحقق من الملف أو الاتصال بالخادم.');
     } finally {
       setCsvLoading(false);
     }
@@ -239,6 +252,13 @@ export default function CrmPage() {
           <Button onClick={openCreate}><Plus className="h-5 w-5" /> إضافة جهة اتصال</Button>
         </div>
       </div>
+
+      {operationError && (
+        <div className="scc-card border-red-500/30 text-red-400 flex items-center gap-2">
+          <AlertCircle className="h-5 w-5 shrink-0" />
+          <span>{operationError}</span>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
         <div className="relative md:col-span-2">
@@ -363,6 +383,7 @@ export default function CrmPage() {
             <Select label="الحالة" options={contactStatuses} value={formData.status || 'ACTIVE'} onChange={(e) => setFormData({ ...formData, status: e.target.value })} />
           </div>
           <Textarea label="العنوان" rows={2} value={formData.address || ''} onChange={(e) => setFormData({ ...formData, address: e.target.value })} />
+          {formError && <p className="text-sm text-red-400">{formError}</p>}
           <div className="flex justify-end gap-3 pt-2">
             <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}><X className="h-4 w-4" /> إلغاء</Button>
             <Button type="submit" isLoading={formLoading}>{editingContact ? 'حفظ التعديلات' : 'إنشاء'}</Button>
