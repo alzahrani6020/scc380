@@ -45,17 +45,25 @@ export class HrSelfService {
   async getPayroll(req: any, limitRaw?: string) {
     const employee = await this.resolveEmployee(req);
     const limit = Math.min(Math.max(Number(limitRaw || 12) || 12, 1), 24);
-    return prisma.payroll.findMany({
+    const rows = await prisma.payroll.findMany({
       where: { ...tenantWhere(req.user.tenantId), employeeId: employee.id },
       orderBy: [{ year: 'desc' }, { month: 'desc' }],
       take: limit,
       select: {
         id: true, year: true, month: true, basicSalary: true, housingAllowance: true,
-        transportAllowance: true, otherAllowances: true, grossSalary: true, gosiDeduction: true,
+        transportAllowance: true, otherAllowances: true, gosiDeduction: true,
         taxDeduction: true, otherDeductions: true, loanDeductions: true, netSalary: true,
         status: true, paidAt: true,
       },
     });
+    return rows.map((row) => ({
+      ...row,
+      grossSalary:
+        Number(row.basicSalary) +
+        Number(row.housingAllowance) +
+        Number(row.transportAllowance) +
+        Number(row.otherAllowances),
+    }));
   }
 
   async getDocuments(req: any) {
