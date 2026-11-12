@@ -1,4 +1,4 @@
-import {UseGuards,  Controller, Get, Post, Delete, Headers, Param } from '@nestjs/common';
+import { Controller, Delete, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { SmartAlertsService } from './alerts.service';
 
@@ -8,27 +8,27 @@ export class AlertsController {
   constructor(private readonly service: SmartAlertsService) {}
 
   @Get()
-  async getAlerts(@Headers('x-tenant-id') tenantId: string) {
-    return this.service.generateAndGetAlerts(tenantId, 'SUPER_ADMIN');
+  async getAlerts(@Req() req: any) {
+    return this.service.generateAndGetAlerts(req.user?.tenantId, req.user?.role);
   }
 
   @Get('counts')
-  async getCounts(@Headers('x-tenant-id') tenantId: string) {
-    return this.service.getAlertCounts(tenantId, 'SUPER_ADMIN');
+  async getCounts(@Req() req: any) {
+    return this.service.getAlertCounts(req.user?.tenantId, req.user?.role);
   }
 
   @Post(':id/read')
-  async markAsRead(@Param('id') id: string, @Headers('x-tenant-id') tenantId: string) {
-    return this.service.markAsRead(id, tenantId, 'SUPER_ADMIN');
+  async markAsRead(@Req() req: any, @Param('id') id: string) {
+    return this.service.markAsRead(id, req.user?.tenantId, req.user?.role);
   }
 
   @Post('read-all')
-  async markAllAsRead(@Headers('x-tenant-id') tenantId: string) {
-    return this.service.markAllAsRead(tenantId, 'SUPER_ADMIN');
+  async markAllAsRead(@Req() req: any) {
+    return this.service.markAllAsRead(req.user?.tenantId, req.user?.role);
   }
 
   @Delete(':id')
-  async dismiss(@Param('id') id: string, @Headers('x-tenant-id') tenantId: string) {
-    return this.service.dismiss(id, tenantId, 'SUPER_ADMIN');
+  async dismiss(@Req() req: any, @Param('id') id: string) {
+    return this.service.dismiss(id, req.user?.tenantId, req.user?.role);
   }
 }
