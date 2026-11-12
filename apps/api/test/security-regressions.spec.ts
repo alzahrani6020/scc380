@@ -90,3 +90,19 @@ test('CRM FK migration is additive only', () => {
   assert.doesNotMatch(migration, /(^|\n)\s*DELETE\s+FROM\s+/i);
   assert.doesNotMatch(migration, /(^|\n)\s*UPDATE\s+["a-z]/i);
 });
+
+
+test('CRM relationship selectors are async and not capped to first 100 records', () => {
+  const dealsPage = src('../web/src/app/dashboard/crm/deals/page.tsx');
+  const activitiesPage = src('../web/src/app/dashboard/crm/activities/page.tsx');
+  const combo = src('../web/src/components/ui/AsyncCombobox.tsx');
+  const activitiesService = src('src/crm/activities.service.ts');
+
+  assert.match(dealsPage, /AsyncCombobox/);
+  assert.match(activitiesPage, /AsyncCombobox/);
+  assert.match(combo, /loadOptions/);
+  assert.doesNotMatch(dealsPage, /crm\/(contacts|companies|deals)\?limit=100/);
+  assert.doesNotMatch(activitiesPage, /crm\/(contacts|companies|deals)\?limit=100/);
+  assert.match(activitiesService, /contact:\s*\{\s*select:/);
+  assert.match(activitiesService, /deal:\s*\{\s*select:/);
+});

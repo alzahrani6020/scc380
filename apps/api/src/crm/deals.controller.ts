@@ -3,14 +3,14 @@ import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard, RequirePermissions } from '../auth/guards/permissions.guard';
 import { DealsService } from './deals.service';
-import { IsString, IsOptional, IsNumber, IsEnum, IsInt, Min, Max, IsISO8601, MaxLength } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsEnum, IsInt, Min, Max, IsISO8601, MaxLength, MinLength } from 'class-validator';
 import { DealStage } from '@prisma/client';
 import { ListDealsQueryDto } from './dto/list-deals-query.dto';
 
-class CreateDealDto {
-  @IsString() @MaxLength(150) title: string;
+export class CreateDealDto {
+  @IsString() @MinLength(1) @MaxLength(150) title: string;
   @IsString() @MaxLength(2000) @IsOptional() description?: string;
-  @IsString() @MaxLength(50) contactId: string;
+  @IsString() @MinLength(1) @MaxLength(50) contactId: string;
   @IsString() @MaxLength(50) @IsOptional() companyId?: string;
   @IsString() @MaxLength(50) @IsOptional() pipelineId?: string;
   @IsString() @MaxLength(50) @IsOptional() pipelineStageId?: string;
@@ -22,10 +22,10 @@ class CreateDealDto {
   @IsString() @MaxLength(50) @IsOptional() assignedToId?: string;
 }
 
-class UpdateDealDto {
-  @IsString() @MaxLength(150) @IsOptional() title?: string;
+export class UpdateDealDto {
+  @IsString() @MinLength(1) @MaxLength(150) @IsOptional() title?: string;
   @IsString() @MaxLength(2000) @IsOptional() description?: string;
-  @IsString() @MaxLength(50) @IsOptional() contactId?: string;
+  @IsString() @MinLength(1) @MaxLength(50) @IsOptional() contactId?: string;
   @IsString() @MaxLength(50) @IsOptional() companyId?: string;
   @IsString() @MaxLength(50) @IsOptional() pipelineId?: string;
   @IsString() @MaxLength(50) @IsOptional() pipelineStageId?: string;

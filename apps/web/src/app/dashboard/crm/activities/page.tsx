@@ -1,11 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import api from '@/lib/api';
 import { Activity, CalendarClock, CheckCircle2, Pencil, Plus, RefreshCw, Search, Trash2, X, AlertCircle } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
 import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
+import AsyncCombobox, { AsyncComboboxOption } from '@/components/ui/AsyncCombobox';
 import Button from '@/components/ui/Button';
 import Textarea from '@/components/ui/Textarea';
 
@@ -25,8 +26,6 @@ const activityTypes = [
 
 export default function ActivitiesPage() {
   const [items, setItems] = useState<any[]>([]);
-  const [contacts, setContacts] = useState<any[]>([]);
-  const [deals, setDeals] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -42,12 +41,34 @@ export default function ActivitiesPage() {
   const [formData, setFormData] = useState<any>({ type: 'TASK' });
   const abortRef = useRef<AbortController | null>(null);
 
-  // Contact/deal pickers are loaded once (bounded to the API max of 100).
-  useEffect(() => {
-    Promise.all([
-      api.get('/crm/contacts?limit=100').then((res) => setContacts(res.data?.data || [])),
-      api.get('/crm/deals?limit=100').then((res) => setDeals(res.data?.data || [])),
-    ]).catch(() => {});
+  const loadContacts = useCallback(async (term: string, signal: AbortSignal): Promise<AsyncComboboxOption[]> => {
+    const params = new URLSearchParams({ limit: '20' });
+    if (term) params.set('search', term);
+    const res = await api.get(`/crm/contacts?${params.toString()}`, { signal });
+    return (res.data?.data || []).map((c: any) => ({
+      value: c.id,
+      label: `${c.firstName || ''} ${c.lastName || ''}`.trim() || c.email || c.phone || c.id,
+    }));
+  }, []);
+
+  const resolveContact = useCallback(async (id: string, signal: AbortSignal): Promise<AsyncComboboxOption | null> => {
+    if (!id) return null;
+    const res = await api.get(`/crm/contacts/${id}`, { signal });
+    const c = res.data;
+    return { value: c.id, label: `${c.firstName || ''} ${c.lastName || ''}`.trim() || c.email || c.phone || c.id };
+  }, []);
+
+  const loadDeals = useCallback(async (term: string, signal: AbortSignal): Promise<AsyncComboboxOption[]> => {
+    const params = new URLSearchParams({ limit: '20' });
+    if (term) params.set('search', term);
+    const res = await api.get(`/crm/deals?${params.toString()}`, { signal });
+    return (res.data?.data || []).map((deal: any) => ({ value: deal.id, label: deal.title }));
+  }, []);
+
+  const resolveDeal = useCallback(async (id: string, signal: AbortSignal): Promise<AsyncComboboxOption | null> => {
+    if (!id) return null;
+    const res = await api.get(`/crm/deals/${id}`, { signal });
+    return { value: res.data.id, label: res.data.title };
   }, []);
 
   const fetchActivities = useCallback((p: number, s: string, t: string, c: string, d: string) => {
@@ -103,16 +124,6 @@ export default function ActivitiesPage() {
   useEffect(() => {
     return () => abortRef.current?.abort();
   }, []);
-
-  const contactOptions = useMemo(() => [
-    { value: '', label: 'كل جهات الاتصال' },
-    ...contacts.map((c) => ({ value: c.id, label: `${c.firstName} ${c.lastName}` })),
-  ], [contacts]);
-
-  const dealOptions = useMemo(() => [
-    { value: '', label: 'كل الصفقات' },
-    ...deals.map((d) => ({ value: d.id, label: d.title })),
-  ], [deals]);
 
   const openCreate = () => {
     setEditing(null);
@@ -198,8 +209,24 @@ export default function ActivitiesPage() {
           <input className="scc-input pr-9" placeholder="بحث في كل الأنشطة..." value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <Select options={activityTypes} value={type} onChange={(e) => setType(e.target.value)} />
-        <Select options={contactOptions} value={contactId} onChange={(e) => setContactId(e.target.value)} />
-        <Select options={dealOptions} value={dealId} onChange={(e) => setDealId(e.target.value)} />
+        <AsyncCombobox
+          value={contactId}
+          onChange={setContactId}
+          loadOptions={loadContacts}
+          resolveValue={resolveContact}
+          placeholder="كل جهات الاتصال"
+          searchPlaceholder="ابحث عن جهة اتصال..."
+          clearLabel="كل جهات الاتصال"
+        />
+        <AsyncCombobox
+          value={dealId}
+          onChange={setDealId}
+          loadOptions={loadDeals}
+          resolveValue={resolveDeal}
+          placeholder="كل الصفقات"
+          searchPlaceholder="ابحث عن صفقة..."
+          clearLabel="كل الصفقات"
+        />
       </div>
 
       {loading ? (
@@ -230,8 +257,6 @@ export default function ActivitiesPage() {
         <>
           <div className="space-y-3">
             {items.map((item) => {
-              const contact = contacts.find((c) => c.id === item.contactId);
-              const deal = deals.find((d) => d.id === item.dealId);
               return (
                 <div key={item.id} className="scc-card-hover flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                   <div className="min-w-0">
@@ -242,8 +267,8 @@ export default function ActivitiesPage() {
                     <h3 className="text-white font-semibold mt-2">{item.subject}</h3>
                     {item.description && <p className="text-slate-400 text-sm mt-1">{item.description}</p>}
                     <div className="flex flex-wrap gap-3 text-xs text-slate-500 mt-2">
-                      {contact && <span>العميل: {contact.firstName} {contact.lastName}</span>}
-                      {deal && <span>الصفقة: {deal.title}</span>}
+                      {item.contact && <span>العميل: {item.contact.firstName} {item.contact.lastName}</span>}
+                      {item.deal && <span>الصفقة: {item.deal.title}</span>}
                       {item.scheduledAt && <span>الموعد: {new Date(item.scheduledAt).toLocaleString('ar-SA')}</span>}
                     </div>
                   </div>
@@ -282,8 +307,26 @@ export default function ActivitiesPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Select label="النوع" options={activityTypes.filter((x) => x.value)} value={formData.type || 'TASK'} onChange={(e) => setFormData({ ...formData, type: e.target.value })} />
             <Input label="الموضوع" required value={formData.subject || ''} onChange={(e) => setFormData({ ...formData, subject: e.target.value })} />
-            <Select label="جهة الاتصال" options={contactOptions} value={formData.contactId || ''} onChange={(e) => setFormData({ ...formData, contactId: e.target.value })} />
-            <Select label="الصفقة" options={dealOptions} value={formData.dealId || ''} onChange={(e) => setFormData({ ...formData, dealId: e.target.value })} />
+            <AsyncCombobox
+              label="جهة الاتصال"
+              value={formData.contactId || ''}
+              onChange={(value) => setFormData({ ...formData, contactId: value })}
+              loadOptions={loadContacts}
+              resolveValue={resolveContact}
+              placeholder="بدون جهة اتصال"
+              searchPlaceholder="ابحث عن جهة اتصال..."
+              clearLabel="بدون جهة اتصال"
+            />
+            <AsyncCombobox
+              label="الصفقة"
+              value={formData.dealId || ''}
+              onChange={(value) => setFormData({ ...formData, dealId: value })}
+              loadOptions={loadDeals}
+              resolveValue={resolveDeal}
+              placeholder="بدون صفقة"
+              searchPlaceholder="ابحث عن صفقة..."
+              clearLabel="بدون صفقة"
+            />
             <Input label="موعد النشاط" type="datetime-local" value={formData.scheduledAt || ''} onChange={(e) => setFormData({ ...formData, scheduledAt: e.target.value })} />
             <Input label="موعد التذكير" type="datetime-local" value={formData.remindAt || ''} onChange={(e) => setFormData({ ...formData, remindAt: e.target.value })} />
           </div>
