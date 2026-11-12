@@ -58,6 +58,25 @@ let activityCompletePatch = null;
 let failNextDealList = false;
 let failNextDealPost = false;
 let failNextActivityPost = false;
+let companyPost = null;
+let companyPatch = null;
+let companyDeleteId = null;
+let contactPost = null;
+let pipelinePost = null;
+let pipelinePatch = null;
+let pipelineDeleteId = null;
+let stagePost = null;
+let stagePatch = null;
+let stageDeleteId = null;
+let lifecycleMode = false;
+const lifecycle = {
+  company: null,
+  contact: null,
+  pipeline: null,
+  stage: null,
+  deal: null,
+  activity: null,
+};
 const dealListQueries = [];
 const activityListQueries = [];
 const contactListQueries = [];
@@ -104,9 +123,72 @@ async function installApiMock(page) {
       await route.fulfill(json({ total: 0 }));
       return;
     }
+    if (method === 'GET' && path === '/analytics/dashboard') {
+      await route.fulfill(json({
+        counts: {
+          contacts: lifecycleMode && lifecycle.contact ? 2 : 1,
+          deals: lifecycleMode && lifecycle.deal ? 2 : 1,
+        },
+        revenue: { deals: 125000 },
+      }));
+      return;
+    }
+    if (method === 'GET' && path === '/analytics/crm') {
+      await route.fulfill(json({
+        stageBreakdown: [
+          { key: 'LEAD', label: 'LEAD', source: 'legacy', count: lifecycleMode && lifecycle.deal ? 2 : 1 },
+        ],
+        bySource: [{ source: 'OTHER', _count: { id: lifecycleMode && lifecycle.contact ? 2 : 1 } }],
+      }));
+      return;
+    }
 
     if (method === 'GET' && path === '/crm/pipelines') {
-      await route.fulfill(json([pipeline]));
+      if (lifecycleMode && lifecycle.pipeline) {
+        await route.fulfill(json([lifecycle.pipeline, pipeline]));
+      } else {
+        await route.fulfill(json([pipeline]));
+      }
+      return;
+    }
+    if (method === 'POST' && path === '/crm/pipelines') {
+      pipelinePost = req.postDataJSON();
+      const created = { id: 'p-new', stages: [], ...pipelinePost };
+      if (lifecycleMode) lifecycle.pipeline = created;
+      await route.fulfill(json(created, 201));
+      return;
+    }
+    if (method === 'PATCH' && path === '/crm/pipelines/p1') {
+      pipelinePatch = req.postDataJSON();
+      await route.fulfill(json({ ...pipeline, ...pipelinePatch }));
+      return;
+    }
+    if (method === 'DELETE' && path === '/crm/pipelines/p1') {
+      pipelineDeleteId = 'p1';
+      await route.fulfill({ status: 204 });
+      return;
+    }
+    if (method === 'POST' && path === '/crm/pipelines/p1/stages') {
+      stagePost = req.postDataJSON();
+      await route.fulfill(json({ id: 's-new', ...stagePost }, 201));
+      return;
+    }
+    if (method === 'PATCH' && path === '/crm/pipelines/p1/stages/s1') {
+      stagePatch = req.postDataJSON();
+      await route.fulfill(json({ ...pipeline.stages[0], ...stagePatch }));
+      return;
+    }
+    if (method === 'DELETE' && path === '/crm/pipelines/p1/stages/s1') {
+      stageDeleteId = 's1';
+      await route.fulfill({ status: 204 });
+      return;
+    }
+    if (method === 'POST' && path === '/crm/pipelines/p-new/stages') {
+      stagePost = req.postDataJSON();
+      const created = { id: 's-life', ...stagePost };
+      lifecycle.stage = created;
+      lifecycle.pipeline = { ...lifecycle.pipeline, stages: [created] };
+      await route.fulfill(json(created, 201));
       return;
     }
 
@@ -114,9 +196,21 @@ async function installApiMock(page) {
       await route.fulfill(json(contact));
       return;
     }
+    if (method === 'GET' && path === '/crm/contacts/ct-life') {
+      await route.fulfill(json(lifecycle.contact || contact));
+      return;
+    }
     if (method === 'GET' && path === '/crm/contacts') {
       contactListQueries.push(queryObject(url));
-      await route.fulfill(json({ data: [contact], count: 1, page: 1, limit: Number(url.searchParams.get('limit') || 20) }));
+      const data = lifecycleMode && lifecycle.contact ? [lifecycle.contact, contact] : [contact];
+      await route.fulfill(json({ data, count: data.length, page: 1, limit: Number(url.searchParams.get('limit') || 20) }));
+      return;
+    }
+    if (method === 'POST' && path === '/crm/contacts') {
+      contactPost = req.postDataJSON();
+      const created = { id: lifecycleMode ? 'ct-life' : 'ct-new', ...contactPost };
+      if (lifecycleMode) lifecycle.contact = created;
+      await route.fulfill(json(created, 201));
       return;
     }
 
@@ -124,9 +218,31 @@ async function installApiMock(page) {
       await route.fulfill(json(company));
       return;
     }
+    if (method === 'GET' && path === '/crm/companies/co-life') {
+      await route.fulfill(json(lifecycle.company || company));
+      return;
+    }
     if (method === 'GET' && path === '/crm/companies') {
       companyListQueries.push(queryObject(url));
-      await route.fulfill(json({ data: [company], count: 1, page: 1, limit: Number(url.searchParams.get('limit') || 20) }));
+      const data = lifecycleMode && lifecycle.company ? [lifecycle.company, company] : [company];
+      await route.fulfill(json({ data, count: data.length, page: 1, limit: Number(url.searchParams.get('limit') || 20) }));
+      return;
+    }
+    if (method === 'POST' && path === '/crm/companies') {
+      companyPost = req.postDataJSON();
+      const created = { id: lifecycleMode ? 'co-life' : 'co-new', ...companyPost };
+      if (lifecycleMode) lifecycle.company = created;
+      await route.fulfill(json(created, 201));
+      return;
+    }
+    if (method === 'PATCH' && path === '/crm/companies/co1') {
+      companyPatch = req.postDataJSON();
+      await route.fulfill(json({ ...company, ...companyPatch }));
+      return;
+    }
+    if (method === 'DELETE' && path === '/crm/companies/co1') {
+      companyDeleteId = 'co1';
+      await route.fulfill({ status: 204 });
       return;
     }
 
@@ -141,9 +257,10 @@ async function installApiMock(page) {
         await route.fulfill(json({ message: 'forced list failure' }, 500));
         return;
       }
+      const dealData = lifecycleMode && lifecycle.deal ? [lifecycle.deal, deal] : [deal];
       await route.fulfill(json({
-        data: [deal],
-        count: 60,
+        data: dealData,
+        count: lifecycleMode ? dealData.length : 60,
         page: Number(url.searchParams.get('page') || 1),
         limit: Number(url.searchParams.get('limit') || 25),
       }));
@@ -156,7 +273,9 @@ async function installApiMock(page) {
         await route.fulfill(json({ message: 'forced deal create failure' }, 500));
         return;
       }
-      await route.fulfill(json({ id: 'd-new', ...dealPost }), 201);
+      const created = { id: lifecycleMode ? 'd-life' : 'd-new', ...dealPost };
+      if (lifecycleMode) lifecycle.deal = created;
+      await route.fulfill(json(created, 201));
       return;
     }
     if (method === 'PATCH' && path === '/crm/deals/d1') {
@@ -176,9 +295,10 @@ async function installApiMock(page) {
     }
     if (method === 'GET' && path === '/crm/activities') {
       activityListQueries.push(queryObject(url));
+      const activityData = lifecycleMode && lifecycle.activity ? [lifecycle.activity, activity] : [activity];
       await route.fulfill(json({
-        data: [activity],
-        count: 60,
+        data: activityData,
+        count: lifecycleMode ? activityData.length : 60,
         page: Number(url.searchParams.get('page') || 1),
         limit: Number(url.searchParams.get('limit') || 25),
       }));
@@ -191,7 +311,9 @@ async function installApiMock(page) {
         await route.fulfill(json({ message: 'forced activity create failure' }, 500));
         return;
       }
-      await route.fulfill(json({ id: 'a-new', ...activityPost }), 201);
+      const created = { id: lifecycleMode ? 'a-life' : 'a-new', ...activityPost };
+      if (lifecycleMode) lifecycle.activity = created;
+      await route.fulfill(json(created, 201));
       return;
     }
     if (method === 'PATCH' && path === '/crm/activities/a1') {
