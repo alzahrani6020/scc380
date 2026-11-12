@@ -22,6 +22,8 @@ export default function HrSelfServicePage() {
   const [documents, setDocuments] = useState<any[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
   const [custody, setCustody] = useState<any[]>([]);
+  const [performance, setPerformance] = useState<any[]>([]);
+  const [training, setTraining] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [unlinked, setUnlinked] = useState(false);
   const [form, setForm] = useState<any>({ type: 'EMPLOYMENT_CERTIFICATE', subject: '' });
@@ -31,14 +33,17 @@ export default function HrSelfServicePage() {
   const load = async () => {
     setLoading(true); setUnlinked(false);
     try {
-      const [me, p, docs, reqs, assets] = await Promise.all([
+      const [me, p, docs, reqs, assets, reviews, courses] = await Promise.all([
         api.get('/hr/self/me'),
         api.get('/hr/self/payroll?limit=12'),
         api.get('/hr/self/documents'),
         api.get('/hr/self/requests'),
         api.get('/hr/self/assets'),
+        api.get('/hr/self/performance'),
+        api.get('/hr/self/training'),
       ]);
       setData(me.data); setPayroll(p.data || []); setDocuments(docs.data || []); setRequests(reqs.data || []); setCustody(assets.data || []);
+      setPerformance(reviews.data || []); setTraining(courses.data || []);
       setProfile({
         phone: me.data.employee?.phone || '',
         emergencyContactName: me.data.employee?.emergencyContactName || '',
@@ -150,6 +155,33 @@ export default function HrSelfServicePage() {
               {item.expectedReturnAt && <div className="text-xs text-slate-400">الاسترداد المتوقع: {new Date(item.expectedReturnAt).toLocaleDateString('ar-SA')}</div>}
             </div>
           ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+        <div className="scc-card">
+          <h2 className="font-bold text-white mb-4">أدائي</h2>
+          <div className="space-y-3">
+            {performance.length === 0 ? <p className="text-slate-500 text-sm">لا توجد مراجعات أداء.</p> : performance.map((r:any) => (
+              <div key={r.id} className="border-b border-slate-800 pb-3">
+                <div className="flex justify-between gap-3"><span className="text-white">{r.cycle?.name}</span><span className="text-sm text-primary-400">{r.overallRating != null ? Number(r.overallRating).toFixed(2) + '/5' : r.status}</span></div>
+                <div className="text-xs text-slate-500 mt-1">{r.status} · {(r.goals || []).length} هدف</div>
+                {r.status === 'SUBMITTED' && <button className="text-xs text-emerald-400 mt-2" onClick={async()=>{ await api.post(`/hr/self/performance/${r.id}/acknowledge`,{}); await load(); }}>إقرار الاطلاع</button>}
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="scc-card">
+          <h2 className="font-bold text-white mb-4">تدريبي</h2>
+          <div className="space-y-3">
+            {training.length === 0 ? <p className="text-slate-500 text-sm">لا توجد برامج تدريبية.</p> : training.map((e:any) => (
+              <div key={e.id} className="border-b border-slate-800 pb-3">
+                <div className="text-white">{e.session?.course?.title}</div>
+                <div className="text-xs text-slate-500 mt-1">{e.status} · {new Date(e.session?.startAt).toLocaleDateString('ar-SA')}</div>
+                {(e.certificateNumber || e.certificateUrl) && <div className="text-xs text-emerald-400 mt-1">الشهادة: {e.certificateNumber || 'متاحة'}</div>}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
