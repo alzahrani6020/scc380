@@ -841,7 +841,7 @@ model Employee {
   tenantId      String
   tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  employeeCode  String    @unique
+  employeeCode  String
   firstName     String
   lastName      String
   email         String?   @unique
@@ -870,6 +870,7 @@ model Employee {
   payrolls      Payroll[]
   shifts        Shift[]
 
+  @@unique([tenantId, employeeCode])
   @@index([tenantId])
   @@map("employees")
 }
@@ -880,12 +881,13 @@ model Department {
   tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   name          String
-  code          String?   @unique
+  code          String?
   parentId      String?
   managerId     String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
+  @@unique([tenantId, code])
   @@index([tenantId])
   @@map("departments")
 }
@@ -961,6 +963,7 @@ model Payroll {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
+  @@unique([tenantId, employeeId, year, month])
   @@index([tenantId])
   @@index([employeeId])
   @@map("payrolls")
