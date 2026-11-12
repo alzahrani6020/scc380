@@ -1,0 +1,57 @@
+name: Accounting Wave2 Branch Verify
+
+on:
+  push:
+    branches:
+      - feat/accounting-core-wave2-current-main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-accounting-wave2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: scc
+          POSTGRES_PASSWORD: scc
+          POSTGRES_DB: scc_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U scc -d scc_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://scc:scc@127.0.0.1:5432/scc_test
+      DIRECT_URL: postgresql://scc:scc@127.0.0.1:5432/scc_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@8.15.0 --activate
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Generate Prisma client
+        run: pnpm --filter @scc/database db:generate
+      - name: Build database package
+        run: pnpm --filter @scc/database build
+      - name: Build auth graph
+        run: pnpm turbo run build --filter=@scc/auth...
+      - name: Run API tests
+        run: pnpm --filter @scc/api test
+      - name: Apply migrations to fresh Postgres
+        run: pnpm --filter @scc/database exec prisma migrate deploy --schema prisma/schema.prisma
+      - name: Run CRM HR Accounting DB E2E
+        run: pnpm --filter @scc/api test:db-e2e
+      - name: Build API graph
+        run: pnpm turbo run build --filter=@scc/api...
