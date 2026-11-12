@@ -10,6 +10,7 @@ import { SupplierInvoiceService } from '../src/supplier-invoice/supplier-invoice
 import { ExpensesService } from '../src/finance/expenses.service';
 import { ReportsService } from '../src/reports/reports.service';
 import { FinancialPeriodsService } from '../src/finance/financial-periods.service';
+import { BankReconciliationService } from '../src/finance/bank-reconciliation.service';
 
 test(
   'Accounting DB-backed E2E validates balanced posting, periods, mapping, tenant isolation and dual-write',
@@ -92,6 +93,7 @@ test(
       const expenses = new ExpensesService(mapping, dualWrite);
       const reports = new ReportsService();
       const periods = new FinancialPeriodsService();
+      const bankReconciliation = new BankReconciliationService();
       const reqA: any = { user: { tenantId: tenantA.id, role: 'ADMIN' } };
 
       const mapped = await mapping.resolve(tenantA.id, ['CASH', 'SALES_REVENUE']);
@@ -806,6 +808,105 @@ test(
         ],
       });
       assert.equal(postAfterReopen.status, 'POSTED');
+
+
+      // Bank reconciliation E2E dedicated account keeps the expected ledger balance deterministic.
+      const bankGl = await prisma.chartOfAccount.create({
+        data: {
+          tenantId: tenantA.id,
+          code: `1150-${run}`,
+          name: 'Bank Reconciliation Clearing',
+          type: 'ASSET',
+        },
+      });
+      const bankAccount = await prisma.bankAccount.create({
+        data: {
+          tenantId: tenantA.id,
+          bankName: 'E2E Bank',
+          accountName: 'Operating Account',
+          accountNumber: `E2E-BANK-${run}`,
+          currency: 'SAR',
+          chartAccountId: bankGl.id,
+          isActive: true,
+        },
+      });
+
+      const febPosting = await dualWrite.post({
+        tenantId: tenantA.id,
+        entryNumber: `JV-BANK-REC-${run}`,
+        date: new Date('2027-02-10T12:00:00.000Z'),
+        description: 'Bank reconciliation movement',
+        reference: `BANK-REC-${run}`,
+        sourceType: 'BANK_RECON_E2E',
+        sourceId: `bank-rec-${run}`,
+        lines: [
+          { accountId: bankGl.id, debitAmount: 100 },
+          { accountId: revenueA.id, creditAmount: 100 },
+        ],
+      });
+      const bankLedgerLine = febPosting.lines.find(line => line.accountId === bankGl.id)!;
+      assert.ok(bankLedgerLine);
+
+      const reconciliation = await bankReconciliation.create(reqA, {
+        bankAccountId: bankAccount.id,
+        startDate: '2027-02-01T00:00:00.000Z',
+        endDate: '2027-02-28T23:59:59.999Z',
+        openingBalance: 0,
+        endingBalance: 100,
+      });
+      assert.equal(reconciliation.status, 'DRAFT');
+
+      await bankReconciliation.addLines(reqA, reconciliation.id, [
+        {
+          transactionDate: '2027-02-10T12:00:00.000Z',
+          amount: 100,
+          reference: `BANK-REC-${run}`,
+          description: 'Customer deposit',
+          externalId: `BANK-LINE-${run}`,
+        },
+      ]);
+
+      const autoMatched = await bankReconciliation.autoMatch(reqA, reconciliation.id);
+      assert.equal(autoMatched.autoMatched, 1);
+      assert.equal(autoMatched.lines.length, 1);
+      assert.equal(autoMatched.lines[0].status, 'MATCHED');
+      assert.equal(autoMatched.lines[0].matchedJournalEntryLineId, bankLedgerLine.id);
+      assert.equal(autoMatched.lines[0].matchedLegacyJournalEntryId, null);
+
+      const completedReconciliation = await bankReconciliation.complete(reqA, reconciliation.id);
+      assert.equal(completedReconciliation.status, 'COMPLETED');
+      assert.equal(Number(completedReconciliation.ledgerBalance), 100);
+      assert.equal(Number(completedReconciliation.difference), 0);
+      assert.ok(completedReconciliation.completedAt);
+
+      await assert.rejects(
+        () =>
+          bankReconciliation.addLines(reqA, reconciliation.id, [
+            {
+              transactionDate: '2027-02-11T12:00:00.000Z',
+              amount: 1,
+              reference: `BANK-LATE-${run}`,
+            },
+          ]),
+        /Completed reconciliation is immutable/,
+      );
+
+      await assert.rejects(
+        () =>
+          bankReconciliation.reopen(
+            { user: { tenantId: tenantA.id, role: 'MANAGER' } },
+            reconciliation.id,
+          ),
+        /Only ADMIN or SUPER_ADMIN/,
+      );
+
+      const reopenedReconciliation = await bankReconciliation.reopen(reqA, reconciliation.id);
+      assert.equal(reopenedReconciliation.status, 'DRAFT');
+
+      await assert.rejects(
+        () => prisma.bankAccount.delete({ where: { id: bankAccount.id } }),
+        /Foreign key constraint|constraint/i,
+      );
 
 
     } finally {
