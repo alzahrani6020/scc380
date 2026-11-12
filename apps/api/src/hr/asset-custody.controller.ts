@@ -48,7 +48,7 @@ export class HrAssetCustodyController {
   constructor(private readonly service: HrAssetCustodyService) {}
 
   @Get('categories')
-  @RequirePermissions('hr:read')
+  @RequirePermissions('hr:assets:read')
   categories(@Req() req: any) { return this.service.listCategories(req); }
 
   @Post('categories')
@@ -58,7 +58,7 @@ export class HrAssetCustodyController {
   }
 
   @Get()
-  @RequirePermissions('hr:read')
+  @RequirePermissions('hr:assets:read')
   assets(@Req() req: any, @Query() query: any) { return this.service.listAssets(req, query); }
 
   @Post()
@@ -68,19 +68,19 @@ export class HrAssetCustodyController {
   }
 
   @Get('custody/assignments')
-  @RequirePermissions('hr:read')
+  @RequirePermissions('hr:assets:read')
   assignments(@Req() req: any, @Query() query: any) {
     return this.service.listAssignments(req, query);
   }
 
   @Post('custody/assign')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:assets:write')
   assign(@Req() req: any, @Body() dto: AssignAssetDto) {
     return this.service.assign(req, dto);
   }
 
   @Post('custody/:id/close')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:assets:write')
   close(@Req() req: any, @Param('id') id: string, @Body() dto: CloseCustodyDto) {
     return this.service.closeAssignment(req, id, dto);
   }
