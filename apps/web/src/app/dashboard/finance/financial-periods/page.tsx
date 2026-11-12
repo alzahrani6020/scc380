@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import api from '@/lib/api';
-import { CalendarRange, Lock, LockOpen, Plus, Trash2, X } from 'lucide-react';
+import { CalendarRange, Lock, Unlock, Plus, Trash2, X } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
@@ -156,7 +156,7 @@ export default function FinancialPeriodsPage() {
                 <td className="p-3 text-center text-slate-300">{new Date(period.endDate).toLocaleDateString('ar-SA')}</td>
                 <td className="p-3 text-center">
                   <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs ${period.isClosed ? 'bg-red-500/15 text-red-400' : 'bg-emerald-500/15 text-emerald-400'}`}>
-                    {period.isClosed ? <Lock className="h-3 w-3" /> : <LockOpen className="h-3 w-3" />}
+                    {period.isClosed ? <Lock className="h-3 w-3" /> : <Unlock className="h-3 w-3" />}
                     {period.isClosed ? 'مغلقة' : 'مفتوحة'}
                   </span>
                 </td>
