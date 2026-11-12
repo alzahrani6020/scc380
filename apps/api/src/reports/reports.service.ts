@@ -1,6 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { prisma, tenantWhere } from '@scc/database';
 
+type UnifiedLedgerRow = {
+  id: string;
+  date: Date;
+  createdAt: Date;
+  description: string;
+  reference: string | null;
+  debit: number;
+  credit: number;
+};
+
 @Injectable()
 export class ReportsService {
   private buildDateFilter(from?: string, to?: string) {
@@ -10,57 +20,167 @@ export class ReportsService {
     return Object.keys(date).length ? date : undefined;
   }
 
+  private tenantFilter(tenantId: string | undefined, userRole: string) {
+    return userRole === 'SUPER_ADMIN' ? {} : tenantWhere(tenantId);
+  }
+
+  private legacyPostedWhere(
+    tenantId: string | undefined,
+    userRole: string,
+    from?: string,
+    to?: string,
+  ) {
+    const date = this.buildDateFilter(from, to);
+    return {
+      ...this.tenantFilter(tenantId, userRole),
+      status: 'POSTED',
+      NOT: { entryNumber: { startsWith: 'LEG-' } },
+      ...(date ? { date } : {}),
+    } as any;
+  }
+
+  private modernHeaderWhere(from?: string, to?: string) {
+    const date = this.buildDateFilter(from, to);
+    return {
+      status: 'POSTED',
+      ...(date ? { date } : {}),
+    } as any;
+  }
+
   private async getAccountBalances(
     tenantId: string | undefined,
     userRole: string,
     from?: string,
     to?: string,
   ) {
-    const tw = userRole === 'SUPER_ADMIN' ? {} : tenantWhere(tenantId);
-    const date = this.buildDateFilter(from, to);
-    const accounts = await prisma.chartOfAccount.findMany({
-      where: tw,
-      orderBy: { code: 'asc' },
-    });
-
-    const balances = await Promise.all(
-      accounts.map(async (acc) => {
-        const baseWhere: any = {
-          ...tw,
-          accountId: acc.id,
-          status: 'POSTED',
-          ...(date ? { date } : {}),
-        };
-        const [debits, credits] = await Promise.all([
-          prisma.journalEntry.aggregate({
-            _sum: { debitAmount: true },
-            where: baseWhere,
-          }),
-          prisma.journalEntry.aggregate({
-            _sum: { creditAmount: true },
-            where: baseWhere,
-          }),
-        ]);
-
-        const totalDebit = Number(debits._sum.debitAmount || 0);
-        const totalCredit = Number(credits._sum.creditAmount || 0);
-        const isDebitNormal = acc.type === 'ASSET' || acc.type === 'EXPENSE';
-        const netBalance = isDebitNormal ? totalDebit - totalCredit : totalCredit - totalDebit;
-
-        return {
-          id: acc.id,
-          code: acc.code,
-          name: acc.name,
-          type: acc.type,
-          debit: totalDebit,
-          credit: totalCredit,
-          balance: netBalance,
-          isDebit: netBalance >= 0,
-        };
+    const tenant = this.tenantFilter(tenantId, userRole);
+    const [accounts, legacyBalances, modernBalances] = await Promise.all([
+      prisma.chartOfAccount.findMany({
+        where: tenant,
+        orderBy: { code: 'asc' },
       }),
-    );
+      prisma.journalEntry.groupBy({
+        by: ['accountId'],
+        where: this.legacyPostedWhere(tenantId, userRole, from, to),
+        _sum: { debitAmount: true, creditAmount: true },
+      }),
+      prisma.journalEntryLine.groupBy({
+        by: ['accountId'],
+        where: {
+          ...tenant,
+          journalEntry: this.modernHeaderWhere(from, to),
+        },
+        _sum: { debitAmount: true, creditAmount: true },
+      }),
+    ]);
 
-    return balances;
+    const totals = new Map<string, { debit: number; credit: number }>();
+    const add = (accountId: string | null, debit: unknown, credit: unknown) => {
+      if (!accountId) return;
+      const current = totals.get(accountId) || { debit: 0, credit: 0 };
+      current.debit += Number(debit || 0);
+      current.credit += Number(credit || 0);
+      totals.set(accountId, current);
+    };
+
+    for (const row of legacyBalances) {
+      add(row.accountId, row._sum.debitAmount, row._sum.creditAmount);
+    }
+    for (const row of modernBalances) {
+      add(row.accountId, row._sum.debitAmount, row._sum.creditAmount);
+    }
+
+    return accounts.map((acc) => {
+      const amount = totals.get(acc.id) || { debit: 0, credit: 0 };
+      const isDebitNormal = acc.type === 'ASSET' || acc.type === 'EXPENSE';
+      const netBalance = isDebitNormal
+        ? amount.debit - amount.credit
+        : amount.credit - amount.debit;
+
+      return {
+        id: acc.id,
+        code: acc.code,
+        name: acc.name,
+        type: acc.type,
+        debit: amount.debit,
+        credit: amount.credit,
+        balance: netBalance,
+        isDebit: netBalance >= 0,
+      };
+    });
+  }
+
+  private async getUnifiedLedgerRows(
+    accountId: string,
+    tenantId: string | undefined,
+    userRole: string,
+    from?: string,
+    to?: string,
+  ): Promise<UnifiedLedgerRow[]> {
+    const tenant = this.tenantFilter(tenantId, userRole);
+    const [legacy, modern] = await Promise.all([
+      prisma.journalEntry.findMany({
+        where: {
+          ...this.legacyPostedWhere(tenantId, userRole, from, to),
+          accountId,
+        },
+        select: {
+          id: true,
+          date: true,
+          createdAt: true,
+          description: true,
+          reference: true,
+          debitAmount: true,
+          creditAmount: true,
+        },
+      }),
+      prisma.journalEntryLine.findMany({
+        where: {
+          ...tenant,
+          accountId,
+          journalEntry: this.modernHeaderWhere(from, to),
+        },
+        include: {
+          journalEntry: {
+            select: {
+              date: true,
+              createdAt: true,
+              description: true,
+              reference: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    const rows: UnifiedLedgerRow[] = [
+      ...legacy.map((entry) => ({
+        id: `legacy:${entry.id}`,
+        date: entry.date,
+        createdAt: entry.createdAt,
+        description: entry.description,
+        reference: entry.reference,
+        debit: Number(entry.debitAmount),
+        credit: Number(entry.creditAmount),
+      })),
+      ...modern.map((line) => ({
+        id: `line:${line.id}`,
+        date: line.journalEntry.date,
+        createdAt: line.createdAt,
+        description: line.description || line.journalEntry.description,
+        reference: line.journalEntry.reference,
+        debit: Number(line.debitAmount),
+        credit: Number(line.creditAmount),
+      })),
+    ];
+
+    return rows.sort((a, b) => {
+      const dateDiff = a.date.getTime() - b.date.getTime();
+      if (dateDiff !== 0) return dateDiff;
+      const createdDiff = a.createdAt.getTime() - b.createdAt.getTime();
+      if (createdDiff !== 0) return createdDiff;
+      return a.id.localeCompare(b.id);
+    });
   }
 
   async getTrialBalance(tenantId: string | undefined, userRole: string, from?: string, to?: string) {
@@ -134,41 +254,31 @@ export class ReportsService {
     from?: string,
     to?: string,
   ) {
-    const tw = userRole === 'SUPER_ADMIN' ? {} : tenantWhere(tenantId);
-    const date = this.buildDateFilter(from, to);
-    const entries = await prisma.journalEntry.findMany({
-      where: {
-        ...tw,
-        accountId,
-        status: 'POSTED',
-        ...(date ? { date } : {}),
-      },
-      orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
-    });
+    const rows = await this.getUnifiedLedgerRows(accountId, tenantId, userRole, from, to);
 
     let runningBalance = 0;
-    const ledger = entries.map(entry => {
-      runningBalance += Number(entry.debitAmount) - Number(entry.creditAmount);
+    const entries = rows.map((entry) => {
+      runningBalance += entry.debit - entry.credit;
       return {
         id: entry.id,
         date: entry.date,
         description: entry.description,
         reference: entry.reference,
-        debit: Number(entry.debitAmount),
-        credit: Number(entry.creditAmount),
+        debit: entry.debit,
+        credit: entry.credit,
         balance: runningBalance,
       };
     });
 
     return {
       period: { from: from || 'all', to: to || 'all' },
-      entries: ledger,
+      entries,
       finalBalance: runningBalance,
     };
   }
 
   async getVatReport(tenantId: string | undefined, userRole: string, from?: string, to?: string) {
-    const tw = userRole === 'SUPER_ADMIN' ? {} : tenantWhere(tenantId);
+    const tw = this.tenantFilter(tenantId, userRole);
     const date = this.buildDateFilter(from, to);
 
     const [outputVat, inputVat] = await Promise.all([
@@ -210,7 +320,7 @@ export class ReportsService {
   }
 
   async getCashFlow(tenantId: string | undefined, userRole: string) {
-    const tw = userRole === 'SUPER_ADMIN' ? {} : tenantWhere(tenantId);
+    const tw = this.tenantFilter(tenantId, userRole);
     const cashAccount = await prisma.chartOfAccount.findFirst({
       where: { ...tw, code: '1110' },
     });
@@ -226,20 +336,18 @@ export class ReportsService {
       };
     }
 
-    const entries = await prisma.journalEntry.findMany({
-      where: { ...tw, accountId: cashAccount.id, status: 'POSTED' },
-      orderBy: { date: 'asc' },
-      include: {
-        chartAccount: { select: { code: true, name: true, type: true } },
-      },
-    });
+    const entries = await this.getUnifiedLedgerRows(
+      cashAccount.id,
+      tenantId,
+      userRole,
+    );
 
     const operatingItems: any[] = [];
     const investingItems: any[] = [];
     const financingItems: any[] = [];
 
     for (const entry of entries) {
-      const amount = Number(entry.debitAmount) - Number(entry.creditAmount);
+      const amount = entry.debit - entry.credit;
       const item = {
         date: entry.date,
         description: entry.description,
@@ -249,7 +357,11 @@ export class ReportsService {
 
       if (entry.reference?.startsWith('EQUIP-') || entry.reference?.startsWith('ASSET-')) {
         investingItems.push(item);
-      } else if (entry.reference?.startsWith('LOAN-') || entry.reference?.startsWith('CAP-') || entry.reference?.startsWith('OP-')) {
+      } else if (
+        entry.reference?.startsWith('LOAN-') ||
+        entry.reference?.startsWith('CAP-') ||
+        entry.reference?.startsWith('OP-')
+      ) {
         financingItems.push(item);
       } else {
         operatingItems.push(item);
