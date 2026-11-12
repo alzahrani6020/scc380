@@ -511,6 +511,175 @@ async function testActivityCrudAndErrors(page) {
   await waitUntil(() => activityListQueries.some((q) => q.page === '1'), 'Activities did not return to page 1 after deleting the last row on page 2');
 }
 
+
+async function testCompanyCrud(page) {
+  companyPost = null;
+  companyPatch = null;
+  companyDeleteId = null;
+
+  await page.goto(`${BASE}/dashboard/crm/companies`);
+  await page.getByText('Browser Company', { exact: true }).waitFor();
+
+  await page.getByRole('button', { name: 'شركة جديدة', exact: true }).click();
+  await page.getByRole('heading', { name: 'شركة جديدة', exact: true }).waitFor();
+  await fieldByLabel(page, 'الاسم', 'input').fill('Created Browser Company');
+  await fieldByLabel(page, 'السجل التجاري', 'input').fill('1010101010');
+  await fieldByLabel(page, 'المدينة', 'input').fill('Riyadh');
+  await page.getByRole('button', { name: 'إنشاء', exact: true }).click();
+  await waitUntil(() => Boolean(companyPost), 'Company POST was not sent');
+  assert.equal(companyPost.name, 'Created Browser Company');
+  assert.equal(companyPost.crNumber, '1010101010');
+  assert.equal(companyPost.city, 'Riyadh');
+
+  let card = page.locator('.scc-card-hover').filter({ hasText: 'Browser Company' }).first();
+  await card.locator('button').first().click();
+  await page.getByRole('heading', { name: 'تعديل الشركة', exact: true }).waitFor();
+  await fieldByLabel(page, 'الاسم القانوني', 'input').fill('Browser Company Legal');
+  await page.getByRole('button', { name: 'حفظ', exact: true }).click();
+  await waitUntil(() => Boolean(companyPatch), 'Company PATCH was not sent');
+  assert.equal(companyPatch.legalName, 'Browser Company Legal');
+
+  card = page.locator('.scc-card-hover').filter({ hasText: 'Browser Company' }).first();
+  page.once('dialog', (dialog) => dialog.accept());
+  await card.locator('button').last().click();
+  await waitUntil(() => companyDeleteId === 'co1', 'Company DELETE was not sent');
+}
+
+async function testPipelineAndStageCrud(page) {
+  pipelinePost = null;
+  pipelinePatch = null;
+  pipelineDeleteId = null;
+  stagePost = null;
+  stagePatch = null;
+  stageDeleteId = null;
+
+  await page.goto(`${BASE}/dashboard/crm/pipelines`);
+  await page.getByText('Browser Pipeline', { exact: true }).first().waitFor();
+
+  await page.getByRole('button', { name: 'مسار جديد', exact: true }).click();
+  await page.getByRole('heading', { name: 'مسار جديد', exact: true }).waitFor();
+  await fieldByLabel(page, 'الاسم', 'input').fill('Created Browser Pipeline');
+  await fieldByLabel(page, 'الوصف', 'textarea').fill('Pipeline from browser E2E');
+  await page.getByRole('button', { name: 'حفظ', exact: true }).click();
+  await waitUntil(() => Boolean(pipelinePost), 'Pipeline POST was not sent');
+  assert.equal(pipelinePost.name, 'Created Browser Pipeline');
+  assert.equal(pipelinePost.description, 'Pipeline from browser E2E');
+
+  const pipelineButton = page.locator('button.scc-card-hover').filter({ hasText: 'Browser Pipeline' }).first();
+  await pipelineButton.locator('span').filter({ has: page.locator('svg') }).first().click();
+  await page.getByRole('heading', { name: 'تعديل المسار', exact: true }).waitFor();
+  await fieldByLabel(page, 'الوصف', 'textarea').fill('Updated pipeline');
+  await page.getByRole('button', { name: 'حفظ', exact: true }).click();
+  await waitUntil(() => Boolean(pipelinePatch), 'Pipeline PATCH was not sent');
+  assert.equal(pipelinePatch.description, 'Updated pipeline');
+
+  await page.getByText('Browser Pipeline', { exact: true }).first().click();
+  await page.getByRole('button', { name: 'مرحلة', exact: true }).click();
+  await page.getByRole('heading', { name: 'مرحلة جديدة', exact: true }).waitFor();
+  await fieldByLabel(page, 'الاسم', 'input').fill('Created Stage');
+  await fieldByLabel(page, 'الكود', 'input').fill('created stage');
+  await fieldByLabel(page, 'الترتيب', 'input').fill('2');
+  await fieldByLabel(page, 'الاحتمالية %', 'input').fill('50');
+  await page.getByRole('button', { name: 'حفظ', exact: true }).click();
+  await waitUntil(() => Boolean(stagePost), 'Stage POST was not sent');
+  assert.equal(stagePost.name, 'Created Stage');
+  assert.equal(stagePost.code, 'CREATED_STAGE');
+  assert.equal(stagePost.order, 2);
+  assert.equal(stagePost.probability, 50);
+
+  const stageRow = page.locator('.rounded-xl.border').filter({ hasText: 'Browser Stage' }).first();
+  await stageRow.locator('button').first().click();
+  await page.getByRole('heading', { name: 'تعديل المرحلة', exact: true }).waitFor();
+  await fieldByLabel(page, 'الاحتمالية %', 'input').fill('70');
+  await page.getByRole('button', { name: 'حفظ', exact: true }).click();
+  await waitUntil(() => Boolean(stagePatch), 'Stage PATCH was not sent');
+  assert.equal(stagePatch.probability, 70);
+
+  const stageRow2 = page.locator('.rounded-xl.border').filter({ hasText: 'Browser Stage' }).first();
+  page.once('dialog', (dialog) => dialog.accept());
+  await stageRow2.locator('button').last().click();
+  await waitUntil(() => stageDeleteId === 's1', 'Stage DELETE was not sent');
+
+  const pipelineButton2 = page.locator('button.scc-card-hover').filter({ hasText: 'Browser Pipeline' }).first();
+  page.once('dialog', (dialog) => dialog.accept());
+  await pipelineButton2.locator('span').filter({ has: page.locator('svg') }).last().click();
+  await waitUntil(() => pipelineDeleteId === 'p1', 'Pipeline DELETE was not sent');
+}
+
+async function testCrmLifecycle(page) {
+  lifecycleMode = true;
+  lifecycle.company = null;
+  lifecycle.contact = null;
+  lifecycle.pipeline = null;
+  lifecycle.stage = null;
+  lifecycle.deal = null;
+  lifecycle.activity = null;
+
+  await page.goto(`${BASE}/dashboard/crm/companies`);
+  await page.getByRole('button', { name: 'شركة جديدة', exact: true }).click();
+  await fieldByLabel(page, 'الاسم', 'input').fill('Lifecycle Company');
+  await page.getByRole('button', { name: 'إنشاء', exact: true }).click();
+  await waitUntil(() => lifecycle.company?.id === 'co-life', 'Lifecycle company was not created');
+
+  await page.goto(`${BASE}/dashboard/crm/contacts`);
+  await page.getByRole('button', { name: 'إضافة جهة اتصال', exact: true }).click();
+  await fieldByLabel(page, 'الاسم الأول', 'input').fill('Lifecycle');
+  await fieldByLabel(page, 'الاسم الأخير', 'input').fill('Contact');
+  await fieldByLabel(page, 'الشركة', 'select').selectOption('co-life');
+  await page.getByRole('button', { name: 'إنشاء', exact: true }).click();
+  await waitUntil(() => lifecycle.contact?.id === 'ct-life', 'Lifecycle contact was not created');
+  assert.equal(lifecycle.contact.companyId, 'co-life');
+
+  await page.goto(`${BASE}/dashboard/crm/pipelines`);
+  await page.getByRole('button', { name: 'مسار جديد', exact: true }).click();
+  await fieldByLabel(page, 'الاسم', 'input').fill('Lifecycle Pipeline');
+  await page.getByRole('button', { name: 'حفظ', exact: true }).click();
+  await waitUntil(() => lifecycle.pipeline?.id === 'p-new', 'Lifecycle pipeline was not created');
+  await page.getByText('Lifecycle Pipeline', { exact: true }).first().click();
+  await page.getByRole('button', { name: 'مرحلة', exact: true }).click();
+  await fieldByLabel(page, 'الاسم', 'input').fill('Lifecycle Stage');
+  await fieldByLabel(page, 'الكود', 'input').fill('lifecycle');
+  await fieldByLabel(page, 'الترتيب', 'input').fill('1');
+  await fieldByLabel(page, 'الاحتمالية %', 'input').fill('30');
+  await page.getByRole('button', { name: 'حفظ', exact: true }).click();
+  await waitUntil(() => lifecycle.stage?.id === 's-life', 'Lifecycle stage was not created');
+
+  await page.goto(`${BASE}/dashboard/crm/deals`);
+  await page.getByRole('button', { name: 'صفقة جديدة', exact: true }).click();
+  await fieldByLabel(page, 'العنوان', 'input').fill('Lifecycle Deal');
+  await chooseComboboxOption(page, 'العميل', 'ابحث بالاسم أو البريد أو الجوال...', 'Lifecycle', 'Lifecycle Contact');
+  await chooseComboboxOption(page, 'الشركة', 'ابحث عن شركة...', 'Lifecycle', 'Lifecycle Company');
+  await fieldByLabel(page, 'مسار المبيعات', 'select').selectOption('p-new');
+  await fieldByLabel(page, 'المرحلة الديناميكية', 'select').selectOption('s-life');
+  await page.getByRole('button', { name: 'إنشاء', exact: true }).click();
+  await waitUntil(() => lifecycle.deal?.id === 'd-life', 'Lifecycle deal was not created');
+  assert.equal(lifecycle.deal.contactId, 'ct-life');
+  assert.equal(lifecycle.deal.companyId, 'co-life');
+  assert.equal(lifecycle.deal.pipelineId, 'p-new');
+  assert.equal(lifecycle.deal.pipelineStageId, 's-life');
+
+  await page.goto(`${BASE}/dashboard/crm/activities`);
+  await page.getByRole('button', { name: 'نشاط جديد', exact: true }).click();
+  await fieldByLabel(page, 'الموضوع', 'input').fill('Lifecycle Activity');
+  await chooseComboboxOption(page, 'جهة الاتصال', 'ابحث عن جهة اتصال...', 'Lifecycle', 'Lifecycle Contact');
+  await chooseComboboxOption(page, 'الصفقة', 'ابحث عن صفقة...', 'Lifecycle', 'Lifecycle Deal');
+  await page.getByRole('button', { name: 'إنشاء', exact: true }).click();
+  await waitUntil(() => lifecycle.activity?.id === 'a-life', 'Lifecycle activity was not created');
+  assert.equal(lifecycle.activity.contactId, 'ct-life');
+  assert.equal(lifecycle.activity.dealId, 'd-life');
+
+  await page.goto(`${BASE}/dashboard/crm`);
+  await page.getByRole('heading', { name: 'نظرة عامة على CRM', exact: true }).waitFor();
+  await page.getByText('Lifecycle Activity', { exact: true }).waitFor();
+  await page.getByText('Lifecycle Pipeline', { exact: true }).waitFor({ state: 'detached' }).catch(() => {});
+  const cards = page.locator('.scc-card-hover');
+  assert.ok(await cards.count() >= 5, 'CRM overview cards were not rendered');
+  await page.getByText('أحدث الأنشطة', { exact: true }).waitFor();
+  await page.getByText('Lifecycle Activity', { exact: true }).waitFor();
+
+  lifecycleMode = false;
+}
+
 async function testDealQueryContracts(page) {
   dealListQueries.length = 0;
   companyListQueries.length = 0;
@@ -669,6 +838,9 @@ try {
   await testActivityQueryContracts(page);
   await testDealCrudAndErrors(page);
   await testActivityCrudAndErrors(page);
+  await testCompanyCrud(page);
+  await testPipelineAndStageCrud(page);
+  await testCrmLifecycle(page);
   console.log('CRM_BROWSER_E2E: PASS');
 } catch (error) {
   console.error('CRM_BROWSER_E2E: FAIL');
