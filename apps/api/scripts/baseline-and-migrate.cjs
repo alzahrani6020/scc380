@@ -10,6 +10,7 @@ const historical = [
 
 const hrCoreMigration = '20261112130000_reconcile_hr_core';
 const hrIntegrityMigration = '20261112134500_hr_finance_integrity_p0';
+const hrLifecycleMigration = '20261112140000_hr_contracts_leave_balances';
 const hrCoreTables = ['leaves', 'attendances', 'payrolls', 'shifts'];
 
 function runPrisma(args) {
@@ -227,6 +228,26 @@ async function verifyHrIntegrityPreconditions(applied) {
   console.log('HR_INTEGRITY_PREFLIGHT_PASS');
 }
 
+async function verifyHrLifecyclePreconditions(applied) {
+  if (applied.has(hrLifecycleMigration)) return;
+  const lifecycleTables = [
+    'employee_contracts',
+    'leave_policies',
+    'leave_balances',
+    'leave_balance_adjustments',
+  ];
+  const existing = [];
+  for (const table of lifecycleTables) {
+    if (await tableExists(table)) existing.push(table);
+  }
+  if (existing.length > 0) {
+    throw new Error(
+      `HR_LIFECYCLE_BLOCKED unmanaged tables already exist: ${existing.join(',')}`,
+    );
+  }
+  console.log('HR_LIFECYCLE_PREFLIGHT_PASS');
+}
+
 async function resolveIfNeeded(applied, migration, verify) {
   if (applied.has(migration)) return;
   await verify();
@@ -246,6 +267,7 @@ async function resolveIfNeeded(applied, migration, verify) {
     await verifyCrmExpansionPreconditions(applied);
     await reconcileHrCore(applied);
     await verifyHrIntegrityPreconditions(applied);
+    await verifyHrLifecyclePreconditions(applied);
   }
 
   console.log('PRISMA_MIGRATE_DEPLOY_START');
