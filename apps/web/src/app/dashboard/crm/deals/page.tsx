@@ -49,6 +49,8 @@ export default function DealsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [formLoading, setFormLoading] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [operationError, setOperationError] = useState<string | null>(null);
   const [formData, setFormData] = useState<any>({});
   const abortRef = useRef<AbortController | null>(null);
 
@@ -136,12 +138,16 @@ export default function DealsPage() {
 
   const openCreate = () => {
     setEditing(null);
+    setFormError(null);
+    setOperationError(null);
     setFormData({ stage: 'LEAD', currency: 'SAR', probability: 0 });
     setIsModalOpen(true);
   };
 
   const openEdit = (item: any) => {
     setEditing(item);
+    setFormError(null);
+    setOperationError(null);
     // Only DTO-whitelisted fields — the API rejects unknown fields (forbidNonWhitelisted)
     setFormData({
       title: item.title || '',
@@ -162,6 +168,7 @@ export default function DealsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormLoading(true);
+    setFormError(null);
     try {
       const payload = { ...formData };
       if (payload.value) payload.value = parseFloat(payload.value);
@@ -186,8 +193,8 @@ export default function DealsPage() {
       }
       setIsModalOpen(false);
       fetchDeals(page, debouncedSearch, stageFilter, companyFilter, pipelineFilter, pipelineStageFilter);
-    } catch (err) {
-      alert('حدث خطأ');
+    } catch {
+      setFormError('تعذر حفظ الصفقة. تحقق من البيانات أو الاتصال بالخادم.');
     } finally {
       setFormLoading(false);
     }
@@ -195,11 +202,16 @@ export default function DealsPage() {
 
   const handleDelete = async (id: string) => {
     if (!confirm('هل أنت متأكد؟')) return;
-    await api.delete(`/crm/deals/${id}`);
-    if (items.length === 1 && page > 1) {
-      setPage(page - 1);
-    } else {
-      fetchDeals(page, debouncedSearch, stageFilter, companyFilter, pipelineFilter, pipelineStageFilter);
+    setOperationError(null);
+    try {
+      await api.delete(`/crm/deals/${id}`);
+      if (items.length === 1 && page > 1) {
+        setPage(page - 1);
+      } else {
+        fetchDeals(page, debouncedSearch, stageFilter, companyFilter, pipelineFilter, pipelineStageFilter);
+      }
+    } catch {
+      setOperationError('تعذر حذف الصفقة. قد تكون مرتبطة ببيانات أخرى أو تعذر الاتصال بالخادم.');
     }
   };
 
@@ -231,6 +243,13 @@ export default function DealsPage() {
         </div>
         <Button onClick={openCreate}><Plus className="h-5 w-5" /> صفقة جديدة</Button>
       </div>
+
+      {operationError && (
+        <div className="scc-card border-red-500/30 text-red-400 flex items-center gap-2">
+          <AlertCircle className="h-5 w-5 shrink-0" />
+          <span>{operationError}</span>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <div className="relative md:col-span-2 lg:col-span-2">
@@ -371,6 +390,7 @@ export default function DealsPage() {
             <Input label="تاريخ الإغلاق المتوقع" type="date" value={formData.expectedClose || ''} onChange={(e) => setFormData({ ...formData, expectedClose: e.target.value })} />
           </div>
           <Textarea label="الوصف" rows={3} value={formData.description || ''} onChange={(e) => setFormData({ ...formData, description: e.target.value })} />
+          {formError && <p className="text-sm text-red-400">{formError}</p>}
           <div className="flex justify-end gap-3 pt-2">
             <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}><X className="h-4 w-4" /> إلغاء</Button>
             <Button type="submit" isLoading={formLoading}>{editing ? 'حفظ' : 'إنشاء'}</Button>
