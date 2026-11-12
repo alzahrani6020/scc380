@@ -34,6 +34,8 @@ import { HrRequestsController, HrSelfRequestsController } from './hr-requests.co
 import { HrRequestsService } from './hr-requests.service';
 import { HrLifecycleController } from './hr-lifecycle.controller';
 import { HrLifecycleService } from './hr-lifecycle.service';
+import { HrAssetCustodyController, HrSelfAssetCustodyController } from './asset-custody.controller';
+import { HrAssetCustodyService } from './asset-custody.service';
 
 @Module({
   imports: [AccountingCoreModule],
@@ -56,6 +58,8 @@ import { HrLifecycleService } from './hr-lifecycle.service';
     HrRequestsController,
     HrSelfRequestsController,
     HrLifecycleController,
+    HrAssetCustodyController,
+    HrSelfAssetCustodyController,
   ],
   providers: [
     EmployeesService,
@@ -75,6 +79,7 @@ import { HrLifecycleService } from './hr-lifecycle.service';
     HrSelfService,
     HrRequestsService,
     HrLifecycleService,
+    HrAssetCustodyService,
   ],
 })
 export class HrModule {}
