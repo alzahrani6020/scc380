@@ -73,3 +73,17 @@ test('journal header-line migration is additive and preserves legacy journal tab
   assert.doesNotMatch(migration, /(^|\n)\s*UPDATE\s+["a-z]/i);
   assert.doesNotMatch(migration, /ALTER TABLE "journal_entries"/i);
 });
+
+
+test('accounting posting core enforces balanced transactional double-entry', () => {
+  const service = src('src/accounting-core/accounting-posting.service.ts');
+  assert.match(service, /lines\.length < 2/);
+  assert.match(service, /exactly one side must be positive/);
+  assert.match(service, /Journal is not balanced/);
+  assert.match(service, /prisma\.\$transaction/);
+  assert.match(service, /financialPeriod\.findFirst/);
+  assert.match(service, /journalEntryHeader\.create/);
+  assert.match(service, /status:\s*JournalStatus\.POSTED/);
+  assert.match(service, /sourceType/);
+  assert.match(service, /sourceId/);
+});
