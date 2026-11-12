@@ -35,6 +35,7 @@ export class HrDashboardService {
       draftPayrolls,
       approvedPayrolls,
       paidPayrolls,
+      currentPayrollRun,
     ] = await Promise.all([
       prisma.employee.count({ where: tenant }),
       prisma.employee.count({ where: { ...tenant, status: 'ACTIVE' } }),
@@ -56,6 +57,7 @@ export class HrDashboardService {
       prisma.payroll.count({ where: { ...tenant, month, year, status: 'DRAFT' } }),
       prisma.payroll.count({ where: { ...tenant, month, year, status: 'APPROVED' } }),
       prisma.payroll.count({ where: { ...tenant, month, year, status: 'PAID' } }),
+      prisma.payrollRun.findFirst({ where: { ...tenant, month, year }, select: { id: true, status: true, employeeCount: true, grossTotal: true, deductionTotal: true, netTotal: true } }),
     ]);
 
     return {
@@ -85,6 +87,14 @@ export class HrDashboardService {
         draft: draftPayrolls,
         approved: approvedPayrolls,
         paid: paidPayrolls,
+        run: currentPayrollRun ? {
+          id: currentPayrollRun.id,
+          status: currentPayrollRun.status,
+          employeeCount: currentPayrollRun.employeeCount,
+          grossTotal: Number(currentPayrollRun.grossTotal),
+          deductionTotal: Number(currentPayrollRun.deductionTotal),
+          netTotal: Number(currentPayrollRun.netTotal),
+        } : null,
       },
     };
   }
