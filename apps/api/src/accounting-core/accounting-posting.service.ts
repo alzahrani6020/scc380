@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { JournalStatus, JournalType, Prisma, prisma } from '@scc/database';
 
-type PostingLine = {
+export type PostingLine = {
   accountId: string;
   debitAmount?: Prisma.Decimal.Value;
   creditAmount?: Prisma.Decimal.Value;
@@ -11,7 +11,7 @@ type PostingLine = {
   branchId?: string;
 };
 
-type PostJournalInput = {
+export type PostJournalInput = {
   tenantId: string;
   entryNumber: string;
   date?: Date;
