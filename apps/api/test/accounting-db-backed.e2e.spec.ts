@@ -730,6 +730,26 @@ test(
         /overlaps/,
       );
 
+      const draftLegacy = await prisma.journalEntry.create({
+        data: {
+          tenantId: tenantA.id,
+          entryNumber: `DRAFT-PERIOD-${run}`,
+          date: new Date('2027-01-05T12:00:00.000Z'),
+          description: 'Draft legacy period close blocker',
+          debitAmount: 1,
+          creditAmount: 0,
+          accountId: cashA.id,
+          status: 'DRAFT',
+        },
+      });
+
+      await assert.rejects(
+        () => periods.close(reqA, jan2027.id),
+        /draft journal entries/,
+      );
+
+      await prisma.journalEntry.delete({ where: { id: draftLegacy.id } });
+
       await posting.post({
         tenantId: tenantA.id,
         entryNumber: `JV-PERIOD-${run}`,
