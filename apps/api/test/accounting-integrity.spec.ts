@@ -86,3 +86,13 @@ test('accounting posting core enforces balanced transactional double-entry', () 
   assert.match(service, /sourceType/);
   assert.match(service, /sourceId/);
 });
+
+
+test('account mapping is tenant-aware and supports explicit tenant overrides', () => {
+  const service = src('src/accounting-core/account-mapping.service.ts');
+  assert.match(service, /DEFAULT_CODES/);
+  assert.match(service, /accounting\.accountMapping/);
+  assert.match(service, /tenantId, code: \{ in: codes \}, isActive: true/);
+  assert.match(service, /Missing active accounting mappings/);
+  assert.doesNotMatch(service, /findFirst\(\{\s*where:\s*\{\s*code:/);
+});
