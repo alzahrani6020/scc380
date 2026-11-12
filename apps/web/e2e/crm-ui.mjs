@@ -62,6 +62,11 @@ let companyPost = null;
 let companyPatch = null;
 let companyDeleteId = null;
 let contactPost = null;
+let contactPatch = null;
+let contactDeleteId = null;
+let csvExportRequested = false;
+let csvImportPreview = null;
+let csvImportExecute = null;
 let pipelinePost = null;
 let pipelinePatch = null;
 let pipelineDeleteId = null;
@@ -211,6 +216,41 @@ async function installApiMock(page) {
       const created = { id: lifecycleMode ? 'ct-life' : 'ct-new', ...contactPost };
       if (lifecycleMode) lifecycle.contact = created;
       await route.fulfill(json(created, 201));
+      return;
+    }
+    if (method === 'PATCH' && path === '/crm/contacts/ct1') {
+      contactPatch = req.postDataJSON();
+      await route.fulfill(json({ ...contact, ...contactPatch }));
+      return;
+    }
+    if (method === 'DELETE' && path === '/crm/contacts/ct1') {
+      contactDeleteId = 'ct1';
+      await route.fulfill({ status: 204 });
+      return;
+    }
+    if (method === 'GET' && path === '/crm/csv/contacts') {
+      csvExportRequested = true;
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/csv; charset=utf-8',
+        body: 'firstName,lastName,email\nAli,A,ali@example.test\n',
+      });
+      return;
+    }
+    if (method === 'POST' && path === '/crm/csv/contacts/import') {
+      const body = req.postDataJSON();
+      if (body.dryRun) {
+        csvImportPreview = body;
+        await route.fulfill(json({
+          totalRows: 1,
+          validRows: 1,
+          duplicates: [],
+          errors: [],
+        }));
+      } else {
+        csvImportExecute = body;
+        await route.fulfill(json({ imported: 1, skippedDuplicates: 0 }));
+      }
       return;
     }
 
@@ -511,6 +551,75 @@ async function testActivityCrudAndErrors(page) {
   await waitUntil(() => activityListQueries.some((q) => q.page === '1'), 'Activities did not return to page 1 after deleting the last row on page 2');
 }
 
+
+
+async function testContactCrudAndCsv(page) {
+  contactPost = null;
+  contactPatch = null;
+  contactDeleteId = null;
+  csvExportRequested = false;
+  csvImportPreview = null;
+  csvImportExecute = null;
+
+  await page.goto(`${BASE}/dashboard/crm/contacts`);
+  await page.getByText('Ali A', { exact: true }).waitFor();
+
+  await page.getByRole('button', { name: 'إضافة جهة اتصال', exact: true }).click();
+  await page.getByRole('heading', { name: 'إضافة جهة اتصال', exact: true }).waitFor();
+  await fieldByLabel(page, 'الاسم الأول', 'input').fill('Created');
+  await fieldByLabel(page, 'الاسم الأخير', 'input').fill('Contact');
+  await fieldByLabel(page, 'البريد الإلكتروني', 'input').fill('created@example.test');
+  await fieldByLabel(page, 'الشركة', 'select').selectOption('co1');
+  await page.getByRole('button', { name: 'إنشاء', exact: true }).click();
+  await waitUntil(() => Boolean(contactPost), 'Contact POST was not sent');
+  assert.equal(contactPost.firstName, 'Created');
+  assert.equal(contactPost.lastName, 'Contact');
+  assert.equal(contactPost.email, 'created@example.test');
+  assert.equal(contactPost.companyId, 'co1');
+
+  let card = page.locator('.scc-card-hover').filter({ hasText: 'Ali A' }).first();
+  await card.hover();
+  await card.locator('button').first().click();
+  await page.getByRole('heading', { name: 'تعديل جهة اتصال', exact: true }).waitFor();
+  await fieldByLabel(page, 'المسمى الوظيفي', 'input').fill('CFO');
+  await fieldByLabel(page, 'الشركة', 'select').selectOption('');
+  await page.getByRole('button', { name: 'حفظ التعديلات', exact: true }).click();
+  await waitUntil(() => Boolean(contactPatch), 'Contact PATCH was not sent');
+  assert.equal(contactPatch.jobTitle, 'CFO');
+  assert.equal(contactPatch.companyId, null);
+
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'تصدير CSV', exact: true }).click();
+  const download = await downloadPromise;
+  assert.equal(download.suggestedFilename(), 'crm-contacts.csv');
+  assert.equal(csvExportRequested, true);
+
+  const dialogs = [];
+  const dialogHandler = async (dialog) => {
+    dialogs.push({ type: dialog.type(), message: dialog.message() });
+    await dialog.accept();
+  };
+  page.on('dialog', dialogHandler);
+  await page.locator('#crm-csv-import').setInputFiles({
+    name: 'contacts.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from('firstName,lastName,email\nImported,Contact,imported@example.test\n'),
+  });
+  await waitUntil(() => Boolean(csvImportPreview), 'CSV dry-run import was not sent');
+  await waitUntil(() => Boolean(csvImportExecute), 'CSV execute import was not sent');
+  assert.equal(csvImportPreview.dryRun, true);
+  assert.equal(csvImportExecute.dryRun, false);
+  assert.match(csvImportPreview.csv, /Imported,Contact/);
+  assert.match(csvImportExecute.csv, /Imported,Contact/);
+  await waitUntil(() => dialogs.some((d) => d.type === 'confirm') && dialogs.some((d) => d.type === 'alert'), 'CSV import dialogs were not shown');
+  page.off('dialog', dialogHandler);
+
+  card = page.locator('.scc-card-hover').filter({ hasText: 'Ali A' }).first();
+  await card.hover();
+  page.once('dialog', (dialog) => dialog.accept());
+  await card.locator('button').last().click();
+  await waitUntil(() => contactDeleteId === 'ct1', 'Contact DELETE was not sent');
+}
 
 async function testCompanyCrud(page) {
   companyPost = null;
@@ -838,6 +947,7 @@ try {
   await testActivityQueryContracts(page);
   await testDealCrudAndErrors(page);
   await testActivityCrudAndErrors(page);
+  await testContactCrudAndCsv(page);
   await testCompanyCrud(page);
   await testPipelineAndStageCrud(page);
   await testCrmLifecycle(page);
