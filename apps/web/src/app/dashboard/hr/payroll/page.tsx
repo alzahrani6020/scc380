@@ -174,7 +174,7 @@ export default function PayrollPage() {
                 {p.status === 'DRAFT' && <Button size="sm" onClick={() => handleApprove(p.id)}><CheckCircle2 className="h-3 w-3" /> اعتماد</Button>}
                 {p.status === 'APPROVED' && <Button size="sm" onClick={() => handlePay(p.id)}><Wallet className="h-3 w-3" /> دفع</Button>}
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  {p.status !== 'PAID' && <button onClick={() => openEdit(p)} className="p-1.5 rounded-lg hover:bg-primary-500/10 text-primary-400"><Pencil className="h-4 w-4" /></button>}
+                  {p.status === 'DRAFT' && <button onClick={() => openEdit(p)} className="p-1.5 rounded-lg hover:bg-primary-500/10 text-primary-400"><Pencil className="h-4 w-4" /></button>}
                   {p.status !== 'PAID' && <button onClick={() => handleDelete(p.id)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-400"><Trash2 className="h-4 w-4" /></button>}
                 </div>
               </div>
