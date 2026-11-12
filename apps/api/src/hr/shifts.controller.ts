@@ -30,22 +30,22 @@ export class ShiftsController {
   constructor(private readonly service: ShiftsService) {}
 
   @Get()
-  @RequirePermissions('hr:read')
+  @RequirePermissions('hr:scheduling:read')
   findAll(@Req() req: any, @Query() query: any) { return this.service.findAll(req, query); }
 
   @Get(':id')
-  @RequirePermissions('hr:read')
+  @RequirePermissions('hr:scheduling:read')
   findOne(@Req() req: any, @Param('id') id: string) { return this.service.findOne(req, id); }
 
   @Post()
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:scheduling:write')
   create(@Req() req: any, @Body() dto: CreateShiftDto) { return this.service.create(req, dto); }
 
   @Patch(':id')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:scheduling:write')
   update(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateShiftDto) { return this.service.update(req, id, dto); }
 
   @Delete(':id')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:scheduling:write')
   remove(@Req() req: any, @Param('id') id: string) { return this.service.remove(req, id); }
 }
