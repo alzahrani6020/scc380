@@ -20,6 +20,8 @@ export default function CompaniesPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [formLoading, setFormLoading] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [operationError, setOperationError] = useState<string | null>(null);
   const [formData, setFormData] = useState<any>({ country: 'SA', isActive: true });
   const abortRef = useRef<AbortController | null>(null);
 
@@ -64,12 +66,16 @@ export default function CompaniesPage() {
 
   const openCreate = () => {
     setEditing(null);
+    setFormError(null);
+    setOperationError(null);
     setFormData({ country: 'SA', isActive: true });
     setIsModalOpen(true);
   };
 
   const openEdit = (item: any) => {
     setEditing(item);
+    setFormError(null);
+    setOperationError(null);
     setFormData({
       name: item.name || '',
       legalName: item.legalName || '',
@@ -89,6 +95,7 @@ export default function CompaniesPage() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormLoading(true);
+    setFormError(null);
     try {
       const payload = { ...formData };
       for (const key of ['legalName','crNumber','vatNumber','website','email','phone','address','city','country']) {
@@ -98,6 +105,8 @@ export default function CompaniesPage() {
       else await api.post('/crm/companies', payload);
       setIsModalOpen(false);
       await fetchData(page, debouncedSearch);
+    } catch {
+      setFormError('تعذر حفظ الشركة. تحقق من البيانات أو الاتصال بالخادم.');
     } finally {
       setFormLoading(false);
     }
@@ -105,11 +114,16 @@ export default function CompaniesPage() {
 
   const remove = async (id: string) => {
     if (!confirm('هل تريد حذف هذه الشركة؟ سيتم فصلها عن جهات الاتصال والصفقات دون حذفها.')) return;
-    await api.delete('/crm/companies/' + id);
-    if (items.length === 1 && page > 1) {
-      setPage(page - 1);
-    } else {
-      await fetchData(page, debouncedSearch);
+    setOperationError(null);
+    try {
+      await api.delete('/crm/companies/' + id);
+      if (items.length === 1 && page > 1) {
+        setPage(page - 1);
+      } else {
+        await fetchData(page, debouncedSearch);
+      }
+    } catch {
+      setOperationError('تعذر حذف الشركة. قد تكون مرتبطة ببيانات أخرى أو تعذر الاتصال بالخادم.');
     }
   };
 
@@ -128,6 +142,13 @@ export default function CompaniesPage() {
         </div>
         <Button onClick={openCreate}><Plus className="h-5 w-5" /> شركة جديدة</Button>
       </div>
+
+      {operationError && (
+        <div className="scc-card border-red-500/30 text-red-400 flex items-center gap-2">
+          <AlertCircle className="h-5 w-5 shrink-0" />
+          <span>{operationError}</span>
+        </div>
+      )}
 
       <div className="relative">
         <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-500" />
@@ -203,6 +224,7 @@ export default function CompaniesPage() {
             <Input label="الدولة" value={formData.country || 'SA'} onChange={(e) => setFormData({ ...formData, country: e.target.value })} />
             <Input label="العنوان" value={formData.address || ''} onChange={(e) => setFormData({ ...formData, address: e.target.value })} />
           </div>
+          {formError && <p className="text-sm text-red-400">{formError}</p>}
           <div className="flex justify-end gap-3">
             <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}><X className="h-4 w-4" /> إلغاء</Button>
             <Button type="submit" isLoading={formLoading}>{editing ? 'حفظ' : 'إنشاء'}</Button>
