@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, Req } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PermissionsGuard, RequirePermissions } from '../auth/guards/permissions.guard';
 import { DepartmentsService } from './departments.service';
 import { IsString, IsOptional } from 'class-validator';
 
@@ -20,32 +21,37 @@ class UpdateDepartmentDto {
 
 @ApiTags('HR - Departments')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('hr/departments')
 export class DepartmentsController {
   constructor(private readonly service: DepartmentsService) {}
 
   @Get()
+  @RequirePermissions('hr:read')
   findAll(@Req() req: any, @Query('search') search?: string) {
     return this.service.findAll(req, search);
   }
 
   @Get(':id')
+  @RequirePermissions('hr:read')
   findOne(@Req() req: any, @Param('id') id: string) {
     return this.service.findOne(req, id);
   }
 
   @Post()
+  @RequirePermissions('hr:write')
   create(@Req() req: any, @Body() dto: CreateDepartmentDto) {
     return this.service.create(req, dto);
   }
 
   @Patch(':id')
+  @RequirePermissions('hr:write')
   update(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateDepartmentDto) {
     return this.service.update(req, id, dto);
   }
 
   @Delete(':id')
+  @RequirePermissions('hr:write')
   remove(@Req() req: any, @Param('id') id: string) {
     return this.service.remove(req, id);
   }
