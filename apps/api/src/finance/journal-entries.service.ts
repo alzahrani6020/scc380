@@ -113,6 +113,9 @@ export class JournalEntriesService {
     if (existing.status !== 'POSTED') {
       throw new ConflictException('Only posted journal entries can be reversed');
     }
+    if (!existing.accountId) {
+      throw new ConflictException('Legacy journal entry has no account and cannot be safely reversed');
+    }
 
     const entryNumber = dto.entryNumber;
     if (!entryNumber) throw new BadRequestException('Reversal entry number is required');
