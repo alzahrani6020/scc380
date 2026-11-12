@@ -120,6 +120,14 @@ export class HrLifecycleService {
     if (!lifecycle) throw new NotFoundException('HR lifecycle case not found');
     const incomplete = lifecycle.tasks.filter((task) => !['DONE','SKIPPED'].includes(task.status));
     if (incomplete.length) throw new ConflictException('All lifecycle tasks must be done or skipped');
+    if (lifecycle.type === 'OFFBOARDING') {
+      const activeCustody = await prisma.assetCustodyAssignment.count({
+        where: { ...tenantWhere(tenantId), employeeId: lifecycle.employeeId, status: 'ACTIVE' },
+      });
+      if (activeCustody > 0) {
+        throw new ConflictException('Employee still has active asset custody assignments');
+      }
+    }
     return prisma.hrLifecycleCase.update({
       where: { id },
       data: { status: 'COMPLETED', completedAt: lifecycle.completedAt || new Date() },
@@ -137,9 +145,22 @@ export class HrLifecycleService {
     const tasks = await prisma.hrLifecycleTask.findMany({ where: { ...tenantWhere(tenantId), caseId } });
     const allClosed = tasks.length > 0 && tasks.every((task) => ['DONE','SKIPPED'].includes(task.status));
     const anyStarted = tasks.some((task) => task.status !== 'TODO');
+    let canComplete = allClosed;
+    if (allClosed) {
+      const lifecycle = await prisma.hrLifecycleCase.findFirst({
+        where: { ...tenantWhere(tenantId), id: caseId },
+        select: { type: true, employeeId: true },
+      });
+      if (lifecycle?.type === 'OFFBOARDING') {
+        const activeCustody = await prisma.assetCustodyAssignment.count({
+          where: { ...tenantWhere(tenantId), employeeId: lifecycle.employeeId, status: 'ACTIVE' },
+        });
+        canComplete = activeCustody === 0;
+      }
+    }
     await prisma.hrLifecycleCase.update({
       where: { id: caseId },
-      data: allClosed
+      data: canComplete
         ? { status: 'COMPLETED', completedAt: new Date() }
         : { status: anyStarted ? 'IN_PROGRESS' : 'OPEN', completedAt: null },
     });
