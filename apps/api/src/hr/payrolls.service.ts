@@ -41,11 +41,18 @@ export class PayrollsService {
     const existing = await prisma.payroll.findFirst({ where });
     if (!existing) throw new NotFoundException('Payroll record not found');
 
+    if (existing.status === 'PAID') {
+      throw new BadRequestException('Paid payroll is locked');
+    }
     if (dto.status === 'PAID' && existing.status !== 'APPROVED') {
       throw new BadRequestException('Payroll must be approved before payment');
     }
-    if (existing.status === 'PAID' && dto.status && dto.status !== 'PAID') {
-      throw new BadRequestException('Paid payroll cannot be reopened');
+    if (existing.status === 'APPROVED') {
+      const keys = Object.keys(dto);
+      const allowed = new Set(['status', 'paidAt']);
+      if (keys.some((key) => !allowed.has(key)) || (dto.status && dto.status !== 'PAID')) {
+        throw new BadRequestException('Approved payroll is locked except for payment');
+      }
     }
 
     const data: any = { ...dto };
