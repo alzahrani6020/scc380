@@ -13,7 +13,7 @@ const leaveTypes = [
   { value: 'SICK', label: 'مرضية' },
   { value: 'EMERGENCY', label: 'طارئة' },
   { value: 'UNPAID', label: 'بدون راتب' },
-  { value: 'MATERNITY', label: ' أمومة' },
+  { value: 'MATERNITY', label: 'أمومة' },
   { value: 'PATERNITY', label: 'أبوة' },
   { value: 'HAJJ', label: 'حج' },
   { value: 'STUDY', label: 'دراسية' },
@@ -53,16 +53,20 @@ export default function LeavesPage() {
   const openCreate = () => {
     setEditing(null);
     const employeeId = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('employeeId') : null;
-    setFormData({ employeeId: employeeId || undefined, type: 'ANNUAL', status: 'PENDING', days: 1 });
+    setFormData({ employeeId: employeeId || undefined, type: 'ANNUAL', days: 1, reason: '' });
     setIsModalOpen(true);
   };
 
   const openEdit = (item: any) => {
     setEditing(item);
     setFormData({
-      ...item,
+      employeeId: item.employeeId,
+      type: item.type,
+      status: item.status,
       startDate: item.startDate ? new Date(item.startDate).toISOString().split('T')[0] : '',
       endDate: item.endDate ? new Date(item.endDate).toISOString().split('T')[0] : '',
+      days: item.days,
+      reason: item.reason || '',
     });
     setIsModalOpen(true);
   };
@@ -71,16 +75,22 @@ export default function LeavesPage() {
     e.preventDefault();
     setFormLoading(true);
     try {
-      const payload = { ...formData, days: parseInt(formData.days) || 1 };
+      const commonPayload = {
+        type: formData.type,
+        startDate: formData.startDate,
+        endDate: formData.endDate,
+        days: Number(formData.days) || 1,
+        reason: formData.reason || undefined,
+      };
       if (editing) {
-        await api.patch(`/hr/leaves/${editing.id}`, payload);
+        await api.patch(`/hr/leaves/${editing.id}`, { ...commonPayload, status: formData.status });
       } else {
-        await api.post('/hr/leaves', payload);
+        await api.post('/hr/leaves', { employeeId: formData.employeeId, ...commonPayload });
       }
       setIsModalOpen(false);
       fetchData();
     } catch (err) {
-      alert('حدث خطأ');
+      alert('تعذر حفظ طلب الإجازة');
     } finally {
       setFormLoading(false);
     }
@@ -94,6 +104,11 @@ export default function LeavesPage() {
 
   const handleApprove = async (id: string) => {
     await api.patch(`/hr/leaves/${id}`, { status: 'APPROVED' });
+    fetchData();
+  };
+
+  const handleReject = async (id: string) => {
+    await api.patch(`/hr/leaves/${id}`, { status: 'REJECTED' });
     fetchData();
   };
 
@@ -129,6 +144,8 @@ export default function LeavesPage() {
         <div className="flex items-center justify-center h-64">
           <div className="w-10 h-10 border-4 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
         </div>
+      ) : filtered.length === 0 ? (
+        <div className="scc-card text-center py-12 text-slate-400">لا توجد طلبات إجازة مطابقة.</div>
       ) : (
         <div className="space-y-3">
           {filtered.map((l) => (
@@ -143,14 +160,13 @@ export default function LeavesPage() {
               <div className="flex items-center gap-3">
                 <div className="text-left">
                   <p className="text-slate-400 text-xs">{new Date(l.startDate).toLocaleDateString('ar-SA')} - {new Date(l.endDate).toLocaleDateString('ar-SA')}</p>
-                  <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium mt-1 ${
-                    l.status === 'APPROVED' ? 'bg-emerald-500/20 text-emerald-400' :
-                    l.status === 'REJECTED' ? 'bg-red-500/20 text-red-400' :
-                    'bg-amber-500/20 text-amber-400'
-                  }`}>{leaveStatuses.find(s => s.value === l.status)?.label || l.status}</span>
+                  <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium mt-1 ${l.status === 'APPROVED' ? 'bg-emerald-500/20 text-emerald-400' : l.status === 'REJECTED' ? 'bg-red-500/20 text-red-400' : 'bg-amber-500/20 text-amber-400'}`}>{leaveStatuses.find(s => s.value === l.status)?.label || l.status}</span>
                 </div>
                 {l.status === 'PENDING' && (
-                  <Button size="sm" onClick={() => handleApprove(l.id)}><CheckCircle2 className="h-3 w-3" /> اعتماد</Button>
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={() => handleApprove(l.id)}><CheckCircle2 className="h-3 w-3" /> اعتماد</Button>
+                    <Button size="sm" variant="ghost" onClick={() => handleReject(l.id)}><XCircle className="h-3 w-3" /> رفض</Button>
+                  </div>
                 )}
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button onClick={() => openEdit(l)} className="p-1.5 rounded-lg hover:bg-primary-500/10 text-primary-400"><Pencil className="h-4 w-4" /></button>
@@ -164,7 +180,7 @@ export default function LeavesPage() {
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editing ? 'تعديل إجازة' : 'طلب إجازة'}>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <Select label="الموظف" required options={empOptions} value={formData.employeeId || ''} onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })} />
+          <Select label="الموظف" required disabled={!!editing} options={empOptions} value={formData.employeeId || ''} onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })} />
           <Select label="النوع" options={leaveTypes} value={formData.type || 'ANNUAL'} onChange={(e) => setFormData({ ...formData, type: e.target.value })} />
           <div className="grid grid-cols-2 gap-4">
             <Input label="من تاريخ" type="date" required value={formData.startDate || ''} onChange={(e) => setFormData({ ...formData, startDate: e.target.value })} />
@@ -172,6 +188,7 @@ export default function LeavesPage() {
           </div>
           <Input label="عدد الأيام" type="number" required value={formData.days || 1} onChange={(e) => setFormData({ ...formData, days: e.target.value })} />
           <Input label="السبب" value={formData.reason || ''} onChange={(e) => setFormData({ ...formData, reason: e.target.value })} />
+          {editing && <Select label="الحالة" options={leaveStatuses} value={formData.status || 'PENDING'} onChange={(e) => setFormData({ ...formData, status: e.target.value })} />}
           <div className="flex justify-end gap-3 pt-2">
             <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}><X className="h-4 w-4" /> إلغاء</Button>
             <Button type="submit" isLoading={formLoading}>{editing ? 'حفظ' : 'إرسال'}</Button>

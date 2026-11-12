@@ -26,7 +26,9 @@ export class LeavesService {
   }
 
   async create(req: any, dto: any) {
-    const data: any = { ...dto, tenantId: req.user?.tenantId };
+    const tenantId = req.user?.tenantId;
+    await this.assertEmployee(tenantId, dto.employeeId);
+    const data: any = { ...dto, tenantId };
     data.startDate = new Date(dto.startDate);
     data.endDate = new Date(dto.endDate);
     return prisma.leave.create({ data });
@@ -39,7 +41,13 @@ export class LeavesService {
     const data: any = { ...dto };
     if (dto.startDate) data.startDate = new Date(dto.startDate);
     if (dto.endDate) data.endDate = new Date(dto.endDate);
-    if (dto.status === 'APPROVED') data.approvedAt = new Date();
+    if (dto.status === 'APPROVED') {
+      data.approvedAt = new Date();
+      data.approvedById = req.user?.userId || req.user?.sub || req.user?.id || null;
+    } else if (dto.status && dto.status !== 'APPROVED') {
+      data.approvedAt = null;
+      data.approvedById = null;
+    }
     return prisma.leave.update({ where: { id }, data });
   }
 
@@ -48,5 +56,10 @@ export class LeavesService {
     const existing = await prisma.leave.findFirst({ where });
     if (!existing) throw new NotFoundException('Leave request not found');
     return prisma.leave.delete({ where: { id } });
+  }
+
+  private async assertEmployee(tenantId: string, employeeId: string) {
+    const employee = await prisma.employee.findFirst({ where: { ...tenantWhere(tenantId), id: employeeId } });
+    if (!employee) throw new NotFoundException('Employee not found');
   }
 }

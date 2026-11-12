@@ -6,17 +6,29 @@ import { Reflector } from '@nestjs/core';
 import { hasPermission } from '@scc/auth';
 import { PermissionsGuard, RequirePermissions } from '../src/auth/guards/permissions.guard';
 
-test('permission matrix: roles vs crm permissions', () => {
-  assert.equal(hasPermission('SUPER_ADMIN', 'crm:write'), true); // *
-  assert.equal(hasPermission('ADMIN', 'crm:write'), true); // crm:*
-  assert.equal(hasPermission('MANAGER', 'crm:write'), true); // crm:*
-  assert.equal(hasPermission('USER', 'crm:write'), true); // exact
+test('permission matrix: roles vs crm and hr permissions', () => {
+  assert.equal(hasPermission('SUPER_ADMIN', 'crm:write'), true);
+  assert.equal(hasPermission('ADMIN', 'crm:write'), true);
+  assert.equal(hasPermission('MANAGER', 'crm:write'), true);
+  assert.equal(hasPermission('USER', 'crm:write'), true);
   assert.equal(hasPermission('USER', 'crm:read'), true);
-  assert.equal(hasPermission('AUDITOR', 'crm:read'), true); // *read
-  assert.equal(hasPermission('READONLY', 'crm:read'), true); // *read
-  assert.equal(hasPermission('AUDITOR', 'crm:write'), false); // read-only roles cannot write
+  assert.equal(hasPermission('AUDITOR', 'crm:read'), true);
+  assert.equal(hasPermission('READONLY', 'crm:read'), true);
+  assert.equal(hasPermission('AUDITOR', 'crm:write'), false);
   assert.equal(hasPermission('READONLY', 'crm:write'), false);
-  assert.equal(hasPermission('USER', 'hr:write'), false); // outside granted scope
+
+  assert.equal(hasPermission('SUPER_ADMIN', 'hr:write'), true);
+  assert.equal(hasPermission('ADMIN', 'hr:read'), true);
+  assert.equal(hasPermission('ADMIN', 'hr:write'), true);
+  assert.equal(hasPermission('MANAGER', 'hr:read'), true);
+  assert.equal(hasPermission('MANAGER', 'hr:write'), false);
+  assert.equal(hasPermission('USER', 'hr:read'), false);
+  assert.equal(hasPermission('USER', 'hr:write'), false);
+  assert.equal(hasPermission('AUDITOR', 'hr:read'), true);
+  assert.equal(hasPermission('AUDITOR', 'hr:write'), false);
+  assert.equal(hasPermission('READONLY', 'hr:read'), true);
+  assert.equal(hasPermission('READONLY', 'hr:write'), false);
+
   assert.equal(hasPermission('USER', 'notifications:read'), true);
   assert.equal(hasPermission('USER', 'notifications:self-write'), true);
   assert.equal(hasPermission('USER', 'notifications:admin'), false);
@@ -34,6 +46,12 @@ class DummyController {
 
   @RequirePermissions('crm:read')
   read() {}
+
+  @RequirePermissions('hr:write')
+  hrWrite() {}
+
+  @RequirePermissions('hr:read')
+  hrRead() {}
 }
 
 function ctx(user: any, handler: string): ExecutionContext {
@@ -60,10 +78,20 @@ test('PermissionsGuard blocks READONLY from crm:write but allows crm:read', () =
   assert.equal(guard.canActivate(ctx({ role: 'READONLY' }, 'read')), true);
 });
 
+test('PermissionsGuard enforces hr read/write boundaries', () => {
+  const guard = new PermissionsGuard(new Reflector());
+  assert.equal(guard.canActivate(ctx({ role: 'ADMIN' }, 'hrWrite')), true);
+  assert.equal(guard.canActivate(ctx({ role: 'MANAGER' }, 'hrRead')), true);
+  assert.throws(() => guard.canActivate(ctx({ role: 'MANAGER' }, 'hrWrite')), ForbiddenException);
+  assert.throws(() => guard.canActivate(ctx({ role: 'USER' }, 'hrRead')), ForbiddenException);
+  assert.equal(guard.canActivate(ctx({ role: 'AUDITOR' }, 'hrRead')), true);
+  assert.throws(() => guard.canActivate(ctx({ role: 'AUDITOR' }, 'hrWrite')), ForbiddenException);
+});
+
 test('PermissionsGuard allows USER/AUDITOR boundary correctly', () => {
   const guard = new PermissionsGuard(new Reflector());
   assert.equal(guard.canActivate(ctx({ role: 'USER' }, 'write')), true);
   assert.equal(guard.canActivate(ctx({ role: 'AUDITOR' }, 'read')), true);
   assert.throws(() => guard.canActivate(ctx({ role: 'AUDITOR' }, 'write')), ForbiddenException);
-  assert.throws(() => guard.canActivate(ctx({}, 'read')), ForbiddenException); // no role on session
+  assert.throws(() => guard.canActivate(ctx({}, 'read')), ForbiddenException);
 });

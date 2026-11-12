@@ -27,11 +27,22 @@ function sanitizeBody(value: any): any {
   return sanitized;
 }
 
+function hasPath(path: string, segment: string): boolean {
+  const cleanPath = path.split('?')[0];
+  return cleanPath === segment || cleanPath.endsWith(segment) || cleanPath.includes(segment + '/');
+}
+
 function getEntityType(path: string): string {
-  if (/\/crm\/contacts\b/.test(path)) return 'CONTACT';
-  if (/\/crm\/deals\b/.test(path)) return 'DEAL';
-  if (/\/crm\/activities\b/.test(path)) return 'ACTIVITY';
-  if (/\/notifications\b/.test(path)) return 'NOTIFICATION';
+  if (hasPath(path, '/crm/contacts')) return 'CONTACT';
+  if (hasPath(path, '/crm/deals')) return 'DEAL';
+  if (hasPath(path, '/crm/activities')) return 'ACTIVITY';
+  if (hasPath(path, '/hr/employees')) return 'EMPLOYEE';
+  if (hasPath(path, '/hr/attendances')) return 'ATTENDANCE';
+  if (hasPath(path, '/hr/leaves')) return 'LEAVE';
+  if (hasPath(path, '/hr/payrolls')) return 'PAYROLL';
+  if (hasPath(path, '/hr/departments')) return 'DEPARTMENT';
+  if (hasPath(path, '/hr/shifts')) return 'SHIFT';
+  if (hasPath(path, '/notifications')) return 'NOTIFICATION';
 
   const segments = path.split('/').filter(Boolean);
   const idx = segments.findIndex((s) =>
@@ -44,10 +55,16 @@ export function deriveAuditAction(method: string, path: string): string {
   const verbs: Record<string, string> = { POST: 'CREATED', PATCH: 'UPDATED', PUT: 'UPDATED', DELETE: 'DELETED' };
   const suffix = verbs[method];
   if (!suffix) return method;
-  if (/\/crm\/contacts\b/.test(path)) return `CONTACT_${suffix}`;
-  if (/\/crm\/deals\b/.test(path)) return `DEAL_${suffix}`;
-  if (/\/crm\/activities\b/.test(path)) return `ACTIVITY_${suffix}`;
-  if (/\/notifications\b/.test(path)) return `NOTIFICATION_${suffix}`;
+  if (hasPath(path, '/crm/contacts')) return 'CONTACT_' + suffix;
+  if (hasPath(path, '/crm/deals')) return 'DEAL_' + suffix;
+  if (hasPath(path, '/crm/activities')) return 'ACTIVITY_' + suffix;
+  if (hasPath(path, '/hr/employees')) return 'EMPLOYEE_' + suffix;
+  if (hasPath(path, '/hr/attendances')) return 'ATTENDANCE_' + suffix;
+  if (hasPath(path, '/hr/leaves')) return 'LEAVE_' + suffix;
+  if (hasPath(path, '/hr/payrolls')) return 'PAYROLL_' + suffix;
+  if (hasPath(path, '/hr/departments')) return 'DEPARTMENT_' + suffix;
+  if (hasPath(path, '/hr/shifts')) return 'SHIFT_' + suffix;
+  if (hasPath(path, '/notifications')) return 'NOTIFICATION_' + suffix;
   return method;
 }
 
@@ -58,10 +75,16 @@ async function loadPreviousValue(request: any, method: string, path: string) {
     request.user?.role === 'SUPER_ADMIN' ? request.tenantId : request.user?.tenantId;
   const where = { id: request.params.id, ...tenantWhere(tenantId) };
 
-  if (/\/crm\/contacts\b/.test(path)) return prisma.contact.findFirst({ where });
-  if (/\/crm\/deals\b/.test(path)) return prisma.deal.findFirst({ where });
-  if (/\/crm\/activities\b/.test(path)) return prisma.activity.findFirst({ where });
-  if (/\/notifications\b/.test(path)) {
+  if (hasPath(path, '/crm/contacts')) return prisma.contact.findFirst({ where });
+  if (hasPath(path, '/crm/deals')) return prisma.deal.findFirst({ where });
+  if (hasPath(path, '/crm/activities')) return prisma.activity.findFirst({ where });
+  if (hasPath(path, '/hr/employees')) return prisma.employee.findFirst({ where });
+  if (hasPath(path, '/hr/attendances')) return prisma.attendance.findFirst({ where });
+  if (hasPath(path, '/hr/leaves')) return prisma.leave.findFirst({ where });
+  if (hasPath(path, '/hr/payrolls')) return prisma.payroll.findFirst({ where });
+  if (hasPath(path, '/hr/departments')) return prisma.department.findFirst({ where });
+  if (hasPath(path, '/hr/shifts')) return prisma.shift.findFirst({ where });
+  if (hasPath(path, '/notifications')) {
     const notificationWhere: any = { ...where };
     if (request.user?.role !== 'SUPER_ADMIN') notificationWhere.userId = request.user?.userId;
     return prisma.notification.findFirst({ where: notificationWhere });
@@ -121,7 +144,7 @@ export class AuditLogInterceptor implements NestInterceptor {
                   data: {
                     tenantId,
                     userId,
-                    action: `${deriveAuditAction(method, path)}_ERROR`,
+                    action: deriveAuditAction(method, path) + '_ERROR',
                     entityType,
                     entityId: request.params?.id || body?.id || null,
                     oldValues: previous ? sanitizeBody(previous) : { error: error.message, statusCode: error.status },

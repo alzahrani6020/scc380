@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { prisma, tenantWhere } from '@scc/database';
 
 @Injectable()
@@ -29,8 +29,10 @@ export class PayrollsService {
   }
 
   async create(req: any, dto: any) {
+    const tenantId = req.user?.tenantId;
+    await this.assertEmployee(tenantId, dto.employeeId);
     return prisma.payroll.create({
-      data: { ...dto, tenantId: req.user?.tenantId },
+      data: { ...dto, status: 'DRAFT', tenantId },
     });
   }
 
@@ -38,6 +40,21 @@ export class PayrollsService {
     const where = { ...tenantWhere(req.user?.tenantId), id };
     const existing = await prisma.payroll.findFirst({ where });
     if (!existing) throw new NotFoundException('Payroll record not found');
+
+    if (existing.status === 'PAID') {
+      throw new BadRequestException('Paid payroll is locked');
+    }
+    if (dto.status === 'PAID' && existing.status !== 'APPROVED') {
+      throw new BadRequestException('Payroll must be approved before payment');
+    }
+    if (existing.status === 'APPROVED') {
+      const keys = Object.keys(dto);
+      const allowed = new Set(['status', 'paidAt']);
+      if (keys.some((key) => !allowed.has(key)) || (dto.status && dto.status !== 'PAID')) {
+        throw new BadRequestException('Approved payroll is locked except for payment');
+      }
+    }
+
     const data: any = { ...dto };
     if (dto.paidAt) data.paidAt = new Date(dto.paidAt);
     if (dto.status === 'PAID' && !dto.paidAt) data.paidAt = new Date();
@@ -48,6 +65,12 @@ export class PayrollsService {
     const where = { ...tenantWhere(req.user?.tenantId), id };
     const existing = await prisma.payroll.findFirst({ where });
     if (!existing) throw new NotFoundException('Payroll record not found');
+    if (existing.status === 'PAID') throw new BadRequestException('Paid payroll cannot be deleted');
     return prisma.payroll.delete({ where: { id } });
+  }
+
+  private async assertEmployee(tenantId: string, employeeId: string) {
+    const employee = await prisma.employee.findFirst({ where: { ...tenantWhere(tenantId), id: employeeId } });
+    if (!employee) throw new NotFoundException('Employee not found');
   }
 }

@@ -32,7 +32,7 @@ export default function DepartmentsPage() {
 
   const openEdit = (item: any) => {
     setEditing(item);
-    setFormData({ ...item });
+    setFormData({ name: item.name, code: item.code || '', parentId: item.parentId || '', managerId: item.managerId || '' });
     setIsModalOpen(true);
   };
 
@@ -40,15 +40,21 @@ export default function DepartmentsPage() {
     e.preventDefault();
     setFormLoading(true);
     try {
+      const payload = {
+        name: formData.name,
+        code: formData.code || undefined,
+        parentId: formData.parentId || undefined,
+        managerId: formData.managerId || undefined,
+      };
       if (editing) {
-        await api.patch(`/hr/departments/${editing.id}`, formData);
+        await api.patch(`/hr/departments/${editing.id}`, payload);
       } else {
-        await api.post('/hr/departments', formData);
+        await api.post('/hr/departments', payload);
       }
       setIsModalOpen(false);
       fetchData();
     } catch (err) {
-      alert('حدث خطأ');
+      alert('تعذر حفظ الإدارة');
     } finally {
       setFormLoading(false);
     }
@@ -82,6 +88,8 @@ export default function DepartmentsPage() {
         <div className="flex items-center justify-center h-64">
           <div className="w-10 h-10 border-4 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
         </div>
+      ) : filtered.length === 0 ? (
+        <div className="scc-card text-center py-12 text-slate-400">لا توجد إدارات مطابقة.</div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((d) => (
