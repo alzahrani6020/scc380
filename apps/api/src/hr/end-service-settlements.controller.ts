@@ -9,8 +9,8 @@ import { EndServiceSettlementsService } from './end-service-settlements.service'
 
 class SettlementDto {
   @IsString() employeeId: string;
-  @IsIn(END_SERVICE_REASONS) reason: string;
-  @IsIn(SETTLEMENT_INITIATORS) initiatedBy: string;
+  @IsIn([...END_SERVICE_REASONS]) reason: string;
+  @IsIn([...SETTLEMENT_INITIATORS]) initiatedBy: string;
   @IsString() lastWorkingDate: string;
   @Type(() => Number) @IsNumber() @Min(0) @IsOptional() lastWage?: number;
   @Type(() => Number) @IsNumber() @Min(0) @IsOptional() leaveEncashment?: number;
