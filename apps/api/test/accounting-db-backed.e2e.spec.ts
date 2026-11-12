@@ -11,6 +11,7 @@ import { ExpensesService } from '../src/finance/expenses.service';
 import { ReportsService } from '../src/reports/reports.service';
 import { FinancialPeriodsService } from '../src/finance/financial-periods.service';
 import { BankReconciliationService } from '../src/finance/bank-reconciliation.service';
+import { BankAccountsService } from '../src/finance/bank-accounts.service';
 
 test(
   'Accounting DB-backed E2E validates balanced posting, periods, mapping, tenant isolation and dual-write',
@@ -94,6 +95,7 @@ test(
       const reports = new ReportsService();
       const periods = new FinancialPeriodsService();
       const bankReconciliation = new BankReconciliationService();
+      const bankAccounts = new BankAccountsService();
       const reqA: any = { user: { tenantId: tenantA.id, role: 'ADMIN' } };
 
       const mapped = await mapping.resolve(tenantA.id, ['CASH', 'SALES_REVENUE']);
@@ -904,8 +906,8 @@ test(
       assert.equal(reopenedReconciliation.status, 'DRAFT');
 
       await assert.rejects(
-        () => prisma.bankAccount.delete({ where: { id: bankAccount.id } }),
-        /Foreign key constraint|constraint/i,
+        () => bankAccounts.remove(reqA, bankAccount.id),
+        /reconciliation history/,
       );
 
 
