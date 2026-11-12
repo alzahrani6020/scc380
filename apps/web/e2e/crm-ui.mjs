@@ -295,7 +295,7 @@ async function testDealCrudAndErrors(page) {
   await page.getByText('Browser Deal', { exact: true }).waitFor();
 
   await page.getByRole('button', { name: 'صفقة جديدة', exact: true }).click();
-  await page.getByText('صفقة جديدة', { exact: true }).waitFor();
+  await page.getByRole('heading', { name: 'صفقة جديدة', exact: true }).waitFor();
   await fieldByLabel(page, 'العنوان', 'input').fill('Created Browser Deal');
   await chooseComboboxOption(page, 'العميل', 'ابحث بالاسم أو البريد أو الجوال...', 'Ali', 'Ali A');
   await chooseComboboxOption(page, 'الشركة', 'ابحث عن شركة...', 'Browser', 'Browser Company');
@@ -356,7 +356,7 @@ async function testActivityCrudAndErrors(page) {
   await page.getByText('Browser Activity', { exact: true }).waitFor();
 
   await page.getByRole('button', { name: 'نشاط جديد', exact: true }).click();
-  await page.getByText('نشاط جديد', { exact: true }).waitFor();
+  await page.getByRole('heading', { name: 'نشاط جديد', exact: true }).waitFor();
   await fieldByLabel(page, 'الموضوع', 'input').fill('Created Browser Activity');
   await chooseComboboxOption(page, 'جهة الاتصال', 'ابحث عن جهة اتصال...', 'Ali', 'Ali A');
   await chooseComboboxOption(page, 'الصفقة', 'ابحث عن صفقة...', 'Browser', 'Browser Deal');
