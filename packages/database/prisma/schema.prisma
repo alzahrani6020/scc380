@@ -53,7 +53,6 @@ model Tenant {
   journalEntries JournalEntry[]
   journalEntryHeaders JournalEntryHeader[]
   journalEntryLines JournalEntryLine[]
-  supplierInvoiceItems SupplierInvoiceItem[]
   bankAccounts  BankAccount[]
   purchaseOrders PurchaseOrder[]
   leaves        Leave[]
@@ -608,6 +607,7 @@ model ChartOfAccount {
 
   ledgerEntries JournalEntry[]
   journalEntryLines JournalEntryLine[]
+  supplierInvoiceItems SupplierInvoiceItem[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
