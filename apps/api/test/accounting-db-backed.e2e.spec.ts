@@ -8,6 +8,7 @@ import { InvoicesService } from '../src/erp/invoices.service';
 import { PaymentsService } from '../src/finance/payments.service';
 import { SupplierInvoiceService } from '../src/supplier-invoice/supplier-invoice.service';
 import { ExpensesService } from '../src/finance/expenses.service';
+import { ReportsService } from '../src/reports/reports.service';
 
 test(
   'Accounting DB-backed E2E validates balanced posting, periods, mapping, tenant isolation and dual-write',
@@ -88,6 +89,7 @@ test(
       const payments = new PaymentsService(mapping, dualWrite);
       const supplierInvoices = new SupplierInvoiceService(mapping, dualWrite);
       const expenses = new ExpensesService(mapping, dualWrite);
+      const reports = new ReportsService();
       const reqA: any = { user: { tenantId: tenantA.id, role: 'ADMIN' } };
 
       const mapped = await mapping.resolve(tenantA.id, ['CASH', 'SALES_REVENUE']);
@@ -113,6 +115,50 @@ test(
         posted.lines.reduce((sum, line) => sum + Number(line.debitAmount), 0),
         posted.lines.reduce((sum, line) => sum + Number(line.creditAmount), 0),
       );
+
+      const modernOnlyTrial = await reports.getTrialBalance(tenantA.id, 'ADMIN');
+      const modernCash = modernOnlyTrial.accounts.find(account => account.id === cashA.id);
+      const modernRevenue = modernOnlyTrial.accounts.find(account => account.id === revenueA.id);
+      assert.equal(modernCash?.debit, 100);
+      assert.equal(modernRevenue?.credit, 100);
+      assert.equal(modernOnlyTrial.totals.debit, 100);
+      assert.equal(modernOnlyTrial.totals.credit, 100);
+
+      await prisma.journalEntry.createMany({
+        data: [
+          {
+            tenantId: tenantA.id,
+            entryNumber: `HIST-${run}-D`,
+            date: new Date('2026-11-11T12:00:00.000Z'),
+            description: 'Historical cash debit',
+            reference: `HIST-${run}`,
+            debitAmount: 30,
+            creditAmount: 0,
+            accountId: cashA.id,
+            status: 'POSTED',
+          },
+          {
+            tenantId: tenantA.id,
+            entryNumber: `HIST-${run}-C`,
+            date: new Date('2026-11-11T12:00:00.000Z'),
+            description: 'Historical revenue credit',
+            reference: `HIST-${run}`,
+            debitAmount: 0,
+            creditAmount: 30,
+            accountId: revenueA.id,
+            status: 'POSTED',
+          },
+        ],
+      });
+
+      const historicalTrial = await reports.getTrialBalance(tenantA.id, 'ADMIN');
+      const historicalCash = historicalTrial.accounts.find(account => account.id === cashA.id);
+      const historicalRevenue = historicalTrial.accounts.find(account => account.id === revenueA.id);
+      assert.equal(historicalCash?.debit, 130);
+      assert.equal(historicalRevenue?.credit, 130);
+      assert.equal(historicalTrial.totals.debit, 130);
+      assert.equal(historicalTrial.totals.credit, 130);
+
 
       await assert.rejects(
         () =>
@@ -609,6 +655,10 @@ test(
         1,
       );
 
+      const trialBeforeDual = await reports.getTrialBalance(tenantA.id, 'ADMIN');
+      const cashBeforeDual = trialBeforeDual.accounts.find(account => account.id === cashA.id)!;
+      const revenueBeforeDual = trialBeforeDual.accounts.find(account => account.id === revenueA.id)!;
+
       const dual = await dualWrite.post({
         tenantId: tenantA.id,
         entryNumber: `JV-DUAL-${run}`,
@@ -638,6 +688,25 @@ test(
         legacyRows.reduce((sum, row) => sum + Number(row.debitAmount), 0),
         legacyRows.reduce((sum, row) => sum + Number(row.creditAmount), 0),
       );
+
+      const trialAfterDual = await reports.getTrialBalance(tenantA.id, 'ADMIN');
+      const cashAfterDual = trialAfterDual.accounts.find(account => account.id === cashA.id)!;
+      const revenueAfterDual = trialAfterDual.accounts.find(account => account.id === revenueA.id)!;
+      assert.equal(cashAfterDual.debit - cashBeforeDual.debit, 250);
+      assert.equal(revenueAfterDual.credit - revenueBeforeDual.credit, 250);
+
+      const unifiedLedger = await reports.getGeneralLedger(
+        cashA.id,
+        tenantA.id,
+        'ADMIN',
+      );
+      assert.ok(unifiedLedger.entries.some(entry => entry.id.startsWith('legacy:')));
+      assert.ok(unifiedLedger.entries.some(entry => entry.id.startsWith('line:')));
+      assert.equal(
+        unifiedLedger.entries.filter(entry => entry.reference === `DUAL-${run}`).length,
+        1,
+      );
+
     } finally {
       await prisma.tenant.deleteMany({ where: { id: { in: [tenantA.id, tenantB.id] } } });
       await prisma.$disconnect();
