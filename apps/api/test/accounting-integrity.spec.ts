@@ -129,3 +129,17 @@ test('production startup blocks conflicting accounting-core migration state befo
       script.indexOf("console.log('PRISMA_MIGRATE_DEPLOY_START')"),
   );
 });
+
+
+test('invoice schema reconciliation is additive only', () => {
+  const migration = readFileSync(
+    join(process.cwd(), '../../packages/database/prisma/migrations/20261112163000_reconcile_invoice_zatca_columns/migration.sql'),
+    'utf8',
+  );
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS "zatcaSignedXml"/);
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS "retentionUntil"/);
+  assert.doesNotMatch(migration, /(^|\n)\s*DROP\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*TRUNCATE\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*DELETE\s+FROM\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*UPDATE\s+["a-z]/i);
+});
