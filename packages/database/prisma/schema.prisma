@@ -65,6 +65,7 @@ model Tenant {
   leaveBalanceAdjustments LeaveBalanceAdjustment[]
   payrollRuns PayrollRun[]
   payrollRunItems PayrollRunItem[]
+  employeeDocuments EmployeeDocument[]
   drivers       Driver[]
   fleetMaintenances FleetMaintenance[]
   fleetFuelLogs FleetFuelLog[]
@@ -945,10 +946,38 @@ model Employee {
   contracts     EmployeeContract[]
   leaveBalances LeaveBalance[]
   payrollRunItems PayrollRunItem[]
+  documents      EmployeeDocument[]
 
   @@unique([tenantId, employeeCode])
   @@index([tenantId])
   @@map("employees")
+}
+
+
+model EmployeeDocument {
+  id            String    @id @default(cuid())
+  tenantId      String
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employeeId    String
+  employee      Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  type          String
+  title         String
+  fileName      String
+  mimeType      String
+  sizeBytes     Int
+  checksumSha256 String
+  content       Bytes
+  issuedAt      DateTime?
+  expiresAt     DateTime?
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@index([tenantId, employeeId])
+  @@index([tenantId, expiresAt])
+  @@map("employee_documents")
 }
 
 model Department {
