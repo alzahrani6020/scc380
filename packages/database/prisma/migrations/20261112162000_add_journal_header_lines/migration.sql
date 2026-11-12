@@ -72,6 +72,50 @@ BEGIN
 END
 $;
 
+
+CREATE TABLE IF NOT EXISTS "journal_entries" (
+    "id" TEXT NOT NULL,
+    "tenantId" TEXT NOT NULL,
+    "entryNumber" TEXT NOT NULL,
+    "date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "description" TEXT NOT NULL,
+    "reference" TEXT,
+    "debitAmount" DECIMAL(18,2) NOT NULL,
+    "creditAmount" DECIMAL(18,2) NOT NULL,
+    "accountId" TEXT,
+    "type" "JournalType" NOT NULL DEFAULT 'GENERAL',
+    "status" "JournalStatus" NOT NULL DEFAULT 'POSTED',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "journal_entries_pkey" PRIMARY KEY ("id")
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "journal_entries_entryNumber_key"
+ON "journal_entries"("entryNumber");
+
+CREATE INDEX IF NOT EXISTS "journal_entries_tenantId_idx"
+ON "journal_entries"("tenantId");
+
+CREATE INDEX IF NOT EXISTS "journal_entries_date_idx"
+ON "journal_entries"("date");
+
+CREATE INDEX IF NOT EXISTS "journal_entries_accountId_idx"
+ON "journal_entries"("accountId");
+
+DO $
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'journal_entries_tenantId_fkey') THEN
+    ALTER TABLE "journal_entries"
+      ADD CONSTRAINT "journal_entries_tenantId_fkey"
+      FOREIGN KEY ("tenantId") REFERENCES "tenants"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'journal_entries_accountId_fkey') THEN
+    ALTER TABLE "journal_entries"
+      ADD CONSTRAINT "journal_entries_accountId_fkey"
+      FOREIGN KEY ("accountId") REFERENCES "chart_of_accounts"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END
+$;
+
 CREATE TABLE "journal_entry_headers" (
     "id" TEXT NOT NULL,
     "tenantId" TEXT NOT NULL,
