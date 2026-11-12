@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { prisma, tenantWhere } from '@scc/database';
+import { pagedResult, parsePagination } from './pagination';
 
 @Injectable()
 export class LeavesService {
@@ -8,14 +9,30 @@ export class LeavesService {
     if (query.employeeId) where.employeeId = query.employeeId;
     if (query.type) where.type = query.type;
     if (query.status) where.status = query.status;
+    if (query.search) {
+      where.employee = {
+        OR: [
+          { firstName: { contains: query.search, mode: 'insensitive' } },
+          { lastName: { contains: query.search, mode: 'insensitive' } },
+          { employeeCode: { contains: query.search, mode: 'insensitive' } },
+        ],
+      };
+    }
     if (query.from && query.to) {
       where.startDate = { gte: new Date(query.from), lte: new Date(query.to) };
     }
+    const { page, limit, skip } = parsePagination(query);
     const [data, count] = await Promise.all([
-      prisma.leave.findMany({ where, include: { employee: { select: { firstName: true, lastName: true, employeeCode: true } } }, orderBy: { createdAt: 'desc' }, take: 200 }),
+      prisma.leave.findMany({
+        where,
+        include: { employee: { select: { firstName: true, lastName: true, employeeCode: true } } },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
       prisma.leave.count({ where }),
     ]);
-    return { data, count };
+    return pagedResult(data, count, page, limit);
   }
 
   async findOne(req: any, id: string) {
