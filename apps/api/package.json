@@ -6,7 +6,7 @@
     "build": "nest build",
     "dev": "nest start --watch",
     "start": "node dist/main",
-    "test": "tsx --test test/contacts.service.spec.ts test/contacts.dto.spec.ts test/jwt-token-type.spec.ts test/permissions.spec.ts test/security-regressions.spec.ts test/crm-dynamic-hardening.spec.ts test/crm-expansion.spec.ts test/crm-http-contract.e2e.spec.ts",
+    "test": "tsx --test test/contacts.service.spec.ts test/contacts.dto.spec.ts test/jwt-token-type.spec.ts test/permissions.spec.ts test/security-regressions.spec.ts test/crm-dynamic-hardening.spec.ts test/crm-expansion.spec.ts test/crm-http-contract.e2e.spec.ts test/accounting-integrity.spec.ts",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "db:generate": "prisma generate --schema ../../packages/database/prisma/schema.prisma",
     "db:migrate": "prisma migrate dev --schema ../../packages/database/prisma/schema.prisma",
