@@ -30,6 +30,7 @@ class PostPayrollAccountingDto {
   @IsString() @IsOptional() gosiPayableAccountId?: string;
   @IsString() @IsOptional() taxPayableAccountId?: string;
   @IsString() @IsOptional() otherDeductionAccountId?: string;
+  @IsString() @IsOptional() loanReceivableAccountId?: string;
 }
 
 @ApiTags('HR - Payroll Runs')
