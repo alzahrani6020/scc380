@@ -37,7 +37,7 @@ test(
         basicSalary: 10000,
       });
       const employeeB = await employees.create(tenantB.id, {
-        employeeCode: `HRB-${run}`,
+        employeeCode: `HRA-${run}`,
         firstName: 'Badr',
         lastName: 'HR',
         hireDate: '2026-11-01T00:00:00.000Z',
@@ -105,6 +105,23 @@ test(
         netSalary: 12500,
       });
       assert.equal(payrollA.status, 'DRAFT');
+
+      await assert.rejects(
+        () => payrolls.create(reqA, {
+          employeeId: employeeA.id,
+          month: 11,
+          year: 2026,
+          basicSalary: 10000,
+          housingAllowance: 0,
+          transportAllowance: 0,
+          otherAllowances: 0,
+          gosiDeduction: 0,
+          taxDeduction: 0,
+          otherDeductions: 0,
+          netSalary: 10000,
+        }),
+        /Payroll already exists for this employee and period/,
+      );
 
       await assert.rejects(
         () => payrolls.update(reqA, payrollA.id, { status: 'PAID' }),

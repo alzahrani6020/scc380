@@ -9,6 +9,7 @@ const historical = [
 ];
 
 const hrCoreMigration = '20261112130000_reconcile_hr_core';
+const hrIntegrityMigration = '20261112134500_hr_finance_integrity_p0';
 const hrCoreTables = ['leaves', 'attendances', 'payrolls', 'shifts'];
 
 function runPrisma(args) {
@@ -205,6 +206,27 @@ async function reconcileHrCore(applied) {
   applied.add(hrCoreMigration);
 }
 
+async function verifyHrIntegrityPreconditions(applied) {
+  if (applied.has(hrIntegrityMigration)) return;
+  if (!(await tableExists('payrolls'))) return;
+
+  const duplicatePayrolls = await prisma.$queryRawUnsafe(
+    `SELECT "tenantId", "employeeId", "year", "month", COUNT(*)::int AS count
+       FROM "payrolls"
+       GROUP BY "tenantId", "employeeId", "year", "month"
+       HAVING COUNT(*) > 1
+       LIMIT 10`,
+  );
+  if (duplicatePayrolls.length > 0) {
+    const sample = duplicatePayrolls
+      .map((row) => `${row.tenantId}:${row.employeeId}:${row.year}-${row.month} x${row.count}`)
+      .join(',');
+    throw new Error(`HR_INTEGRITY_BLOCKED duplicate payroll periods: ${sample}`);
+  }
+
+  console.log('HR_INTEGRITY_PREFLIGHT_PASS');
+}
+
 async function resolveIfNeeded(applied, migration, verify) {
   if (applied.has(migration)) return;
   await verify();
@@ -223,6 +245,7 @@ async function resolveIfNeeded(applied, migration, verify) {
     await resolveIfNeeded(applied, historical[2], verifyCrmRelations);
     await verifyCrmExpansionPreconditions(applied);
     await reconcileHrCore(applied);
+    await verifyHrIntegrityPreconditions(applied);
   }
 
   console.log('PRISMA_MIGRATE_DEPLOY_START');
