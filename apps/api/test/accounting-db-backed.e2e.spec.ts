@@ -190,6 +190,53 @@ test(
         invoiceLegacy.reduce((sum, row) => sum + Number(row.creditAmount), 0),
       );
 
+      const draftInvoice = await invoices.create(tenantA.id, {
+        invoiceNumber: `INV-DRAFT-${run}`,
+        contactId: contactA.id,
+        type: 'STANDARD',
+        status: 'DRAFT',
+        subtotal: 200,
+        taxRate: 15,
+        taxAmount: 30,
+        discount: 0,
+        total: 230,
+        currency: 'SAR',
+        dueDate: new Date('2026-11-30T00:00:00.000Z'),
+      });
+      assert.equal(
+        await prisma.journalEntryHeader.count({
+          where: { tenantId: tenantA.id, sourceType: 'INVOICE', sourceId: draftInvoice.id },
+        }),
+        0,
+      );
+
+      const issuedDraft = await invoices.update(tenantA.id, draftInvoice.id, { status: 'SENT' });
+      assert.equal(issuedDraft.status, 'SENT');
+      assert.equal(
+        await prisma.journalEntryHeader.count({
+          where: { tenantId: tenantA.id, sourceType: 'INVOICE', sourceId: draftInvoice.id },
+        }),
+        1,
+      );
+
+      const viewedDraft = await invoices.update(tenantA.id, draftInvoice.id, { status: 'VIEWED' });
+      assert.equal(viewedDraft.status, 'VIEWED');
+      assert.equal(
+        await prisma.journalEntryHeader.count({
+          where: { tenantId: tenantA.id, sourceType: 'INVOICE', sourceId: draftInvoice.id },
+        }),
+        1,
+      );
+
+      await assert.rejects(
+        () => invoices.update(tenantA.id, draftInvoice.id, { total: 1 }),
+        /الفاتورة مُرحّلة محاسبياً/,
+      );
+      assert.equal(
+        Number((await prisma.invoice.findUnique({ where: { id: draftInvoice.id } }))!.total),
+        230,
+      );
+
       const contactB = await prisma.contact.create({
         data: { tenantId: tenantB.id, firstName: 'Rollback', lastName: 'Customer' },
       });
@@ -216,6 +263,28 @@ test(
           where: { tenantId: tenantB.id, invoiceNumber: rollbackInvoiceNumber },
         }),
         null,
+      );
+
+      const draftB = await invoices.create(tenantB.id, {
+        invoiceNumber: `INV-DRAFT-ROLLBACK-${run}`,
+        contactId: contactB.id,
+        type: 'STANDARD',
+        status: 'DRAFT',
+        subtotal: 100,
+        taxRate: 15,
+        taxAmount: 15,
+        discount: 0,
+        total: 115,
+        currency: 'SAR',
+        dueDate: new Date('2026-11-30T00:00:00.000Z'),
+      });
+      await assert.rejects(
+        () => invoices.update(tenantB.id, draftB.id, { status: 'SENT' }),
+        /Missing active accounting mappings/,
+      );
+      assert.equal(
+        (await prisma.invoice.findUnique({ where: { id: draftB.id } }))!.status,
+        'DRAFT',
       );
 
       const dual = await dualWrite.post({
