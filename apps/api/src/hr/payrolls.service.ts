@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { prisma, tenantWhere } from '@scc/database';
 import { pagedResult, parsePagination } from './pagination';
 
@@ -43,6 +43,17 @@ export class PayrollsService {
   async create(req: any, dto: any) {
     const tenantId = req.user?.tenantId;
     await this.assertEmployee(tenantId, dto.employeeId);
+    const existing = await prisma.payroll.findFirst({
+      where: {
+        ...tenantWhere(tenantId),
+        employeeId: dto.employeeId,
+        month: dto.month,
+        year: dto.year,
+      },
+    });
+    if (existing) {
+      throw new ConflictException('Payroll already exists for this employee and period');
+    }
     return prisma.payroll.create({
       data: { ...dto, status: 'DRAFT', tenantId },
     });
