@@ -167,6 +167,35 @@ async function verifyAccountingCorePreconditions(applied) {
   }
 }
 
+
+async function verifyPaymentSchemaPreconditions(applied) {
+  const migration = '20261112165000_reconcile_customer_payments';
+  if (applied.has(migration)) return;
+
+  assertEnumCompatibility(
+    'PaymentMethod',
+    await enumValues('PaymentMethod'),
+    ['CASH','BANK_TRANSFER','CREDIT_CARD','DEBIT_CARD','CHECK','ONLINE','SADAD','APPLE_PAY','STC_PAY'],
+  );
+  assertEnumCompatibility(
+    'PaymentStatus',
+    await enumValues('PaymentStatus'),
+    ['PENDING','COMPLETED','FAILED','REFUNDED'],
+  );
+
+  if (await tableExists('payments')) {
+    const columns = [
+      'id','tenantId','invoiceId','amount','currency','method','status',
+      'reference','notes','paidAt','createdAt',
+    ];
+    if (!(await columnsPresent('payments', columns))) {
+      throw new Error('PAYMENT_SCHEMA_BLOCKED incomplete columns: payments');
+    }
+  }
+
+  console.log('PAYMENT_SCHEMA_PREFLIGHT_PASS');
+}
+
 async function appliedMigrations() {
   const exists = await tableExists('_prisma_migrations');
   if (!exists) return new Set();
@@ -364,6 +393,7 @@ async function resolveIfNeeded(applied, migration, verify) {
   }
 
   await verifyAccountingCorePreconditions(applied);
+  await verifyPaymentSchemaPreconditions(applied);
 
   console.log('PRISMA_MIGRATE_DEPLOY_START');
   runPrisma(['migrate', 'deploy']);
