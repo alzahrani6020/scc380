@@ -11,23 +11,36 @@ export class ReportsController {
   constructor(private service: ReportsService) {}
 
   @Get('trial-balance')
-  getTrialBalance(@Request() req: any) {
-    return this.service.getTrialBalance(req.user.tenantId, req.user.role);
+  getTrialBalance(
+    @Request() req: any,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.service.getTrialBalance(req.user.tenantId, req.user.role, from, to);
   }
 
   @Get('income-statement')
-  getIncomeStatement(@Request() req: any) {
-    return this.service.getIncomeStatement(req.user.tenantId, req.user.role);
+  getIncomeStatement(
+    @Request() req: any,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.service.getIncomeStatement(req.user.tenantId, req.user.role, from, to);
   }
 
   @Get('balance-sheet')
-  getBalanceSheet(@Request() req: any) {
-    return this.service.getBalanceSheet(req.user.tenantId, req.user.role);
+  getBalanceSheet(@Request() req: any, @Query('asOfDate') asOfDate?: string) {
+    return this.service.getBalanceSheet(req.user.tenantId, req.user.role, asOfDate);
   }
 
   @Get('general-ledger/:accountId')
-  getGeneralLedger(@Param('accountId') accountId: string, @Request() req: any) {
-    return this.service.getGeneralLedger(accountId, req.user.tenantId, req.user.role);
+  getGeneralLedger(
+    @Param('accountId') accountId: string,
+    @Request() req: any,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.service.getGeneralLedger(accountId, req.user.tenantId, req.user.role, from, to);
   }
 
   @Get('vat')
