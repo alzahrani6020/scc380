@@ -1,5 +1,19 @@
 -- Wave 2: additive accounting-core tables.
 -- Safety: no DROP, TRUNCATE, DELETE, UPDATE, or legacy journal mutation.
+-- Compatibility: historical migrations do not create the later finance schema on a fresh DB,
+-- so enum types and optional finance-dimension foreign keys are created conditionally.
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'JournalType') THEN
+    CREATE TYPE "JournalType" AS ENUM ('GENERAL', 'ADJUSTING', 'CLOSING', 'REVERSING');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'JournalStatus') THEN
+    CREATE TYPE "JournalStatus" AS ENUM ('DRAFT', 'POSTED', 'REVERSED');
+  END IF;
+END
+$$;
+
 
 CREATE TABLE "journal_entry_headers" (
     "id" TEXT NOT NULL,
@@ -95,18 +109,30 @@ ALTER TABLE "journal_entry_lines"
 ADD CONSTRAINT "journal_entry_lines_journalEntryId_fkey"
 FOREIGN KEY ("journalEntryId") REFERENCES "journal_entry_headers"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
-ALTER TABLE "journal_entry_lines"
-ADD CONSTRAINT "journal_entry_lines_accountId_fkey"
-FOREIGN KEY ("accountId") REFERENCES "chart_of_accounts"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+DO $
+BEGIN
+  IF to_regclass('public.chart_of_accounts') IS NOT NULL THEN
+    ALTER TABLE "journal_entry_lines"
+      ADD CONSTRAINT "journal_entry_lines_accountId_fkey"
+      FOREIGN KEY ("accountId") REFERENCES "chart_of_accounts"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
 
-ALTER TABLE "journal_entry_lines"
-ADD CONSTRAINT "journal_entry_lines_costCenterId_fkey"
-FOREIGN KEY ("costCenterId") REFERENCES "cost_centers"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  IF to_regclass('public.cost_centers') IS NOT NULL THEN
+    ALTER TABLE "journal_entry_lines"
+      ADD CONSTRAINT "journal_entry_lines_costCenterId_fkey"
+      FOREIGN KEY ("costCenterId") REFERENCES "cost_centers"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
 
-ALTER TABLE "journal_entry_lines"
-ADD CONSTRAINT "journal_entry_lines_projectId_fkey"
-FOREIGN KEY ("projectId") REFERENCES "projects"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  IF to_regclass('public.projects') IS NOT NULL THEN
+    ALTER TABLE "journal_entry_lines"
+      ADD CONSTRAINT "journal_entry_lines_projectId_fkey"
+      FOREIGN KEY ("projectId") REFERENCES "projects"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
 
-ALTER TABLE "journal_entry_lines"
-ADD CONSTRAINT "journal_entry_lines_branchId_fkey"
-FOREIGN KEY ("branchId") REFERENCES "branches"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  IF to_regclass('public.branches') IS NOT NULL THEN
+    ALTER TABLE "journal_entry_lines"
+      ADD CONSTRAINT "journal_entry_lines_branchId_fkey"
+      FOREIGN KEY ("branchId") REFERENCES "branches"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END
+$;
