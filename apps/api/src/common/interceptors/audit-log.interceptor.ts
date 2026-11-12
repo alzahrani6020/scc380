@@ -28,10 +28,16 @@ function sanitizeBody(value: any): any {
 }
 
 function getEntityType(path: string): string {
-  if (/\/crm\/contacts\b/.test(path)) return 'CONTACT';
-  if (/\/crm\/deals\b/.test(path)) return 'DEAL';
-  if (/\/crm\/activities\b/.test(path)) return 'ACTIVITY';
-  if (/\/notifications\b/.test(path)) return 'NOTIFICATION';
+  if (//crm/contacts/.test(path)) return 'CONTACT';
+  if (//crm/deals/.test(path)) return 'DEAL';
+  if (//crm/activities/.test(path)) return 'ACTIVITY';
+  if (//hr/employees/.test(path)) return 'EMPLOYEE';
+  if (//hr/attendances/.test(path)) return 'ATTENDANCE';
+  if (//hr/leaves/.test(path)) return 'LEAVE';
+  if (//hr/payrolls/.test(path)) return 'PAYROLL';
+  if (//hr/departments/.test(path)) return 'DEPARTMENT';
+  if (//hr/shifts/.test(path)) return 'SHIFT';
+  if (//notifications/.test(path)) return 'NOTIFICATION';
 
   const segments = path.split('/').filter(Boolean);
   const idx = segments.findIndex((s) =>
@@ -44,10 +50,8 @@ export function deriveAuditAction(method: string, path: string): string {
   const verbs: Record<string, string> = { POST: 'CREATED', PATCH: 'UPDATED', PUT: 'UPDATED', DELETE: 'DELETED' };
   const suffix = verbs[method];
   if (!suffix) return method;
-  if (/\/crm\/contacts\b/.test(path)) return `CONTACT_${suffix}`;
-  if (/\/crm\/deals\b/.test(path)) return `DEAL_${suffix}`;
-  if (/\/crm\/activities\b/.test(path)) return `ACTIVITY_${suffix}`;
-  if (/\/notifications\b/.test(path)) return `NOTIFICATION_${suffix}`;
+  const entityType = getEntityType(path);
+  if (entityType !== 'UNKNOWN' && entityType !== 'HR' && entityType !== 'CRM') return `${entityType}_${suffix}`;
   return method;
 }
 
@@ -58,10 +62,16 @@ async function loadPreviousValue(request: any, method: string, path: string) {
     request.user?.role === 'SUPER_ADMIN' ? request.tenantId : request.user?.tenantId;
   const where = { id: request.params.id, ...tenantWhere(tenantId) };
 
-  if (/\/crm\/contacts\b/.test(path)) return prisma.contact.findFirst({ where });
-  if (/\/crm\/deals\b/.test(path)) return prisma.deal.findFirst({ where });
-  if (/\/crm\/activities\b/.test(path)) return prisma.activity.findFirst({ where });
-  if (/\/notifications\b/.test(path)) {
+  if (//crm/contacts/.test(path)) return prisma.contact.findFirst({ where });
+  if (//crm/deals/.test(path)) return prisma.deal.findFirst({ where });
+  if (//crm/activities/.test(path)) return prisma.activity.findFirst({ where });
+  if (//hr/employees/.test(path)) return prisma.employee.findFirst({ where });
+  if (//hr/attendances/.test(path)) return prisma.attendance.findFirst({ where });
+  if (//hr/leaves/.test(path)) return prisma.leave.findFirst({ where });
+  if (//hr/payrolls/.test(path)) return prisma.payroll.findFirst({ where });
+  if (//hr/departments/.test(path)) return prisma.department.findFirst({ where });
+  if (//hr/shifts/.test(path)) return prisma.shift.findFirst({ where });
+  if (//notifications/.test(path)) {
     const notificationWhere: any = { ...where };
     if (request.user?.role !== 'SUPER_ADMIN') notificationWhere.userId = request.user?.userId;
     return prisma.notification.findFirst({ where: notificationWhere });
