@@ -1,15 +1,21 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
-import { prisma, withTenant } from '@scc/database';
+import { Prisma, prisma, withTenant } from '@scc/database';
+import { AccountMappingService, AccountingRole } from '../accounting-core/account-mapping.service';
+import { AccountingDualWriteService } from '../accounting-core/accounting-dual-write.service';
 
 @Injectable()
 export class InvoicesService {
   private readonly RETENTION_YEARS = 6;
 
-  // ─── Guards ──────────────────────────────────────────────────────────
+  constructor(
+    private readonly accountMapping: AccountMappingService,
+    private readonly dualWrite: AccountingDualWriteService,
+  ) {}
+
   private async guardZatcaLocked(tenantId: string, id: string) {
     const invoice = await prisma.invoice.findFirst({
       where: withTenant({ id }, tenantId),
-      select: { zatcaStatus: true, invoiceNumber: true },
+      select: { id: true, zatcaStatus: true, invoiceNumber: true, type: true, status: true },
     });
     if (!invoice) throw new NotFoundException('الفاتورة غير موجودة');
     if (invoice.zatcaStatus === 'CLEARED' || invoice.zatcaStatus === 'REPORTED') {
@@ -27,7 +33,6 @@ export class InvoicesService {
       throw new BadRequestException(`رقم الفاتورة يجب أن يبدأ بالسلسلة "${series}"`);
     }
 
-    // Prevent duplicate invoice numbers
     const existing = await prisma.invoice.findFirst({
       where: withTenant({ invoiceNumber, NOT: excludeId ? { id: excludeId } : undefined }, tenantId),
     });
@@ -45,7 +50,85 @@ export class InvoicesService {
     };
   }
 
-  // ─── CRUD ────────────────────────────────────────────────────────────
+  private isPostingEligible(invoice: { type: string; status: string }) {
+    return (
+      invoice.type === 'STANDARD' &&
+      !['DRAFT', 'CANCELLED'].includes(invoice.status)
+    );
+  }
+
+  private async postInvoiceInTransaction(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    invoice: {
+      id: string;
+      invoiceNumber: string;
+      issueDate: Date;
+      type: string;
+      status: string;
+      subtotal: Prisma.Decimal;
+      discount: Prisma.Decimal | null;
+      taxAmount: Prisma.Decimal;
+      total: Prisma.Decimal;
+    },
+  ) {
+    if (!this.isPostingEligible(invoice)) return;
+
+    const enabled = await this.accountMapping.isAutoPostingEnabledInTransaction(tx, tenantId);
+    if (!enabled) return;
+
+    const roles: AccountingRole[] = [
+      'ACCOUNTS_RECEIVABLE',
+      'SALES_REVENUE',
+      ...(invoice.taxAmount.gt(0) ? ['VAT_PAYABLE' as const] : []),
+    ];
+    const accounts = await this.accountMapping.resolveInTransaction(tx, tenantId, roles);
+
+    const revenueAmount = invoice.subtotal.sub(invoice.discount ?? new Prisma.Decimal(0));
+    if (invoice.total.lte(0) || revenueAmount.lt(0)) {
+      throw new BadRequestException('Invoice accounting amounts must be positive');
+    }
+
+    const lines: Array<{
+      accountId: string;
+      debitAmount?: Prisma.Decimal;
+      creditAmount?: Prisma.Decimal;
+      description: string;
+    }> = [
+      {
+        accountId: accounts.ACCOUNTS_RECEIVABLE.id,
+        debitAmount: invoice.total,
+        description: `Accounts receivable - ${invoice.invoiceNumber}`,
+      },
+    ];
+
+    if (revenueAmount.gt(0)) {
+      lines.push({
+        accountId: accounts.SALES_REVENUE.id,
+        creditAmount: revenueAmount,
+        description: `Sales revenue - ${invoice.invoiceNumber}`,
+      });
+    }
+    if (invoice.taxAmount.gt(0)) {
+      lines.push({
+        accountId: accounts.VAT_PAYABLE.id,
+        creditAmount: invoice.taxAmount,
+        description: `VAT payable - ${invoice.invoiceNumber}`,
+      });
+    }
+
+    await this.dualWrite.postInTransaction(tx, {
+      tenantId,
+      entryNumber: `INV-${invoice.id}`,
+      date: invoice.issueDate,
+      description: `Sales invoice ${invoice.invoiceNumber}`,
+      reference: invoice.invoiceNumber,
+      sourceType: 'INVOICE',
+      sourceId: invoice.id,
+      lines,
+    });
+  }
+
   async findAll(tenantId: string, filters?: { status?: string; search?: string }) {
     const where = withTenant({}, tenantId);
     if (filters?.status) where.status = filters.status;
@@ -73,42 +156,84 @@ export class InvoicesService {
 
   async create(tenantId: string, data: any) {
     const { items, ...invoiceData } = data;
-
-    // Validate series & uniqueness
     await this.validateInvoiceSeries(tenantId, invoiceData.invoiceNumber);
 
-    // Enforce server timestamp (ZATCA anti-tampering)
     const lockedData = this.enforceServerTimestamp(invoiceData);
-
-    // Set retention date (6 years)
     const retentionUntil = new Date();
     retentionUntil.setFullYear(retentionUntil.getFullYear() + this.RETENTION_YEARS);
 
-    return prisma.invoice.create({
-      data: {
-        ...lockedData,
-        tenantId,
-        retentionUntil,
-        items: items?.length ? { create: items.map((item: any) => ({ ...item, tenantId })) } : undefined,
-      },
-      include: { items: true },
+    return prisma.$transaction(async tx => {
+      const invoice = await tx.invoice.create({
+        data: {
+          ...lockedData,
+          tenantId,
+          retentionUntil,
+          items: items?.length ? { create: items.map((item: any) => ({ ...item, tenantId })) } : undefined,
+        },
+        include: { items: true },
+      });
+
+      await this.postInvoiceInTransaction(tx, tenantId, invoice);
+      return invoice;
     });
   }
 
   async update(tenantId: string, id: string, data: any) {
     const invoice = await this.guardZatcaLocked(tenantId, id);
 
-    // If trying to change invoiceNumber, validate series
     if (data.invoiceNumber && data.invoiceNumber !== invoice.invoiceNumber) {
       await this.validateInvoiceSeries(tenantId, data.invoiceNumber, id);
     }
 
-    // Block date tampering
     if (data.issueDate || data.createdAt) {
       throw new ForbiddenException('تغيير تاريخ الفاتورة محظور — يتم تحديده تلقائياً من الخادم');
     }
 
-    return prisma.invoice.update({ where: { id }, data, include: { items: true } });
+    const postedJournal = await prisma.journalEntryHeader.findFirst({
+      where: { tenantId, sourceType: 'INVOICE', sourceId: id },
+      select: { id: true },
+    });
+    if (postedJournal) {
+      const lockedFields = [
+        'invoiceNumber',
+        'type',
+        'subtotal',
+        'taxRate',
+        'taxAmount',
+        'discount',
+        'total',
+        'currency',
+      ];
+      const changedLockedField = lockedFields.find(field =>
+        Object.prototype.hasOwnProperty.call(data, field),
+      );
+      if (changedLockedField) {
+        throw new ForbiddenException(
+          `الفاتورة مُرحّلة محاسبياً — لا يمكن تعديل الحقل ${changedLockedField}; استخدم مستند تصحيح/عكس`,
+        );
+      }
+      if (data.status === 'CANCELLED') {
+        throw new ForbiddenException(
+          'الفاتورة مُرحّلة محاسبياً — الإلغاء يتطلب مستند عكس/إشعار دائن',
+        );
+      }
+    }
+
+    const wasEligible = this.isPostingEligible(invoice);
+
+    return prisma.$transaction(async tx => {
+      const updated = await tx.invoice.update({
+        where: { id },
+        data,
+        include: { items: true },
+      });
+
+      if (!wasEligible && this.isPostingEligible(updated)) {
+        await this.postInvoiceInTransaction(tx, tenantId, updated);
+      }
+
+      return updated;
+    });
   }
 
   async delete(tenantId: string, id: string) {
