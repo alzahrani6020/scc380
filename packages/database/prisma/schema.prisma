@@ -54,6 +54,8 @@ model Tenant {
   journalEntryHeaders JournalEntryHeader[]
   journalEntryLines JournalEntryLine[]
   bankAccounts  BankAccount[]
+  bankReconciliations BankReconciliation[]
+  bankStatementLines BankStatementLine[]
   purchaseOrders PurchaseOrder[]
   leaves        Leave[]
   attendances   Attendance[]
@@ -626,6 +628,7 @@ model ChartOfAccount {
   supplierInvoiceItems SupplierInvoiceItem[]
   expenseDebits Expense[] @relation("ExpenseDebitAccount")
   expenseCredits Expense[] @relation("ExpenseCreditAccount")
+  bankAccounts BankAccount[] @relation("BankAccountLedgerAccount")
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -648,6 +651,7 @@ model JournalEntry {
   type          JournalType @default(GENERAL)
   status        JournalStatus @default(POSTED)
   createdAt     DateTime  @default(now())
+  reconciledBankLines BankStatementLine[] @relation("BankStatementLegacyMatch")
 
   @@index([tenantId])
   @@index([date])
@@ -708,6 +712,7 @@ model JournalEntryLine {
   branch        Branch? @relation(fields: [branchId], references: [id], onDelete: Restrict)
 
   createdAt     DateTime  @default(now())
+  reconciledBankLines BankStatementLine[] @relation("BankStatementModernMatch")
 
   @@unique([journalEntryId, lineNumber])
   @@index([tenantId])
@@ -733,12 +738,73 @@ model BankAccount {
   isDefault     Boolean   @default(false)
   branchId      String?
   branch        Branch?   @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  chartAccountId String?
+  chartAccount  ChartOfAccount? @relation("BankAccountLedgerAccount", fields: [chartAccountId], references: [id], onDelete: Restrict)
   isActive      Boolean   @default(true)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
+  reconciliations BankReconciliation[]
+  statementLines BankStatementLine[]
+
   @@index([tenantId])
+  @@index([chartAccountId])
   @@map("bank_accounts")
+}
+
+model BankReconciliation {
+  id              String   @id @default(cuid())
+  tenantId        String
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  bankAccountId   String
+  bankAccount     BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  startDate       DateTime
+  endDate         DateTime
+  openingBalance  Decimal  @db.Decimal(18,2)
+  endingBalance   Decimal  @db.Decimal(18,2)
+  ledgerBalance   Decimal? @db.Decimal(18,2)
+  difference      Decimal? @db.Decimal(18,2)
+  status          BankReconciliationStatus @default(DRAFT)
+  completedAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  lines           BankStatementLine[]
+
+  @@unique([tenantId, bankAccountId, endDate])
+  @@index([tenantId])
+  @@index([bankAccountId])
+  @@map("bank_reconciliations")
+}
+
+model BankStatementLine {
+  id                         String @id @default(cuid())
+  tenantId                   String
+  tenant                     Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  reconciliationId           String
+  reconciliation             BankReconciliation @relation(fields: [reconciliationId], references: [id], onDelete: Cascade)
+  bankAccountId              String
+  bankAccount                BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  transactionDate            DateTime
+  amount                     Decimal @db.Decimal(18,2)
+  reference                  String?
+  description                String?
+  externalId                 String?
+  status                     BankStatementLineStatus @default(UNMATCHED)
+  matchedJournalEntryLineId  String?
+  matchedJournalEntryLine    JournalEntryLine? @relation("BankStatementModernMatch", fields: [matchedJournalEntryLineId], references: [id], onDelete: SetNull)
+  matchedLegacyJournalEntryId String?
+  matchedLegacyJournalEntry  JournalEntry? @relation("BankStatementLegacyMatch", fields: [matchedLegacyJournalEntryId], references: [id], onDelete: SetNull)
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+
+  @@unique([tenantId, bankAccountId, externalId])
+  @@index([tenantId])
+  @@index([reconciliationId])
+  @@index([bankAccountId])
+  @@index([status])
+  @@index([matchedJournalEntryLineId])
+  @@index([matchedLegacyJournalEntryId])
+  @@map("bank_statement_lines")
 }
 
 model Supplier {
@@ -2376,6 +2442,16 @@ enum JournalStatus {
   DRAFT
   POSTED
   REVERSED
+}
+
+enum BankReconciliationStatus {
+  DRAFT
+  COMPLETED
+}
+
+enum BankStatementLineStatus {
+  UNMATCHED
+  MATCHED
 }
 
 enum POStatus {
