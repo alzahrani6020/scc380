@@ -107,7 +107,7 @@ test('dual write is atomic and preserves deterministic legacy line numbers', () 
   assert.match(service, /prisma\.\$transaction/);
   assert.match(service, /postInTransaction\(tx, input\)/);
   assert.match(service, /tx\.journalEntry\.createMany/);
-  assert.match(service, /entryNumber: \`\$\{input\.entryNumber\}-L\$\{index \+ 1\}\`/);
+  assert.match(service, /entryNumber: \`LEG-\$\{input\.tenantId\}-\$\{input\.entryNumber\}-L\$\{index \+ 1\}\`/);
   assert.match(service, /status:\s*JournalStatus\.POSTED/);
 });
 
