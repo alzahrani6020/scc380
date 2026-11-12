@@ -166,15 +166,18 @@ export default function DealsPage() {
       const payload = { ...formData };
       if (payload.value) payload.value = parseFloat(payload.value);
       if (payload.probability) payload.probability = parseInt(payload.probability);
-      // Empty optional fields would fail DTO validation — drop them
-      for (const key of ['description', 'expectedClose', 'value', 'probability', 'currency']) {
-        if (payload[key] === '') delete payload[key];
-      }
-      for (const key of ['companyId', 'pipelineId', 'pipelineStageId']) {
+      // On edit, an explicitly cleared optional value must be sent as null so
+      // Prisma can remove the existing value/relation. Omitting it would keep
+      // the previous database value unchanged.
+      for (const key of ['description', 'expectedClose', 'value', 'companyId', 'pipelineId', 'pipelineStageId']) {
         if (payload[key] === '') {
           if (editing) payload[key] = null;
           else delete payload[key];
         }
+      }
+      // These fields keep their create defaults when left empty.
+      for (const key of ['probability', 'currency']) {
+        if (payload[key] === '') delete payload[key];
       }
       if (editing) {
         await api.patch(`/crm/deals/${editing.id}`, payload);
