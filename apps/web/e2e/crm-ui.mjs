@@ -58,6 +58,25 @@ let activityCompletePatch = null;
 let failNextDealList = false;
 let failNextDealPost = false;
 let failNextActivityPost = false;
+let companyPost = null;
+let companyPatch = null;
+let companyDeleteId = null;
+let contactPost = null;
+let pipelinePost = null;
+let pipelinePatch = null;
+let pipelineDeleteId = null;
+let stagePost = null;
+let stagePatch = null;
+let stageDeleteId = null;
+let lifecycleMode = false;
+const lifecycle = {
+  company: null,
+  contact: null,
+  pipeline: null,
+  stage: null,
+  deal: null,
+  activity: null,
+};
 const dealListQueries = [];
 const activityListQueries = [];
 const contactListQueries = [];
@@ -104,9 +123,72 @@ async function installApiMock(page) {
       await route.fulfill(json({ total: 0 }));
       return;
     }
+    if (method === 'GET' && path === '/analytics/dashboard') {
+      await route.fulfill(json({
+        counts: {
+          contacts: lifecycleMode && lifecycle.contact ? 2 : 1,
+          deals: lifecycleMode && lifecycle.deal ? 2 : 1,
+        },
+        revenue: { deals: 125000 },
+      }));
+      return;
+    }
+    if (method === 'GET' && path === '/analytics/crm') {
+      await route.fulfill(json({
+        stageBreakdown: [
+          { key: 'LEAD', label: 'LEAD', source: 'legacy', count: lifecycleMode && lifecycle.deal ? 2 : 1 },
+        ],
+        bySource: [{ source: 'OTHER', _count: { id: lifecycleMode && lifecycle.contact ? 2 : 1 } }],
+      }));
+      return;
+    }
 
     if (method === 'GET' && path === '/crm/pipelines') {
-      await route.fulfill(json([pipeline]));
+      if (lifecycleMode && lifecycle.pipeline) {
+        await route.fulfill(json([lifecycle.pipeline, pipeline]));
+      } else {
+        await route.fulfill(json([pipeline]));
+      }
+      return;
+    }
+    if (method === 'POST' && path === '/crm/pipelines') {
+      pipelinePost = req.postDataJSON();
+      const created = { id: 'p-new', stages: [], ...pipelinePost };
+      if (lifecycleMode) lifecycle.pipeline = created;
+      await route.fulfill(json(created, 201));
+      return;
+    }
+    if (method === 'PATCH' && path === '/crm/pipelines/p1') {
+      pipelinePatch = req.postDataJSON();
+      await route.fulfill(json({ ...pipeline, ...pipelinePatch }));
+      return;
+    }
+    if (method === 'DELETE' && path === '/crm/pipelines/p1') {
+      pipelineDeleteId = 'p1';
+      await route.fulfill({ status: 204 });
+      return;
+    }
+    if (method === 'POST' && path === '/crm/pipelines/p1/stages') {
+      stagePost = req.postDataJSON();
+      await route.fulfill(json({ id: 's-new', ...stagePost }, 201));
+      return;
+    }
+    if (method === 'PATCH' && path === '/crm/pipelines/p1/stages/s1') {
+      stagePatch = req.postDataJSON();
+      await route.fulfill(json({ ...pipeline.stages[0], ...stagePatch }));
+      return;
+    }
+    if (method === 'DELETE' && path === '/crm/pipelines/p1/stages/s1') {
+      stageDeleteId = 's1';
+      await route.fulfill({ status: 204 });
+      return;
+    }
+    if (method === 'POST' && path === '/crm/pipelines/p-new/stages') {
+      stagePost = req.postDataJSON();
+      const created = { id: 's-life', ...stagePost };
+      lifecycle.stage = created;
+      lifecycle.pipeline = { ...lifecycle.pipeline, stages: [created] };
+      await route.fulfill(json(created, 201));
       return;
     }
 
@@ -114,9 +196,21 @@ async function installApiMock(page) {
       await route.fulfill(json(contact));
       return;
     }
+    if (method === 'GET' && path === '/crm/contacts/ct-life') {
+      await route.fulfill(json(lifecycle.contact || contact));
+      return;
+    }
     if (method === 'GET' && path === '/crm/contacts') {
       contactListQueries.push(queryObject(url));
-      await route.fulfill(json({ data: [contact], count: 1, page: 1, limit: Number(url.searchParams.get('limit') || 20) }));
+      const data = lifecycleMode && lifecycle.contact ? [lifecycle.contact, contact] : [contact];
+      await route.fulfill(json({ data, count: data.length, page: 1, limit: Number(url.searchParams.get('limit') || 20) }));
+      return;
+    }
+    if (method === 'POST' && path === '/crm/contacts') {
+      contactPost = req.postDataJSON();
+      const created = { id: lifecycleMode ? 'ct-life' : 'ct-new', ...contactPost };
+      if (lifecycleMode) lifecycle.contact = created;
+      await route.fulfill(json(created, 201));
       return;
     }
 
@@ -124,9 +218,31 @@ async function installApiMock(page) {
       await route.fulfill(json(company));
       return;
     }
+    if (method === 'GET' && path === '/crm/companies/co-life') {
+      await route.fulfill(json(lifecycle.company || company));
+      return;
+    }
     if (method === 'GET' && path === '/crm/companies') {
       companyListQueries.push(queryObject(url));
-      await route.fulfill(json({ data: [company], count: 1, page: 1, limit: Number(url.searchParams.get('limit') || 20) }));
+      const data = lifecycleMode && lifecycle.company ? [lifecycle.company, company] : [company];
+      await route.fulfill(json({ data, count: data.length, page: 1, limit: Number(url.searchParams.get('limit') || 20) }));
+      return;
+    }
+    if (method === 'POST' && path === '/crm/companies') {
+      companyPost = req.postDataJSON();
+      const created = { id: lifecycleMode ? 'co-life' : 'co-new', ...companyPost };
+      if (lifecycleMode) lifecycle.company = created;
+      await route.fulfill(json(created, 201));
+      return;
+    }
+    if (method === 'PATCH' && path === '/crm/companies/co1') {
+      companyPatch = req.postDataJSON();
+      await route.fulfill(json({ ...company, ...companyPatch }));
+      return;
+    }
+    if (method === 'DELETE' && path === '/crm/companies/co1') {
+      companyDeleteId = 'co1';
+      await route.fulfill({ status: 204 });
       return;
     }
 
@@ -141,9 +257,10 @@ async function installApiMock(page) {
         await route.fulfill(json({ message: 'forced list failure' }, 500));
         return;
       }
+      const dealData = lifecycleMode && lifecycle.deal ? [lifecycle.deal, deal] : [deal];
       await route.fulfill(json({
-        data: [deal],
-        count: 60,
+        data: dealData,
+        count: lifecycleMode ? dealData.length : 60,
         page: Number(url.searchParams.get('page') || 1),
         limit: Number(url.searchParams.get('limit') || 25),
       }));
@@ -156,7 +273,9 @@ async function installApiMock(page) {
         await route.fulfill(json({ message: 'forced deal create failure' }, 500));
         return;
       }
-      await route.fulfill(json({ id: 'd-new', ...dealPost }), 201);
+      const created = { id: lifecycleMode ? 'd-life' : 'd-new', ...dealPost };
+      if (lifecycleMode) lifecycle.deal = created;
+      await route.fulfill(json(created, 201));
       return;
     }
     if (method === 'PATCH' && path === '/crm/deals/d1') {
@@ -176,9 +295,10 @@ async function installApiMock(page) {
     }
     if (method === 'GET' && path === '/crm/activities') {
       activityListQueries.push(queryObject(url));
+      const activityData = lifecycleMode && lifecycle.activity ? [lifecycle.activity, activity] : [activity];
       await route.fulfill(json({
-        data: [activity],
-        count: 60,
+        data: activityData,
+        count: lifecycleMode ? activityData.length : 60,
         page: Number(url.searchParams.get('page') || 1),
         limit: Number(url.searchParams.get('limit') || 25),
       }));
@@ -191,7 +311,9 @@ async function installApiMock(page) {
         await route.fulfill(json({ message: 'forced activity create failure' }, 500));
         return;
       }
-      await route.fulfill(json({ id: 'a-new', ...activityPost }), 201);
+      const created = { id: lifecycleMode ? 'a-life' : 'a-new', ...activityPost };
+      if (lifecycleMode) lifecycle.activity = created;
+      await route.fulfill(json(created, 201));
       return;
     }
     if (method === 'PATCH' && path === '/crm/activities/a1') {
@@ -389,6 +511,175 @@ async function testActivityCrudAndErrors(page) {
   await waitUntil(() => activityListQueries.some((q) => q.page === '1'), 'Activities did not return to page 1 after deleting the last row on page 2');
 }
 
+
+async function testCompanyCrud(page) {
+  companyPost = null;
+  companyPatch = null;
+  companyDeleteId = null;
+
+  await page.goto(`${BASE}/dashboard/crm/companies`);
+  await page.getByText('Browser Company', { exact: true }).waitFor();
+
+  await page.getByRole('button', { name: 'شركة جديدة', exact: true }).click();
+  await page.getByRole('heading', { name: 'شركة جديدة', exact: true }).waitFor();
+  await fieldByLabel(page, 'الاسم', 'input').fill('Created Browser Company');
+  await fieldByLabel(page, 'السجل التجاري', 'input').fill('1010101010');
+  await fieldByLabel(page, 'المدينة', 'input').fill('Riyadh');
+  await page.getByRole('button', { name: 'إنشاء', exact: true }).click();
+  await waitUntil(() => Boolean(companyPost), 'Company POST was not sent');
+  assert.equal(companyPost.name, 'Created Browser Company');
+  assert.equal(companyPost.crNumber, '1010101010');
+  assert.equal(companyPost.city, 'Riyadh');
+
+  let card = page.locator('.scc-card-hover').filter({ hasText: 'Browser Company' }).first();
+  await card.locator('button').first().click();
+  await page.getByRole('heading', { name: 'تعديل الشركة', exact: true }).waitFor();
+  await fieldByLabel(page, 'الاسم القانوني', 'input').fill('Browser Company Legal');
+  await page.getByRole('button', { name: 'حفظ', exact: true }).click();
+  await waitUntil(() => Boolean(companyPatch), 'Company PATCH was not sent');
+  assert.equal(companyPatch.legalName, 'Browser Company Legal');
+
+  card = page.locator('.scc-card-hover').filter({ hasText: 'Browser Company' }).first();
+  page.once('dialog', (dialog) => dialog.accept());
+  await card.locator('button').last().click();
+  await waitUntil(() => companyDeleteId === 'co1', 'Company DELETE was not sent');
+}
+
+async function testPipelineAndStageCrud(page) {
+  pipelinePost = null;
+  pipelinePatch = null;
+  pipelineDeleteId = null;
+  stagePost = null;
+  stagePatch = null;
+  stageDeleteId = null;
+
+  await page.goto(`${BASE}/dashboard/crm/pipelines`);
+  await page.getByText('Browser Pipeline', { exact: true }).first().waitFor();
+
+  await page.getByRole('button', { name: 'مسار جديد', exact: true }).click();
+  await page.getByRole('heading', { name: 'مسار جديد', exact: true }).waitFor();
+  await fieldByLabel(page, 'الاسم', 'input').fill('Created Browser Pipeline');
+  await fieldByLabel(page, 'الوصف', 'textarea').fill('Pipeline from browser E2E');
+  await page.getByRole('button', { name: 'حفظ', exact: true }).click();
+  await waitUntil(() => Boolean(pipelinePost), 'Pipeline POST was not sent');
+  assert.equal(pipelinePost.name, 'Created Browser Pipeline');
+  assert.equal(pipelinePost.description, 'Pipeline from browser E2E');
+
+  const pipelineButton = page.locator('button.scc-card-hover').filter({ hasText: 'Browser Pipeline' }).first();
+  await pipelineButton.locator('span').filter({ has: page.locator('svg') }).first().click();
+  await page.getByRole('heading', { name: 'تعديل المسار', exact: true }).waitFor();
+  await fieldByLabel(page, 'الوصف', 'textarea').fill('Updated pipeline');
+  await page.getByRole('button', { name: 'حفظ', exact: true }).click();
+  await waitUntil(() => Boolean(pipelinePatch), 'Pipeline PATCH was not sent');
+  assert.equal(pipelinePatch.description, 'Updated pipeline');
+
+  await page.getByText('Browser Pipeline', { exact: true }).first().click();
+  await page.getByRole('button', { name: 'مرحلة', exact: true }).click();
+  await page.getByRole('heading', { name: 'مرحلة جديدة', exact: true }).waitFor();
+  await fieldByLabel(page, 'الاسم', 'input').fill('Created Stage');
+  await fieldByLabel(page, 'الكود', 'input').fill('created stage');
+  await fieldByLabel(page, 'الترتيب', 'input').fill('2');
+  await fieldByLabel(page, 'الاحتمالية %', 'input').fill('50');
+  await page.getByRole('button', { name: 'حفظ', exact: true }).click();
+  await waitUntil(() => Boolean(stagePost), 'Stage POST was not sent');
+  assert.equal(stagePost.name, 'Created Stage');
+  assert.equal(stagePost.code, 'CREATED_STAGE');
+  assert.equal(stagePost.order, 2);
+  assert.equal(stagePost.probability, 50);
+
+  const stageRow = page.locator('.rounded-xl.border').filter({ hasText: 'Browser Stage' }).first();
+  await stageRow.locator('button').first().click();
+  await page.getByRole('heading', { name: 'تعديل المرحلة', exact: true }).waitFor();
+  await fieldByLabel(page, 'الاحتمالية %', 'input').fill('70');
+  await page.getByRole('button', { name: 'حفظ', exact: true }).click();
+  await waitUntil(() => Boolean(stagePatch), 'Stage PATCH was not sent');
+  assert.equal(stagePatch.probability, 70);
+
+  const stageRow2 = page.locator('.rounded-xl.border').filter({ hasText: 'Browser Stage' }).first();
+  page.once('dialog', (dialog) => dialog.accept());
+  await stageRow2.locator('button').last().click();
+  await waitUntil(() => stageDeleteId === 's1', 'Stage DELETE was not sent');
+
+  const pipelineButton2 = page.locator('button.scc-card-hover').filter({ hasText: 'Browser Pipeline' }).first();
+  page.once('dialog', (dialog) => dialog.accept());
+  await pipelineButton2.locator('span').filter({ has: page.locator('svg') }).last().click();
+  await waitUntil(() => pipelineDeleteId === 'p1', 'Pipeline DELETE was not sent');
+}
+
+async function testCrmLifecycle(page) {
+  lifecycleMode = true;
+  lifecycle.company = null;
+  lifecycle.contact = null;
+  lifecycle.pipeline = null;
+  lifecycle.stage = null;
+  lifecycle.deal = null;
+  lifecycle.activity = null;
+
+  await page.goto(`${BASE}/dashboard/crm/companies`);
+  await page.getByRole('button', { name: 'شركة جديدة', exact: true }).click();
+  await fieldByLabel(page, 'الاسم', 'input').fill('Lifecycle Company');
+  await page.getByRole('button', { name: 'إنشاء', exact: true }).click();
+  await waitUntil(() => lifecycle.company?.id === 'co-life', 'Lifecycle company was not created');
+
+  await page.goto(`${BASE}/dashboard/crm/contacts`);
+  await page.getByRole('button', { name: 'إضافة جهة اتصال', exact: true }).click();
+  await fieldByLabel(page, 'الاسم الأول', 'input').fill('Lifecycle');
+  await fieldByLabel(page, 'الاسم الأخير', 'input').fill('Contact');
+  await fieldByLabel(page, 'الشركة', 'select').selectOption('co-life');
+  await page.getByRole('button', { name: 'إنشاء', exact: true }).click();
+  await waitUntil(() => lifecycle.contact?.id === 'ct-life', 'Lifecycle contact was not created');
+  assert.equal(lifecycle.contact.companyId, 'co-life');
+
+  await page.goto(`${BASE}/dashboard/crm/pipelines`);
+  await page.getByRole('button', { name: 'مسار جديد', exact: true }).click();
+  await fieldByLabel(page, 'الاسم', 'input').fill('Lifecycle Pipeline');
+  await page.getByRole('button', { name: 'حفظ', exact: true }).click();
+  await waitUntil(() => lifecycle.pipeline?.id === 'p-new', 'Lifecycle pipeline was not created');
+  await page.getByText('Lifecycle Pipeline', { exact: true }).first().click();
+  await page.getByRole('button', { name: 'مرحلة', exact: true }).click();
+  await fieldByLabel(page, 'الاسم', 'input').fill('Lifecycle Stage');
+  await fieldByLabel(page, 'الكود', 'input').fill('lifecycle');
+  await fieldByLabel(page, 'الترتيب', 'input').fill('1');
+  await fieldByLabel(page, 'الاحتمالية %', 'input').fill('30');
+  await page.getByRole('button', { name: 'حفظ', exact: true }).click();
+  await waitUntil(() => lifecycle.stage?.id === 's-life', 'Lifecycle stage was not created');
+
+  await page.goto(`${BASE}/dashboard/crm/deals`);
+  await page.getByRole('button', { name: 'صفقة جديدة', exact: true }).click();
+  await fieldByLabel(page, 'العنوان', 'input').fill('Lifecycle Deal');
+  await chooseComboboxOption(page, 'العميل', 'ابحث بالاسم أو البريد أو الجوال...', 'Lifecycle', 'Lifecycle Contact');
+  await chooseComboboxOption(page, 'الشركة', 'ابحث عن شركة...', 'Lifecycle', 'Lifecycle Company');
+  await fieldByLabel(page, 'مسار المبيعات', 'select').selectOption('p-new');
+  await fieldByLabel(page, 'المرحلة الديناميكية', 'select').selectOption('s-life');
+  await page.getByRole('button', { name: 'إنشاء', exact: true }).click();
+  await waitUntil(() => lifecycle.deal?.id === 'd-life', 'Lifecycle deal was not created');
+  assert.equal(lifecycle.deal.contactId, 'ct-life');
+  assert.equal(lifecycle.deal.companyId, 'co-life');
+  assert.equal(lifecycle.deal.pipelineId, 'p-new');
+  assert.equal(lifecycle.deal.pipelineStageId, 's-life');
+
+  await page.goto(`${BASE}/dashboard/crm/activities`);
+  await page.getByRole('button', { name: 'نشاط جديد', exact: true }).click();
+  await fieldByLabel(page, 'الموضوع', 'input').fill('Lifecycle Activity');
+  await chooseComboboxOption(page, 'جهة الاتصال', 'ابحث عن جهة اتصال...', 'Lifecycle', 'Lifecycle Contact');
+  await chooseComboboxOption(page, 'الصفقة', 'ابحث عن صفقة...', 'Lifecycle', 'Lifecycle Deal');
+  await page.getByRole('button', { name: 'إنشاء', exact: true }).click();
+  await waitUntil(() => lifecycle.activity?.id === 'a-life', 'Lifecycle activity was not created');
+  assert.equal(lifecycle.activity.contactId, 'ct-life');
+  assert.equal(lifecycle.activity.dealId, 'd-life');
+
+  await page.goto(`${BASE}/dashboard/crm`);
+  await page.getByRole('heading', { name: 'نظرة عامة على CRM', exact: true }).waitFor();
+  await page.getByText('Lifecycle Activity', { exact: true }).waitFor();
+  await page.getByText('Lifecycle Pipeline', { exact: true }).waitFor({ state: 'detached' }).catch(() => {});
+  const cards = page.locator('.scc-card-hover');
+  assert.ok(await cards.count() >= 5, 'CRM overview cards were not rendered');
+  await page.getByText('أحدث الأنشطة', { exact: true }).waitFor();
+  await page.getByText('Lifecycle Activity', { exact: true }).waitFor();
+
+  lifecycleMode = false;
+}
+
 async function testDealQueryContracts(page) {
   dealListQueries.length = 0;
   companyListQueries.length = 0;
@@ -547,6 +838,9 @@ try {
   await testActivityQueryContracts(page);
   await testDealCrudAndErrors(page);
   await testActivityCrudAndErrors(page);
+  await testCompanyCrud(page);
+  await testPipelineAndStageCrud(page);
+  await testCrmLifecycle(page);
   console.log('CRM_BROWSER_E2E: PASS');
 } catch (error) {
   console.error('CRM_BROWSER_E2E: FAIL');
