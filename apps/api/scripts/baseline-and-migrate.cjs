@@ -113,6 +113,11 @@ async function verifyAccountingCorePreconditions(applied) {
   }
 
   assertEnumCompatibility(
+    'AccountType',
+    await enumValues('AccountType'),
+    ['ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE'],
+  );
+  assertEnumCompatibility(
     'JournalType',
     await enumValues('JournalType'),
     ['GENERAL', 'ADJUSTING', 'CLOSING', 'REVERSING'],
@@ -122,6 +127,16 @@ async function verifyAccountingCorePreconditions(applied) {
     await enumValues('JournalStatus'),
     ['DRAFT', 'POSTED', 'REVERSED'],
   );
+
+  const financeDependencyColumns = {
+    chart_of_accounts: ['id','tenantId','code','name','type','balance','isActive','createdAt','updatedAt'],
+    financial_periods: ['id','tenantId','name','year','startDate','endDate','isClosed','createdAt'],
+  };
+  for (const [table, columns] of Object.entries(financeDependencyColumns)) {
+    if ((await tableExists(table)) && !(await columnsPresent(table, columns))) {
+      throw new Error(`ACCOUNTING_CORE_BLOCKED incomplete columns: ${table}`);
+    }
+  }
 
   if (await tableExists('journal_entries')) {
     const rows = await prisma.$queryRawUnsafe(
