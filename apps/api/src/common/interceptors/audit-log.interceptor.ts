@@ -28,16 +28,16 @@ function sanitizeBody(value: any): any {
 }
 
 function getEntityType(path: string): string {
-  if (//crm/contacts/.test(path)) return 'CONTACT';
-  if (//crm/deals/.test(path)) return 'DEAL';
-  if (//crm/activities/.test(path)) return 'ACTIVITY';
-  if (//hr/employees/.test(path)) return 'EMPLOYEE';
-  if (//hr/attendances/.test(path)) return 'ATTENDANCE';
-  if (//hr/leaves/.test(path)) return 'LEAVE';
-  if (//hr/payrolls/.test(path)) return 'PAYROLL';
-  if (//hr/departments/.test(path)) return 'DEPARTMENT';
-  if (//hr/shifts/.test(path)) return 'SHIFT';
-  if (//notifications/.test(path)) return 'NOTIFICATION';
+  if (/\/crm\/contacts\b/.test(path)) return 'CONTACT';
+  if (/\/crm\/deals\b/.test(path)) return 'DEAL';
+  if (/\/crm\/activities\b/.test(path)) return 'ACTIVITY';
+  if (/\/hr\/employees\b/.test(path)) return 'EMPLOYEE';
+  if (/\/hr\/attendances\b/.test(path)) return 'ATTENDANCE';
+  if (/\/hr\/leaves\b/.test(path)) return 'LEAVE';
+  if (/\/hr\/payrolls\b/.test(path)) return 'PAYROLL';
+  if (/\/hr\/departments\b/.test(path)) return 'DEPARTMENT';
+  if (/\/hr\/shifts\b/.test(path)) return 'SHIFT';
+  if (/\/notifications\b/.test(path)) return 'NOTIFICATION';
 
   const segments = path.split('/').filter(Boolean);
   const idx = segments.findIndex((s) =>
@@ -50,8 +50,16 @@ export function deriveAuditAction(method: string, path: string): string {
   const verbs: Record<string, string> = { POST: 'CREATED', PATCH: 'UPDATED', PUT: 'UPDATED', DELETE: 'DELETED' };
   const suffix = verbs[method];
   if (!suffix) return method;
-  const entityType = getEntityType(path);
-  if (entityType !== 'UNKNOWN' && entityType !== 'HR' && entityType !== 'CRM') return `${entityType}_${suffix}`;
+  if (/\/crm\/contacts\b/.test(path)) return `CONTACT_${suffix}`;
+  if (//crm/deals/.test(path)) return `DEAL_${suffix}`;
+  if (//crm/activities/.test(path)) return `ACTIVITY_${suffix}`;
+  if (//hr/employees/.test(path)) return `EMPLOYEE_${suffix}`;
+  if (//hr/attendances/.test(path)) return `ATTENDANCE_${suffix}`;
+  if (//hr/leaves/.test(path)) return `LEAVE_${suffix}`;
+  if (//hr/payrolls/.test(path)) return `PAYROLL_${suffix}`;
+  if (//hr/departments/.test(path)) return `DEPARTMENT_${suffix}`;
+  if (//hr/shifts/.test(path)) return `SHIFT_${suffix}`;
+  if (//notifications/.test(path)) return `NOTIFICATION_${suffix}`;
   return method;
 }
 
