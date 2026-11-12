@@ -34,30 +34,30 @@ export class EmployeeLoansController {
   constructor(private readonly service: EmployeeLoansService) {}
 
   @Get()
-  @RequirePermissions('hr:read')
+  @RequirePermissions('hr:loans:read')
   findAll(@Req() req: any, @Query() query: any) { return this.service.findAll(req, query); }
 
   @Get(':id')
-  @RequirePermissions('hr:read')
+  @RequirePermissions('hr:loans:read')
   findOne(@Req() req: any, @Param('id') id: string) { return this.service.findOne(req, id); }
 
   @Post()
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:loans:write')
   create(@Req() req: any, @Body() dto: CreateEmployeeLoanDto) { return this.service.create(req, dto); }
 
   @Patch(':id')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:loans:write')
   update(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateEmployeeLoanDto) { return this.service.updateDraft(req, id, dto); }
 
   @Post(':id/approve')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:loans:write')
   approve(@Req() req: any, @Param('id') id: string) { return this.service.approve(req, id); }
 
   @Post(':id/repay')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:loans:write')
   repay(@Req() req: any, @Param('id') id: string, @Body() dto: RepayEmployeeLoanDto) { return this.service.repay(req, id, dto); }
 
   @Post(':id/cancel')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:loans:write')
   cancel(@Req() req: any, @Param('id') id: string) { return this.service.cancelDraft(req, id); }
 }
