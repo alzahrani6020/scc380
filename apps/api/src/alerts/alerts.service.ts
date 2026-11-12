@@ -4,7 +4,7 @@ import { AlertsGateway } from './gateway/alerts.gateway';
 
 export interface AlertItem {
   id: string;
-  type: 'LOW_STOCK' | 'OVERDUE_INVOICE' | 'UPCOMING_INVOICE' | 'PENDING_PAYMENT' | 'ASSET_DEPRECIATION' | 'PENDING_LEAVE';
+  type: 'LOW_STOCK' | 'OVERDUE_INVOICE' | 'UPCOMING_INVOICE' | 'PENDING_PAYMENT' | 'ASSET_DEPRECIATION' | 'PENDING_LEAVE' | 'EMPLOYEE_DOCUMENT_EXPIRY' | 'EMPLOYEE_CONTRACT_EXPIRY';
   severity: 'CRITICAL' | 'WARNING' | 'INFO';
   title: string;
   message: string;
@@ -31,7 +31,7 @@ export class SmartAlertsService {
         tenantId: resolvedTenantId,
         type: alert.type,
         entityId: alert.entityId,
-        isRead: false,
+        dismissedAt: null,
       },
     });
     if (existing) return existing;
@@ -54,7 +54,7 @@ export class SmartAlertsService {
   }
 
   async generateAndGetAlerts(tenantId: string | undefined, userRole: string): Promise<AlertItem[]> {
-    const tw = userRole === 'SUPER_ADMIN' ? {} : tenantWhere(tenantId);
+    const tw = tenantWhere(tenantId);
 
     // 1. المخزون المنخفض
     const allProducts = await prisma.product.findMany({
@@ -144,6 +144,47 @@ export class SmartAlertsService {
       });
     }
 
+
+    // 6. مستندات الموظفين المنتهية أو التي ستنتهي خلال 30 يومًا
+    const next30Days = new Date(now);
+    next30Days.setDate(next30Days.getDate() + 30);
+    const expiringDocuments = await prisma.employeeDocument.findMany({
+      where: { ...tw, expiresAt: { not: null, lte: next30Days } },
+      include: { employee: { select: { firstName: true, lastName: true } } },
+    });
+    for (const doc of expiringDocuments) {
+      if (!doc.expiresAt) continue;
+      const daysLeft = Math.ceil((doc.expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      await this.saveAlert(tenantId, {
+        type: 'EMPLOYEE_DOCUMENT_EXPIRY',
+        severity: daysLeft < 0 ? 'CRITICAL' : daysLeft <= 7 ? 'WARNING' : 'INFO',
+        title: daysLeft < 0 ? 'مستند موظف منتهي' : 'مستند موظف يوشك على الانتهاء',
+        message: `${doc.employee.firstName} ${doc.employee.lastName} — ${doc.title} — ${daysLeft < 0 ? `منتهي منذ ${Math.abs(daysLeft)} يوم` : `متبقي ${daysLeft} يوم`}`,
+        entityId: doc.id,
+        entityType: 'EmployeeDocument',
+        actionUrl: `/dashboard/hr/documents?employeeId=${doc.employeeId}`,
+      });
+    }
+
+    // 7. العقود النشطة المنتهية أو التي ستنتهي خلال 30 يومًا
+    const expiringContracts = await prisma.employeeContract.findMany({
+      where: { ...tw, status: 'ACTIVE', endDate: { not: null, lte: next30Days } },
+      include: { employee: { select: { firstName: true, lastName: true } } },
+    });
+    for (const contract of expiringContracts) {
+      if (!contract.endDate) continue;
+      const daysLeft = Math.ceil((contract.endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      await this.saveAlert(tenantId, {
+        type: 'EMPLOYEE_CONTRACT_EXPIRY',
+        severity: daysLeft < 0 ? 'CRITICAL' : daysLeft <= 7 ? 'WARNING' : 'INFO',
+        title: daysLeft < 0 ? 'عقد موظف منتهي' : 'عقد موظف يوشك على الانتهاء',
+        message: `${contract.employee.firstName} ${contract.employee.lastName} — ${contract.contractNumber} — ${daysLeft < 0 ? `منتهي منذ ${Math.abs(daysLeft)} يوم` : `متبقي ${daysLeft} يوم`}`,
+        entityId: contract.id,
+        entityType: 'EmployeeContract',
+        actionUrl: `/dashboard/hr/contracts?employeeId=${contract.employeeId}`,
+      });
+    }
+
     // Broadcast counts
     const resolvedTenantId = await this.resolveTenantId(tenantId);
     const counts = await this.getAlertCounts(tenantId, userRole);
@@ -153,7 +194,7 @@ export class SmartAlertsService {
   }
 
   async getAllAlerts(tenantId: string | undefined, userRole: string) {
-    const where = userRole === 'SUPER_ADMIN' ? { dismissedAt: null } : { ...tenantWhere(tenantId), dismissedAt: null };
+    const where = { ...tenantWhere(tenantId), dismissedAt: null };
     const alerts = await prisma.alert.findMany({
       where,
       orderBy: [{ isRead: 'asc' }, { severity: 'asc' }, { createdAt: 'desc' }],
@@ -162,7 +203,7 @@ export class SmartAlertsService {
   }
 
   async getAlertCounts(tenantId: string | undefined, userRole: string) {
-    const where = userRole === 'SUPER_ADMIN' ? { dismissedAt: null } : { ...tenantWhere(tenantId), dismissedAt: null };
+    const where = { ...tenantWhere(tenantId), dismissedAt: null };
     const [total, critical, warning, info] = await Promise.all([
       prisma.alert.count({ where }),
       prisma.alert.count({ where: { ...where, severity: 'CRITICAL' } }),
@@ -173,17 +214,17 @@ export class SmartAlertsService {
   }
 
   async markAsRead(id: string, tenantId: string, userRole: string) {
-    const where = userRole === 'SUPER_ADMIN' ? { id } : { id, tenantId };
+    const where = { id, ...tenantWhere(tenantId) };
     return prisma.alert.updateMany({ where, data: { isRead: true } });
   }
 
   async markAllAsRead(tenantId: string | undefined, userRole: string) {
-    const where = userRole === 'SUPER_ADMIN' ? { isRead: false } : { ...tenantWhere(tenantId), isRead: false };
+    const where = { ...tenantWhere(tenantId), isRead: false };
     return prisma.alert.updateMany({ where, data: { isRead: true } });
   }
 
   async dismiss(id: string, tenantId: string, userRole: string) {
-    const where = userRole === 'SUPER_ADMIN' ? { id } : { id, tenantId };
+    const where = { id, ...tenantWhere(tenantId) };
     return prisma.alert.updateMany({ where, data: { dismissedAt: new Date() } });
   }
 }
