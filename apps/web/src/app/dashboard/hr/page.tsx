@@ -5,7 +5,7 @@ import Link from 'next/link';
 import api from '@/lib/api';
 import {
   Briefcase, Users, ClipboardList, CalendarDays, Wallet, Network,
-  Clock3, UserCheck, UserX, TimerReset, Home, AlertTriangle, RefreshCw, FileText, Coins, ReceiptText, BriefcaseBusiness, Target, GraduationCap
+  Clock3, UserCheck, UserX, TimerReset, Home, AlertTriangle, RefreshCw, FileText, Coins, ReceiptText, Target, GraduationCap
 } from 'lucide-react';
 
 export default function HrDashboardPage() {
@@ -60,7 +60,7 @@ export default function HrDashboardPage() {
     { label: 'المستندات', href: '/dashboard/hr/documents', icon: FileText },
     { label: 'السلف والقروض', href: '/dashboard/hr/loans', icon: Coins },
     { label: 'المخالصة', href: '/dashboard/hr/settlements', icon: ReceiptText },
-    { label: 'التوظيف', href: '/dashboard/hr/recruitment', icon: BriefcaseBusiness },
+    { label: 'التوظيف', href: '/dashboard/hr/recruitment', icon: Briefcase },
     { label: 'الأداء', href: '/dashboard/hr/performance', icon: Target },
     { label: 'التدريب', href: '/dashboard/hr/training', icon: GraduationCap },
     { label: 'الإدارات', href: '/dashboard/hr/departments', icon: Network },
