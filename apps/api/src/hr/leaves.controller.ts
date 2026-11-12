@@ -31,22 +31,22 @@ export class LeavesController {
   constructor(private readonly service: LeavesService) {}
 
   @Get()
-  @RequirePermissions('hr:read')
+  @RequirePermissions('hr:leave-requests:read')
   findAll(@Req() req: any, @Query() query: any) { return this.service.findAll(req, query); }
 
   @Get(':id')
-  @RequirePermissions('hr:read')
+  @RequirePermissions('hr:leave-requests:read')
   findOne(@Req() req: any, @Param('id') id: string) { return this.service.findOne(req, id); }
 
   @Post()
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:leave-requests:write')
   create(@Req() req: any, @Body() dto: CreateLeaveDto) { return this.service.create(req, dto); }
 
   @Patch(':id')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:leave-requests:write')
   update(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateLeaveDto) { return this.service.update(req, id, dto); }
 
   @Delete(':id')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:leave-requests:write')
   remove(@Req() req: any, @Param('id') id: string) { return this.service.remove(req, id); }
 }
