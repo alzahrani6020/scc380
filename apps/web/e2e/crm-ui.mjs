@@ -326,7 +326,7 @@ async function testDealCrudAndErrors(page) {
   await chooseComboboxOption(page, 'العميل', 'ابحث بالاسم أو البريد أو الجوال...', 'Ali', 'Ali A');
   await page.getByRole('button', { name: 'إنشاء', exact: true }).click();
   await waitUntil(() => alertMessages.includes('حدث خطأ'), 'Deal create failure did not surface an alert');
-  await page.getByText('صفقة جديدة', { exact: true }).waitFor();
+  await page.getByRole('heading', { name: 'صفقة جديدة', exact: true }).waitFor();
   await page.getByRole('button', { name: 'إلغاء', exact: true }).click();
   page.off('dialog', onDialog);
 
@@ -372,7 +372,7 @@ async function testActivityCrudAndErrors(page) {
   await page.getByRole('button', { name: 'نشاط جديد', exact: true }).click();
   await fieldByLabel(page, 'الموضوع', 'input').fill('Failing Browser Activity');
   await page.getByRole('button', { name: 'إنشاء', exact: true }).click();
-  await page.getByText('نشاط جديد', { exact: true }).waitFor();
+  await page.getByRole('heading', { name: 'نشاط جديد', exact: true }).waitFor();
   await page.getByRole('button', { name: 'إلغاء', exact: true }).click();
 
   let row = page.locator('.scc-card-hover').filter({ hasText: 'Browser Activity' }).first();
