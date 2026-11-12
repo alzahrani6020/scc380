@@ -583,11 +583,17 @@ model Expense {
   incurredAt    DateTime  @default(now())
   approvedById  String?
   status        ExpenseStatus @default(PENDING)
+  debitAccountId String?
+  debitAccount   ChartOfAccount? @relation("ExpenseDebitAccount", fields: [debitAccountId], references: [id], onDelete: Restrict)
+  creditAccountId String?
+  creditAccount  ChartOfAccount? @relation("ExpenseCreditAccount", fields: [creditAccountId], references: [id], onDelete: Restrict)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
   @@index([tenantId])
   @@index([category])
+  @@index([debitAccountId])
+  @@index([creditAccountId])
   @@map("expenses")
 }
 
@@ -607,6 +613,9 @@ model ChartOfAccount {
 
   ledgerEntries JournalEntry[]
   journalEntryLines JournalEntryLine[]
+  supplierInvoiceItems SupplierInvoiceItem[]
+  expenseDebits Expense[] @relation("ExpenseDebitAccount")
+  expenseCredits Expense[] @relation("ExpenseCreditAccount")
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -874,11 +883,14 @@ model SupplierInvoiceItem {
   quantity      Int       @default(1)
   unitPrice     Decimal   @db.Decimal(18, 4)
   total         Decimal   @db.Decimal(18, 2)
+  accountId     String?
+  chartAccount  ChartOfAccount? @relation(fields: [accountId], references: [id], onDelete: Restrict)
   
   createdAt     DateTime  @default(now())
   
   @@index([tenantId])
   @@index([supplierInvoiceId])
+  @@index([accountId])
   @@map("supplier_invoice_items")
 }
 
