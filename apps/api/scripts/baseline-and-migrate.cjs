@@ -8,6 +8,9 @@ const historical = [
   '20261111174000_add_crm_relations',
 ];
 
+const hrCoreMigration = '20261112130000_reconcile_hr_core';
+const hrCoreTables = ['leaves', 'attendances', 'payrolls', 'shifts'];
+
 function runPrisma(args) {
   execFileSync('pnpm', ['--dir', 'packages/database', 'exec', 'prisma', ...args, '--schema', 'prisma/schema.prisma'], {
     cwd: '/app',
@@ -41,6 +44,31 @@ async function constraintsPresent(names) {
     names,
   );
   const found = new Set(rows.map((r) => r.conname));
+  return names.every((name) => found.has(name));
+}
+
+async function enumExists(name) {
+  const rows = await prisma.$queryRawUnsafe(
+    `SELECT EXISTS (
+       SELECT 1
+       FROM pg_type t
+       JOIN pg_namespace n ON n.oid = t.typnamespace
+       WHERE n.nspname = 'public' AND t.typname = $1
+     ) AS exists`,
+    name,
+  );
+  return Boolean(rows?.[0]?.exists);
+}
+
+async function columnsPresent(table, names) {
+  const rows = await prisma.$queryRawUnsafe(
+    `SELECT column_name
+       FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = $1 AND column_name = ANY($2::text[])`,
+    table,
+    names,
+  );
+  const found = new Set(rows.map((r) => r.column_name));
   return names.every((name) => found.has(name));
 }
 
@@ -122,6 +150,61 @@ async function verifyCrmExpansionPreconditions(applied) {
   }
 }
 
+async function reconcileHrCore(applied) {
+  if (applied.has(hrCoreMigration)) return;
+
+  const states = [];
+  for (const table of hrCoreTables) {
+    states.push([table, await tableExists(table)]);
+  }
+  const existing = states.filter(([, exists]) => exists).map(([table]) => table);
+
+  if (existing.length === 0) {
+    console.log('HR_CORE_RECONCILE fresh schema: migration will create HR core tables');
+    return;
+  }
+
+  if (existing.length !== hrCoreTables.length) {
+    throw new Error(
+      `HR_CORE_RECONCILE_BLOCKED partial schema existing=${existing.join(',')} expected=${hrCoreTables.join(',')}`,
+    );
+  }
+
+  const requiredEnums = ['LeaveType', 'LeaveStatus', 'AttendanceStatus', 'PayrollStatus'];
+  for (const name of requiredEnums) {
+    if (!(await enumExists(name))) {
+      throw new Error(`HR_CORE_RECONCILE_BLOCKED missing enum: ${name}`);
+    }
+  }
+
+  const columnSets = {
+    leaves: ['id','tenantId','employeeId','type','startDate','endDate','days','status','createdAt','updatedAt'],
+    attendances: ['id','tenantId','employeeId','date','status','createdAt'],
+    payrolls: ['id','tenantId','employeeId','month','year','basicSalary','netSalary','status','createdAt','updatedAt'],
+    shifts: ['id','tenantId','employeeId','name','startTime','isRecurring','daysOfWeek','createdAt','updatedAt'],
+  };
+
+  for (const [table, columns] of Object.entries(columnSets)) {
+    if (!(await columnsPresent(table, columns))) {
+      throw new Error(`HR_CORE_RECONCILE_BLOCKED incomplete columns: ${table}`);
+    }
+  }
+
+  const constraints = [
+    'leaves_tenantId_fkey','leaves_employeeId_fkey',
+    'attendances_tenantId_fkey','attendances_employeeId_fkey',
+    'payrolls_tenantId_fkey','payrolls_employeeId_fkey',
+    'shifts_tenantId_fkey','shifts_employeeId_fkey',
+  ];
+  if (!(await constraintsPresent(constraints))) {
+    throw new Error('HR_CORE_RECONCILE_BLOCKED foreign keys incomplete');
+  }
+
+  console.log(`PRISMA_BASELINE_RESOLVE ${hrCoreMigration}`);
+  runPrisma(['migrate', 'resolve', '--applied', hrCoreMigration]);
+  applied.add(hrCoreMigration);
+}
+
 async function resolveIfNeeded(applied, migration, verify) {
   if (applied.has(migration)) return;
   await verify();
@@ -139,6 +222,7 @@ async function resolveIfNeeded(applied, migration, verify) {
     await resolveIfNeeded(applied, historical[1], verifyTenantMigration);
     await resolveIfNeeded(applied, historical[2], verifyCrmRelations);
     await verifyCrmExpansionPreconditions(applied);
+    await reconcileHrCore(applied);
   }
 
   console.log('PRISMA_MIGRATE_DEPLOY_START');
