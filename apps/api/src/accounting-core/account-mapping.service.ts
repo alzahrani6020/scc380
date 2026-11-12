@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { PaymentMethod, Prisma, prisma } from '@scc/database';
+import { PaymentMethod, PosPaymentMethod, Prisma, prisma } from '@scc/database';
 
 export type AccountingRole =
   | 'CASH'
@@ -110,6 +110,38 @@ export class AccountMappingService {
     if (!account) {
       throw new BadRequestException(
         `Missing active payment account mapping: ${method}=${code}`,
+      );
+    }
+    return account;
+  }
+
+
+  private posPaymentMethodCode(settings: unknown, method: PosPaymentMethod) {
+    const mapping = this.readAccounting(settings).posPaymentMethodMapping;
+    if (mapping && typeof mapping === 'object' && !Array.isArray(mapping)) {
+      const configured = (mapping as Record<string, unknown>)[method];
+      if (typeof configured === 'string' && configured.trim()) return configured.trim();
+    }
+    if (method === PosPaymentMethod.CASH) return DEFAULT_CODES.CASH;
+    throw new BadRequestException(
+      `Missing accounting POS payment-method mapping for ${method}`,
+    );
+  }
+
+  async resolvePosPaymentAccountInTransaction(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    method: PosPaymentMethod,
+  ) {
+    const tenant = await this.loadTenant(tx, tenantId);
+    const code = this.posPaymentMethodCode(tenant.settings, method);
+    const account = await tx.chartOfAccount.findFirst({
+      where: { tenantId, code, isActive: true },
+      select: { id: true, code: true, name: true, type: true },
+    });
+    if (!account) {
+      throw new BadRequestException(
+        `Missing active POS payment account mapping: ${method}=${code}`,
       );
     }
     return account;
