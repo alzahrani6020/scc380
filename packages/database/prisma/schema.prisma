@@ -608,6 +608,7 @@ model ChartOfAccount {
 
   ledgerEntries JournalEntry[]
   journalEntryLines JournalEntryLine[]
+  supplierInvoiceItems SupplierInvoiceItem[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -875,11 +876,14 @@ model SupplierInvoiceItem {
   quantity      Int       @default(1)
   unitPrice     Decimal   @db.Decimal(18, 4)
   total         Decimal   @db.Decimal(18, 2)
+  accountId     String?
+  chartAccount  ChartOfAccount? @relation(fields: [accountId], references: [id], onDelete: Restrict)
   
   createdAt     DateTime  @default(now())
   
   @@index([tenantId])
   @@index([supplierInvoiceId])
+  @@index([accountId])
   @@map("supplier_invoice_items")
 }
 

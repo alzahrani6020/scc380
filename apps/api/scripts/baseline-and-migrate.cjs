@@ -75,6 +75,190 @@ async function columnsPresent(table, names) {
   return names.every((name) => found.has(name));
 }
 
+async function enumValues(name) {
+  const rows = await prisma.$queryRawUnsafe(
+    `SELECT e.enumlabel AS value
+       FROM pg_type t
+       JOIN pg_enum e ON e.enumtypid = t.oid
+       WHERE t.typname = $1
+       ORDER BY e.enumsortorder`,
+    name,
+  );
+  return rows.map((row) => row.value);
+}
+
+function assertEnumCompatibility(name, actual, expected) {
+  if (actual.length === 0) return;
+  const missing = expected.filter((value) => !actual.includes(value));
+  if (missing.length > 0) {
+    throw new Error(
+      `ACCOUNTING_CORE_BLOCKED enum ${name} missing values: ${missing.join(',')}`,
+    );
+  }
+}
+
+async function verifyAccountingCorePreconditions(applied) {
+  const migration = '20261112162000_add_journal_header_lines';
+  if (applied.has(migration)) return;
+
+  const headerExists = await tableExists('journal_entry_headers');
+  const linesExist = await tableExists('journal_entry_lines');
+  if (headerExists || linesExist) {
+    throw new Error(
+      `ACCOUNTING_CORE_BLOCKED unexpected pre-existing tables header=${headerExists} lines=${linesExist}`,
+    );
+  }
+
+  if (!(await tableExists('tenants'))) {
+    throw new Error('ACCOUNTING_CORE_BLOCKED tenants table missing');
+  }
+
+  assertEnumCompatibility(
+    'AccountType',
+    await enumValues('AccountType'),
+    ['ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE'],
+  );
+  assertEnumCompatibility(
+    'JournalType',
+    await enumValues('JournalType'),
+    ['GENERAL', 'ADJUSTING', 'CLOSING', 'REVERSING'],
+  );
+  assertEnumCompatibility(
+    'JournalStatus',
+    await enumValues('JournalStatus'),
+    ['DRAFT', 'POSTED', 'REVERSED'],
+  );
+
+  const financeDependencyColumns = {
+    chart_of_accounts: ['id','tenantId','code','name','type','balance','isActive','createdAt','updatedAt'],
+    financial_periods: ['id','tenantId','name','year','startDate','endDate','isClosed','createdAt'],
+    journal_entries: ['id','tenantId','entryNumber','date','description','debitAmount','creditAmount','accountId','type','status','createdAt'],
+  };
+  for (const [table, columns] of Object.entries(financeDependencyColumns)) {
+    if ((await tableExists(table)) && !(await columnsPresent(table, columns))) {
+      throw new Error(`ACCOUNTING_CORE_BLOCKED incomplete columns: ${table}`);
+    }
+  }
+
+  if (await tableExists('journal_entries')) {
+    const rows = await prisma.$queryRawUnsafe(
+      `SELECT
+         COUNT(*)::int AS total,
+         COUNT(*) FILTER (WHERE "accountId" IS NULL)::int AS null_account,
+         COUNT(*) FILTER (WHERE status::text = 'POSTED')::int AS posted,
+         COUNT(*) FILTER (WHERE status::text = 'DRAFT')::int AS draft,
+         COUNT(*) FILTER (WHERE status::text = 'REVERSED')::int AS reversed,
+         COUNT(DISTINCT "tenantId")::int AS tenants
+       FROM "journal_entries"`,
+    );
+    const stats = rows?.[0] || {};
+    console.log(
+      'ACCOUNTING_LEGACY_PREFLIGHT',
+      JSON.stringify({
+        total: Number(stats.total || 0),
+        nullAccount: Number(stats.null_account || 0),
+        posted: Number(stats.posted || 0),
+        draft: Number(stats.draft || 0),
+        reversed: Number(stats.reversed || 0),
+        tenants: Number(stats.tenants || 0),
+      }),
+    );
+  } else {
+    console.log('ACCOUNTING_LEGACY_PREFLIGHT', JSON.stringify({ legacyTable: false }));
+  }
+}
+
+
+async function verifyAccountingDependenciesPreconditions(applied) {
+  const migration = '20261112164000_reconcile_accounting_dependencies';
+  if (applied.has(migration)) return;
+
+  assertEnumCompatibility(
+    'AccountType',
+    await enumValues('AccountType'),
+    ['ASSET','LIABILITY','EQUITY','REVENUE','EXPENSE'],
+  );
+
+  const required = {
+    chart_of_accounts: ['id','tenantId','code','name','type','balance','isActive','createdAt','updatedAt'],
+    financial_periods: ['id','tenantId','name','year','startDate','endDate','isClosed','createdAt'],
+    journal_entries: ['id','tenantId','entryNumber','date','description','debitAmount','creditAmount','accountId','type','status','createdAt'],
+  };
+
+  for (const [table, columns] of Object.entries(required)) {
+    if ((await tableExists(table)) && !(await columnsPresent(table, columns))) {
+      throw new Error(`ACCOUNTING_DEPENDENCIES_BLOCKED incomplete columns: ${table}`);
+    }
+  }
+
+  console.log('ACCOUNTING_DEPENDENCIES_PREFLIGHT_PASS');
+}
+
+
+async function verifyPaymentSchemaPreconditions(applied) {
+  const migration = '20261112165000_reconcile_customer_payments';
+  if (applied.has(migration)) return;
+
+  assertEnumCompatibility(
+    'PaymentMethod',
+    await enumValues('PaymentMethod'),
+    ['CASH','BANK_TRANSFER','CREDIT_CARD','DEBIT_CARD','CHECK','ONLINE','SADAD','APPLE_PAY','STC_PAY'],
+  );
+  assertEnumCompatibility(
+    'PaymentStatus',
+    await enumValues('PaymentStatus'),
+    ['PENDING','COMPLETED','FAILED','REFUNDED'],
+  );
+
+  if (await tableExists('payments')) {
+    const columns = [
+      'id','tenantId','invoiceId','amount','currency','method','status',
+      'reference','notes','paidAt','createdAt',
+    ];
+    if (!(await columnsPresent('payments', columns))) {
+      throw new Error('PAYMENT_SCHEMA_BLOCKED incomplete columns: payments');
+    }
+  }
+
+  console.log('PAYMENT_SCHEMA_PREFLIGHT_PASS');
+}
+
+
+async function verifySupplierApPreconditions(applied) {
+  const migration = '20261112170000_reconcile_supplier_ap_accounting';
+  if (applied.has(migration)) return;
+
+  assertEnumCompatibility(
+    'SupplierInvoiceStatus',
+    await enumValues('SupplierInvoiceStatus'),
+    ['UNPAID','PARTIAL','PAID','OVERDUE','CANCELLED'],
+  );
+
+  const required = {
+    suppliers: [
+      'id','tenantId','name','code','country','paymentTerms','balance','isActive','createdAt','updatedAt',
+    ],
+    supplier_invoices: [
+      'id','tenantId','invoiceNumber','supplierId','issueDate','subtotal','taxAmount',
+      'total','paidAmount','status','createdAt','updatedAt',
+    ],
+    supplier_invoice_items: [
+      'id','tenantId','supplierInvoiceId','description','quantity','unitPrice','total','createdAt',
+    ],
+    supplier_payments: [
+      'id','tenantId','supplierId','supplierInvoiceId','amount','method','paymentDate','createdAt',
+    ],
+  };
+
+  for (const [table, columns] of Object.entries(required)) {
+    if ((await tableExists(table)) && !(await columnsPresent(table, columns))) {
+      throw new Error(`SUPPLIER_AP_BLOCKED incomplete columns: ${table}`);
+    }
+  }
+
+  console.log('SUPPLIER_AP_PREFLIGHT_PASS');
+}
+
 async function appliedMigrations() {
   const exists = await tableExists('_prisma_migrations');
   if (!exists) return new Set();
@@ -287,6 +471,11 @@ async function resolveIfNeeded(applied, migration, verify) {
     await verifyHrLifecyclePreconditions(applied);
     await verifyPayrollRunsPreconditions(applied);
   }
+
+  await verifyAccountingCorePreconditions(applied);
+  await verifyAccountingDependenciesPreconditions(applied);
+  await verifyPaymentSchemaPreconditions(applied);
+  await verifySupplierApPreconditions(applied);
 
   console.log('PRISMA_MIGRATE_DEPLOY_START');
   runPrisma(['migrate', 'deploy']);

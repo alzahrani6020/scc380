@@ -95,3 +95,114 @@ test('approved payroll runs can post one balanced multi-line accrual journal', (
   assert.match(service, /taxPayableAccountId/);
   assert.match(service, /otherDeductionAccountId/);
 });
+
+test('account mapping is tenant-aware and supports explicit tenant overrides', () => {
+  const service = src('src/accounting-core/account-mapping.service.ts');
+  assert.match(service, /DEFAULT_CODES/);
+  assert.match(service, /readAccounting\(settings\)\.accountMapping/);
+  assert.match(service, /autoPostingEnabled === true/);
+  assert.match(service, /resolveInTransaction/);
+  assert.match(service, /tenantId, code: \{ in: codes \}, isActive: true/);
+  assert.match(service, /Missing active accounting mappings/);
+  assert.doesNotMatch(service, /findFirst\(\{\s*where:\s*\{\s*code:/);
+});
+
+
+test('dual write is atomic and preserves deterministic legacy line numbers', () => {
+  const service = src('src/accounting-core/accounting-dual-write.service.ts');
+  assert.match(service, /prisma\.\$transaction/);
+  assert.match(service, /postInTransaction\(tx, input\)/);
+  assert.match(service, /async postInTransaction\(tx: Prisma\.TransactionClient/);
+  assert.match(service, /tx\.journalEntry\.createMany/);
+  assert.match(service, /entryNumber: \`LEG-\$\{input\.tenantId\}-\$\{input\.entryNumber\}-L\$\{index \+ 1\}\`/);
+  assert.match(service, /status:\s*JournalStatus\.POSTED/);
+});
+
+
+test('production startup blocks conflicting accounting-core migration state before migrate deploy', () => {
+  const script = src('scripts/baseline-and-migrate.cjs');
+  assert.match(script, /verifyAccountingCorePreconditions/);
+  assert.match(script, /ACCOUNTING_CORE_BLOCKED/);
+  assert.match(script, /journal_entry_headers/);
+  assert.match(script, /journal_entry_lines/);
+  assert.match(script, /assertEnumCompatibility/);
+  assert.match(script, /ACCOUNTING_LEGACY_PREFLIGHT/);
+  assert.match(script, /await verifyAccountingCorePreconditions\(applied\)/);
+  assert.ok(
+    script.indexOf('await verifyAccountingCorePreconditions(applied)') <
+      script.indexOf("console.log('PRISMA_MIGRATE_DEPLOY_START')"),
+  );
+});
+
+
+test('invoice schema reconciliation is additive only', () => {
+  const migration = readFileSync(
+    join(process.cwd(), '../../packages/database/prisma/migrations/20261112163000_reconcile_invoice_zatca_columns/migration.sql'),
+    'utf8',
+  );
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS "zatcaSignedXml"/);
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS "retentionUntil"/);
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS "productId"/);
+  assert.doesNotMatch(migration, /(^|\n)\s*DROP\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*TRUNCATE\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*DELETE\s+FROM\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*UPDATE\s+["a-z]/i);
+});
+
+
+test('accounting dependency reconciliation is additive and startup-gated', () => {
+  const migration = readFileSync(
+    join(process.cwd(), '../../packages/database/prisma/migrations/20261112164000_reconcile_accounting_dependencies/migration.sql'),
+    'utf8',
+  );
+  const startup = src('scripts/baseline-and-migrate.cjs');
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS "chart_of_accounts"/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS "financial_periods"/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS "journal_entries"/);
+  assert.doesNotMatch(migration, /(^|\n)\s*DROP\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*TRUNCATE\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*DELETE\s+FROM\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*UPDATE\s+["a-z]/i);
+  assert.match(startup, /verifyAccountingDependenciesPreconditions/);
+  assert.match(startup, /ACCOUNTING_DEPENDENCIES_BLOCKED/);
+  assert.match(startup, /await verifyAccountingDependenciesPreconditions\(applied\)/);
+});
+
+test('customer payment schema reconciliation is additive and startup-gated', () => {
+  const migration = readFileSync(
+    join(process.cwd(), '../../packages/database/prisma/migrations/20261112165000_reconcile_customer_payments/migration.sql'),
+    'utf8',
+  );
+  const startup = src('scripts/baseline-and-migrate.cjs');
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS "payments"/);
+  assert.match(migration, /CREATE TYPE "PaymentMethod"/);
+  assert.match(migration, /CREATE TYPE "PaymentStatus"/);
+  assert.doesNotMatch(migration, /(^|\n)\s*DROP\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*TRUNCATE\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*DELETE\s+FROM\s+/i);
+  assert.match(startup, /verifyPaymentSchemaPreconditions/);
+  assert.match(startup, /PAYMENT_SCHEMA_BLOCKED/);
+  assert.match(startup, /await verifyPaymentSchemaPreconditions\(applied\)/);
+});
+
+
+test('supplier AP schema reconciliation is additive and startup-gated', () => {
+  const migration = readFileSync(
+    join(process.cwd(), '../../packages/database/prisma/migrations/20261112170000_reconcile_supplier_ap_accounting/migration.sql'),
+    'utf8',
+  );
+  const startup = src('scripts/baseline-and-migrate.cjs');
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS "suppliers"/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS "supplier_invoices"/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS "supplier_invoice_items"/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS "supplier_payments"/);
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS "accountId"/);
+  assert.doesNotMatch(migration, /(^|\n)\s*DROP\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*TRUNCATE\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*DELETE\s+FROM\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*UPDATE\s+["a-z]/i);
+  assert.match(startup, /verifySupplierApPreconditions/);
+  assert.match(startup, /SUPPLIER_AP_BLOCKED/);
+  assert.match(startup, /await verifySupplierApPreconditions\(applied\)/);
+});
+
