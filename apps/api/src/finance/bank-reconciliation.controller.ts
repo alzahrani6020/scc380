@@ -71,6 +71,12 @@ export class BankReconciliationController {
     return this.service.autoMatch(req, id);
   }
 
+  @Get(':id/lines/:lineId/candidates')
+  @RequirePermissions('erp:read')
+  getCandidates(@Req() req: any, @Param('id') id: string, @Param('lineId') lineId: string) {
+    return this.service.getMatchCandidates(req, id, lineId);
+  }
+
   @Post(':id/lines/:lineId/match')
   @RequirePermissions('erp:write')
   matchLine(
