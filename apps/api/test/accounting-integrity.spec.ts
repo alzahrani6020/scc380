@@ -224,3 +224,15 @@ test('expense accounting is explicit-account, additive, and reversal-safe', () =
   assert.match(service, /postInTransaction\(tx/);
   assert.match(service, /Posted expense cannot be deleted/);
 });
+
+
+test('unified reports read modern headers plus historical legacy without double-counting dual-write mirrors', () => {
+  const service = src('src/reports/reports.service.ts');
+  assert.match(service, /prisma\.journalEntry\.groupBy/);
+  assert.match(service, /prisma\.journalEntryLine\.groupBy/);
+  assert.match(service, /startsWith:\s*'LEG-'/);
+  assert.match(service, /journalEntry:\s*this\.modernHeaderWhere/);
+  assert.match(service, /getUnifiedLedgerRows/);
+  assert.match(service, /getGeneralLedger[\s\S]*getUnifiedLedgerRows/);
+  assert.match(service, /getCashFlow[\s\S]*getUnifiedLedgerRows/);
+});
