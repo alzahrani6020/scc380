@@ -11,6 +11,8 @@ import { PayrollsController } from './payrolls.controller';
 import { PayrollsService } from './payrolls.service';
 import { ShiftsController } from './shifts.controller';
 import { ShiftsService } from './shifts.service';
+import { HrDashboardController } from './dashboard.controller';
+import { HrDashboardService } from './dashboard.service';
 
 @Module({
   controllers: [
@@ -20,6 +22,7 @@ import { ShiftsService } from './shifts.service';
     AttendancesController,
     PayrollsController,
     ShiftsController,
+    HrDashboardController,
   ],
   providers: [
     EmployeesService,
@@ -28,6 +31,7 @@ import { ShiftsService } from './shifts.service';
     AttendancesService,
     PayrollsService,
     ShiftsService,
+    HrDashboardService,
   ],
 })
 export class HrModule {}
