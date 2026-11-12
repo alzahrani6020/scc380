@@ -114,62 +114,63 @@ export class AccountingPostingService {
     }
   }
 
-  async post(input: PostJournalInput) {
+  async postInTransaction(tx: Prisma.TransactionClient, input: PostJournalInput) {
     const date = input.date ?? new Date();
     if (!input.tenantId) throw new BadRequestException('Tenant is required');
     if (!input.entryNumber?.trim()) throw new BadRequestException('Entry number is required');
     if (Number.isNaN(date.getTime())) throw new BadRequestException('Invalid journal date');
 
     this.validateBalancedLines(input.lines);
+    await this.assertPeriodOpen(tx, input.tenantId, date);
+    await this.assertDimensions(tx, input.tenantId, input.lines);
 
-    return prisma.$transaction(async tx => {
-      await this.assertPeriodOpen(tx, input.tenantId, date);
-      await this.assertDimensions(tx, input.tenantId, input.lines);
-
-      const duplicate = await tx.journalEntryHeader.findFirst({
-        where: {
-          tenantId: input.tenantId,
-          OR: [
-            { entryNumber: input.entryNumber },
-            ...(input.sourceType && input.sourceId
-              ? [{ sourceType: input.sourceType, sourceId: input.sourceId }]
-              : []),
-          ],
-        },
-        select: { id: true },
-      });
-      if (duplicate) {
-        throw new ConflictException('Journal entry or posting source already exists');
-      }
-
-      return tx.journalEntryHeader.create({
-        data: {
-          tenantId: input.tenantId,
-          entryNumber: input.entryNumber,
-          date,
-          description: input.description,
-          reference: input.reference,
-          type: input.type ?? JournalType.GENERAL,
-          status: JournalStatus.POSTED,
-          sourceType: input.sourceType,
-          sourceId: input.sourceId,
-          postedAt: new Date(),
-          lines: {
-            create: input.lines.map((line, index) => ({
-              tenantId: input.tenantId,
-              lineNumber: index + 1,
-              accountId: line.accountId,
-              debitAmount: this.decimal(line.debitAmount),
-              creditAmount: this.decimal(line.creditAmount),
-              description: line.description,
-              costCenterId: line.costCenterId,
-              projectId: line.projectId,
-              branchId: line.branchId,
-            })),
-          },
-        },
-        include: { lines: true },
-      });
+    const duplicate = await tx.journalEntryHeader.findFirst({
+      where: {
+        tenantId: input.tenantId,
+        OR: [
+          { entryNumber: input.entryNumber },
+          ...(input.sourceType && input.sourceId
+            ? [{ sourceType: input.sourceType, sourceId: input.sourceId }]
+            : []),
+        ],
+      },
+      select: { id: true },
     });
+    if (duplicate) {
+      throw new ConflictException('Journal entry or posting source already exists');
+    }
+
+    return tx.journalEntryHeader.create({
+      data: {
+        tenantId: input.tenantId,
+        entryNumber: input.entryNumber,
+        date,
+        description: input.description,
+        reference: input.reference,
+        type: input.type ?? JournalType.GENERAL,
+        status: JournalStatus.POSTED,
+        sourceType: input.sourceType,
+        sourceId: input.sourceId,
+        postedAt: new Date(),
+        lines: {
+          create: input.lines.map((line, index) => ({
+            tenantId: input.tenantId,
+            lineNumber: index + 1,
+            accountId: line.accountId,
+            debitAmount: this.decimal(line.debitAmount),
+            creditAmount: this.decimal(line.creditAmount),
+            description: line.description,
+            costCenterId: line.costCenterId,
+            projectId: line.projectId,
+            branchId: line.branchId,
+          })),
+        },
+      },
+      include: { lines: true },
+    });
+  }
+
+  async post(input: PostJournalInput) {
+    return prisma.$transaction(tx => this.postInTransaction(tx, input));
   }
 }
