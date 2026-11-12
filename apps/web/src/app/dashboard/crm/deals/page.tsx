@@ -7,6 +7,7 @@ import { Activity, Briefcase, Plus, Search, TrendingUp, Pencil, Trash2, X, Alert
 import Modal from '@/components/ui/Modal';
 import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
+import AsyncCombobox, { AsyncComboboxOption } from '@/components/ui/AsyncCombobox';
 import Button from '@/components/ui/Button';
 import Textarea from '@/components/ui/Textarea';
 
@@ -34,8 +35,6 @@ const stageColors: Record<string, string> = {
 
 export default function DealsPage() {
   const [items, setItems] = useState<any[]>([]);
-  const [contacts, setContacts] = useState<any[]>([]);
-  const [companies, setCompanies] = useState<any[]>([]);
   const [pipelines, setPipelines] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -82,11 +81,37 @@ export default function DealsPage() {
   }, []);
 
   useEffect(() => {
-    Promise.all([
-      api.get('/crm/contacts?limit=100').then((r) => setContacts(r.data.data || [])),
-      api.get('/crm/companies?limit=100').then((r) => setCompanies(r.data.data || [])),
-      api.get('/crm/pipelines').then((r) => setPipelines(r.data || [])),
-    ]).catch(() => {});
+    api.get('/crm/pipelines').then((r) => setPipelines(r.data || [])).catch(() => {});
+  }, []);
+
+  const loadContacts = useCallback(async (term: string, signal: AbortSignal): Promise<AsyncComboboxOption[]> => {
+    const params = new URLSearchParams({ limit: '20' });
+    if (term) params.set('search', term);
+    const res = await api.get(`/crm/contacts?${params.toString()}`, { signal });
+    return (res.data?.data || []).map((c: any) => ({
+      value: c.id,
+      label: `${c.firstName || ''} ${c.lastName || ''}`.trim() || c.email || c.phone || c.id,
+    }));
+  }, []);
+
+  const resolveContact = useCallback(async (id: string, signal: AbortSignal): Promise<AsyncComboboxOption | null> => {
+    if (!id) return null;
+    const res = await api.get(`/crm/contacts/${id}`, { signal });
+    const c = res.data;
+    return { value: c.id, label: `${c.firstName || ''} ${c.lastName || ''}`.trim() || c.email || c.phone || c.id };
+  }, []);
+
+  const loadCompanies = useCallback(async (term: string, signal: AbortSignal): Promise<AsyncComboboxOption[]> => {
+    const params = new URLSearchParams({ limit: '20', active: 'true' });
+    if (term) params.set('search', term);
+    const res = await api.get(`/crm/companies?${params.toString()}`, { signal });
+    return (res.data?.data || []).map((company: any) => ({ value: company.id, label: company.name }));
+  }, []);
+
+  const resolveCompany = useCallback(async (id: string, signal: AbortSignal): Promise<AsyncComboboxOption | null> => {
+    if (!id) return null;
+    const res = await api.get(`/crm/companies/${id}`, { signal });
+    return { value: res.data.id, label: res.data.name };
   }, []);
 
   // Debounce the search box (400ms) before it becomes a server query.
@@ -175,9 +200,6 @@ export default function DealsPage() {
     }
   };
 
-  const contactOptions = contacts.map(c => ({ value: c.id, label: `${c.firstName} ${c.lastName}` }));
-  const companyOptions = [{ value: '', label: 'بدون شركة' }, ...companies.map(c => ({ value: c.id, label: c.name }))];
-  const companyFilterOptions = [{ value: '', label: 'كل الشركات' }, ...companies.map(c => ({ value: c.id, label: c.name }))];
   const pipelineOptions = [{ value: '', label: 'بدون مسار ديناميكي' }, ...pipelines.map(p => ({ value: p.id, label: p.name }))];
   const pipelineFilterOptions = [{ value: '', label: 'كل المسارات' }, ...pipelines.map(p => ({ value: p.id, label: p.name }))];
   const selectedPipeline = pipelines.find((p) => p.id === formData.pipelineId);
@@ -219,7 +241,15 @@ export default function DealsPage() {
           />
         </div>
         <Select aria-label="تصفية حسب المرحلة" options={stageFilterOptions} value={stageFilter} onChange={(e) => setStageFilter(e.target.value)} />
-        <Select aria-label="تصفية حسب الشركة" options={companyFilterOptions} value={companyFilter} onChange={(e) => setCompanyFilter(e.target.value)} />
+        <AsyncCombobox
+          value={companyFilter}
+          onChange={setCompanyFilter}
+          loadOptions={loadCompanies}
+          resolveValue={resolveCompany}
+          placeholder="كل الشركات"
+          searchPlaceholder="ابحث عن شركة..."
+          clearLabel="كل الشركات"
+        />
         <Select
           aria-label="تصفية حسب المسار"
           options={pipelineFilterOptions}
@@ -309,8 +339,26 @@ export default function DealsPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Input label="العنوان" required value={formData.title || ''} onChange={(e) => setFormData({ ...formData, title: e.target.value })} />
-            <Select label="العميل" required options={contactOptions} value={formData.contactId || ''} onChange={(e) => setFormData({ ...formData, contactId: e.target.value })} />
-            <Select label="الشركة" options={companyOptions} value={formData.companyId || ''} onChange={(e) => setFormData({ ...formData, companyId: e.target.value })} />
+            <AsyncCombobox
+              label="العميل"
+              required
+              value={formData.contactId || ''}
+              onChange={(value) => setFormData({ ...formData, contactId: value })}
+              loadOptions={loadContacts}
+              resolveValue={resolveContact}
+              placeholder="اختر العميل"
+              searchPlaceholder="ابحث بالاسم أو البريد أو الجوال..."
+            />
+            <AsyncCombobox
+              label="الشركة"
+              value={formData.companyId || ''}
+              onChange={(value) => setFormData({ ...formData, companyId: value })}
+              loadOptions={loadCompanies}
+              resolveValue={resolveCompany}
+              placeholder="بدون شركة"
+              searchPlaceholder="ابحث عن شركة..."
+              clearLabel="بدون شركة"
+            />
             <Select label="مسار المبيعات" options={pipelineOptions} value={formData.pipelineId || ''} onChange={(e) => setFormData({ ...formData, pipelineId: e.target.value, pipelineStageId: '' })} />
             <Select label="المرحلة الديناميكية" options={pipelineStageOptions} value={formData.pipelineStageId || ''} onChange={(e) => setFormData({ ...formData, pipelineStageId: e.target.value })} />
             <Input label="القيمة" type="number" value={formData.value || ''} onChange={(e) => setFormData({ ...formData, value: e.target.value })} />
