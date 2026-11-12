@@ -13,6 +13,7 @@ class CreateBankAccountDto {
   @IsString() @IsOptional() swiftCode?: string;
   @IsString() @IsOptional() currency?: string;
   @IsBoolean() @IsOptional() isDefault?: boolean;
+  @IsString() @IsOptional() chartAccountId?: string;
 }
 
 class UpdateBankAccountDto {
@@ -21,6 +22,7 @@ class UpdateBankAccountDto {
   @IsNumber() @IsOptional() balance?: number;
   @IsBoolean() @IsOptional() isDefault?: boolean;
   @IsBoolean() @IsOptional() isActive?: boolean;
+  @IsString() @IsOptional() chartAccountId?: string;
 }
 
 @ApiTags('Finance - Bank Accounts')
