@@ -21,8 +21,10 @@ import { LeaveBalancesController } from './leave-balances.controller';
 import { LeaveBalancesService } from './leave-balances.service';
 import { PayrollRunsController } from './payroll-runs.controller';
 import { PayrollRunsService } from './payroll-runs.service';
+import { AccountingCoreModule } from '../accounting-core/accounting-core.module';
 
 @Module({
+  imports: [AccountingCoreModule],
   controllers: [
     EmployeesController,
     DepartmentsController,
