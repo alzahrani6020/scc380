@@ -156,3 +156,75 @@ test('Finance controllers declare ERP permissions on every route', () => {
     }
   }
 });
+
+
+test('granular HR functional permissions enforce manager least privilege', () => {
+  const managerAllowed = [
+    'hr:employees:read',
+    'hr:org:read',
+    'hr:attendance:write',
+    'hr:contracts:read',
+    'hr:documents:read',
+    'hr:loans:read',
+    'hr:settlements:read',
+    'hr:lifecycle:write',
+    'hr:requests:write',
+    'hr:leave-requests:write',
+    'hr:leave-admin:read',
+    'hr:payroll:read',
+    'hr:assets:read',
+    'hr:scheduling:write',
+    'hr:recruitment:read',
+    'hr:performance:write',
+    'hr:training:read',
+  ];
+  for (const permission of managerAllowed) assert.equal(hasPermission('MANAGER', permission), true, permission);
+
+  const managerDenied = [
+    'hr:employees:write',
+    'hr:org:write',
+    'hr:contracts:write',
+    'hr:documents:write',
+    'hr:loans:write',
+    'hr:settlements:write',
+    'hr:leave-admin:write',
+    'hr:payroll:write',
+    'hr:assets:write',
+    'hr:recruitment:write',
+    'hr:training:write',
+  ];
+  for (const permission of managerDenied) assert.equal(hasPermission('MANAGER', permission), false, permission);
+
+  assert.equal(hasPermission('ADMIN', 'hr:payroll:write'), true);
+  assert.equal(hasPermission('AUDITOR', 'hr:payroll:read'), true);
+  assert.equal(hasPermission('AUDITOR', 'hr:payroll:write'), false);
+  assert.equal(hasPermission('USER', 'hr:employees:read'), false);
+});
+
+test('sensitive HR controllers no longer rely on generic hr:write', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const files = [
+    'src/hr/payroll-runs.controller.ts',
+    'src/hr/payrolls.controller.ts',
+    'src/hr/end-service-settlements.controller.ts',
+    'src/hr/employee-loans.controller.ts',
+    'src/hr/employee-documents.controller.ts',
+    'src/hr/contracts.controller.ts',
+    'src/hr/asset-custody.controller.ts',
+    'src/hr/attendances.controller.ts',
+    'src/hr/employees.controller.ts',
+    'src/hr/departments.controller.ts',
+    'src/hr/hr-lifecycle.controller.ts',
+    'src/hr/hr-requests.controller.ts',
+    'src/hr/leaves.controller.ts',
+    'src/hr/leave-balances.controller.ts',
+    'src/hr/leave-policies.controller.ts',
+    'src/hr/shifts.controller.ts',
+  ];
+  for (const file of files) {
+    const content = readFileSync(join(process.cwd(), file), 'utf8');
+    assert.doesNotMatch(content, /RequirePermissions\('hr:write'/, file);
+    assert.doesNotMatch(content, /RequirePermissions\('hr:read'/, file);
+  }
+});
