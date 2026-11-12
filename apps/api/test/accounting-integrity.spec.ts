@@ -56,3 +56,42 @@ test('chart accounts with ledger history cannot be deleted', () => {
   assert.match(service, /prisma\.journalEntry\.count/);
   assert.match(service, /cannot be deleted; deactivate it instead/);
 });
+
+
+test('journal header-line migration is additive and preserves legacy journal table', () => {
+  const migration = readFileSync(
+    join(process.cwd(), '../../packages/database/prisma/migrations/20261112162000_add_journal_header_lines/migration.sql'),
+    'utf8',
+  );
+  assert.match(migration, /CREATE TABLE "journal_entry_headers"/);
+  assert.match(migration, /CREATE TABLE "journal_entry_lines"/);
+  assert.match(migration, /journal_entry_lines_amount_check/);
+  assert.doesNotMatch(migration, /ALTER TABLE "journal_entries"/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*DROP\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*TRUNCATE\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*DELETE\s+FROM\s+/i);
+});
+
+test('accounting posting core enforces balanced transactional double-entry', () => {
+  const service = src('src/accounting-core/accounting-posting.service.ts');
+  assert.match(service, /lines\.length < 2/);
+  assert.match(service, /Journal is not balanced/);
+  assert.match(service, /prisma\.\$transaction/);
+  assert.match(service, /journalEntryHeader\.create/);
+  assert.match(service, /sourceType/);
+  assert.match(service, /sourceId/);
+});
+
+test('approved payroll runs can post one balanced multi-line accrual journal', () => {
+  const service = src('src/hr/payroll-runs.service.ts');
+  const controller = src('src/hr/payroll-runs.controller.ts');
+  assert.match(controller, /@Post\(':id\/post-accounting'\)/);
+  assert.match(controller, /@RequirePermissions\('hr:write', 'erp:write'\)/);
+  assert.match(service, /sourceType:\s*'PAYROLL_RUN'/);
+  assert.match(service, /gross - \(net \+ deductions\)/);
+  assert.match(service, /expenseAccountId/);
+  assert.match(service, /netPayableAccountId/);
+  assert.match(service, /gosiPayableAccountId/);
+  assert.match(service, /taxPayableAccountId/);
+  assert.match(service, /otherDeductionAccountId/);
+});
