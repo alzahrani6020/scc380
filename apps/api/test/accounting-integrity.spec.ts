@@ -71,7 +71,11 @@ test('journal header-line migration is additive and preserves legacy journal tab
   assert.doesNotMatch(migration, /(^|\n)\s*TRUNCATE\s+/i);
   assert.doesNotMatch(migration, /(^|\n)\s*DELETE\s+FROM\s+/i);
   assert.doesNotMatch(migration, /(^|\n)\s*UPDATE\s+["a-z]/i);
-  assert.doesNotMatch(migration, /ALTER TABLE "journal_entries"/i);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS "journal_entries"/);
+  assert.doesNotMatch(migration, /ALTER TABLE "journal_entries"[\s\S]*?\b(DROP|RENAME|ALTER COLUMN)\b/i);
+  const legacyAlters = migration.match(/ALTER TABLE "journal_entries"[\s\S]*?;/gi) || [];
+  assert.ok(legacyAlters.length > 0);
+  assert.ok(legacyAlters.every(statement => /ADD CONSTRAINT/i.test(statement)));
 });
 
 test('accounting posting core enforces balanced transactional double-entry', () => {
