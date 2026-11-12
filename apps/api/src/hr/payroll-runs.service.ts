@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { prisma, tenantWhere } from '@scc/database';
+import { AccountingPostingService } from '../accounting-core/accounting-posting.service';
 
 function money(value: any): number {
   return Number(value || 0);
@@ -7,6 +8,8 @@ function money(value: any): number {
 
 @Injectable()
 export class PayrollRunsService {
+  constructor(private readonly accountingPosting: AccountingPostingService) {}
+
   async findAll(req: any, query: any) {
     const where: any = { ...tenantWhere(req.user?.tenantId) };
     if (query.year) where.year = Number(query.year);
@@ -253,6 +256,72 @@ export class PayrollRunsService {
         data: { status: 'PAID', paidAt },
         include: { items: { orderBy: { employeeName: 'asc' } } },
       });
+    });
+  }
+
+
+  async postAccounting(req: any, id: string, dto: any) {
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) throw new BadRequestException('Tenant is required');
+
+    const run = await prisma.payrollRun.findFirst({
+      where: { ...tenantWhere(tenantId), id },
+      include: { items: true },
+    });
+    if (!run) throw new NotFoundException('Payroll run not found');
+    if (!['APPROVED', 'PAID'].includes(run.status)) {
+      throw new ConflictException('Payroll run must be approved before accounting posting');
+    }
+    if (run.items.length === 0) throw new BadRequestException('Payroll run has no items');
+
+    const gross = money(run.grossTotal);
+    const net = money(run.netTotal);
+    const gosi = run.items.reduce((sum, item) => sum + money(item.gosiDeduction), 0);
+    const tax = run.items.reduce((sum, item) => sum + money(item.taxDeduction), 0);
+    const other = run.items.reduce((sum, item) => sum + money(item.otherDeductions), 0);
+    const deductions = gosi + tax + other;
+
+    if (gross <= 0 || Math.abs(gross - (net + deductions)) > 0.01) {
+      throw new BadRequestException('Payroll run totals are not balanced for accounting');
+    }
+    if (!dto.expenseAccountId || !dto.netPayableAccountId) {
+      throw new BadRequestException('Payroll expense and net payable accounts are required');
+    }
+    if (gosi > 0 && !dto.gosiPayableAccountId) {
+      throw new BadRequestException('GOSI payable account is required for this payroll run');
+    }
+    if (tax > 0 && !dto.taxPayableAccountId) {
+      throw new BadRequestException('Tax payable account is required for this payroll run');
+    }
+    if (other > 0 && !dto.otherDeductionAccountId) {
+      throw new BadRequestException('Other deductions payable account is required for this payroll run');
+    }
+
+    const lines: any[] = [
+      {
+        accountId: dto.expenseAccountId,
+        debitAmount: gross,
+        description: `Payroll expense ${run.year}-${String(run.month).padStart(2, '0')}`,
+      },
+      {
+        accountId: dto.netPayableAccountId,
+        creditAmount: net,
+        description: 'Net salaries payable',
+      },
+    ];
+    if (gosi > 0) lines.push({ accountId: dto.gosiPayableAccountId, creditAmount: gosi, description: 'GOSI payable' });
+    if (tax > 0) lines.push({ accountId: dto.taxPayableAccountId, creditAmount: tax, description: 'Payroll tax payable' });
+    if (other > 0) lines.push({ accountId: dto.otherDeductionAccountId, creditAmount: other, description: 'Other payroll deductions payable' });
+
+    const period = `${run.year}${String(run.month).padStart(2, '0')}`;
+    return this.accountingPosting.post({
+      tenantId,
+      entryNumber: `PAY-${period}-${run.id.slice(-8)}`,
+      description: `Payroll accrual ${run.year}-${String(run.month).padStart(2, '0')}`,
+      reference: `PAYROLL-${run.year}-${String(run.month).padStart(2, '0')}`,
+      sourceType: 'PAYROLL_RUN',
+      sourceId: run.id,
+      lines,
     });
   }
 
