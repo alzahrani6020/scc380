@@ -1,6 +1,8 @@
 export type HrLifecycleType = 'ONBOARDING' | 'OFFBOARDING';
 
-const ONBOARDING_TASKS = [
+type LifecycleTaskTemplate = readonly [title: string, description: string];
+
+const ONBOARDING_TASKS: readonly LifecycleTaskTemplate[] = [
   ['التحقق من الهوية والمستندات', 'مراجعة الهوية أو الإقامة والشهادات والمرفقات المطلوبة.'],
   ['توقيع وتفعيل عقد العمل', 'التأكد من وجود عقد فعال وموقع ومكتمل البيانات.'],
   ['ربط حساب النظام بالموظف', 'ربط مستخدم SCC380 بالموظف لتمكين الخدمة الذاتية.'],
@@ -8,9 +10,9 @@ const ONBOARDING_TASKS = [
   ['تخصيص مكان العمل والعهد', 'تسليم الأدوات والعهد اللازمة وتوثيق الاستلام عند توفر وحدة العهد.'],
   ['التعريف بالسياسات والإجراءات', 'تأكيد الاطلاع على السياسات والإجراءات وقنوات التواصل.'],
   ['تحديد أهداف فترة التجربة', 'توثيق أهداف ومؤشرات فترة التجربة والمتابعة الأولى.'],
-] as const;
+];
 
-const OFFBOARDING_TASKS = [
+const OFFBOARDING_TASKS: readonly LifecycleTaskTemplate[] = [
   ['اعتماد سبب انتهاء العلاقة', 'توثيق آخر يوم عمل والسبب والجهة المبادرة بالإنهاء.'],
   ['استلام وتسليم الأعمال', 'توثيق تسليم الملفات والمسؤوليات والجهات ذات العلاقة.'],
   ['استرداد العهد والأصول', 'استرداد العهد وربطها بسجل الأصول عند توفر وحدة العهد.'],
@@ -18,13 +20,13 @@ const OFFBOARDING_TASKS = [
   ['مراجعة المستندات والأرشفة', 'أرشفة المستندات وتسليم الوثائق المستحقة للموظف.'],
   ['اعتماد الرواتب والمخالصة', 'مراجعة الراتب الأخير ومكافأة نهاية الخدمة والخصومات والديون.'],
   ['إصدار شهادة الخدمة', 'إصدار شهادة الخدمة أو الخطاب المطلوب وإقفال الملف.'],
-] as const;
+];
 
 export function defaultLifecycleTasks(type: HrLifecycleType) {
-  const source = type === 'ONBOARDING' ? ONBOARDING_TASKS : OFFBOARDING_TASKS;
-  return source.map(([title, description], order) => ({
-    title,
-    description,
+  const source: readonly LifecycleTaskTemplate[] = type === 'ONBOARDING' ? ONBOARDING_TASKS : OFFBOARDING_TASKS;
+  return source.map((task, order) => ({
+    title: task[0],
+    description: task[1],
     order: order + 1,
   }));
 }
