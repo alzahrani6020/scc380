@@ -267,8 +267,8 @@ export default function ActivitiesPage() {
                     <h3 className="text-white font-semibold mt-2">{item.subject}</h3>
                     {item.description && <p className="text-slate-400 text-sm mt-1">{item.description}</p>}
                     <div className="flex flex-wrap gap-3 text-xs text-slate-500 mt-2">
-                      {contact && <span>العميل: {contact.firstName} {contact.lastName}</span>}
-                      {deal && <span>الصفقة: {deal.title}</span>}
+                      {item.contact && <span>العميل: {item.contact.firstName} {item.contact.lastName}</span>}
+                      {item.deal && <span>الصفقة: {item.deal.title}</span>}
                       {item.scheduledAt && <span>الموعد: {new Date(item.scheduledAt).toLocaleString('ar-SA')}</span>}
                     </div>
                   </div>
