@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { prisma } from '@scc/database';
+import { Prisma, prisma } from '@scc/database';
 
 export type AccountingRole =
   | 'CASH'
@@ -28,24 +28,34 @@ const DEFAULT_CODES: Record<AccountingRole, string> = {
   GENERAL_EXPENSE: '5000',
 };
 
+type DbClient = Prisma.TransactionClient | typeof prisma;
+
 @Injectable()
 export class AccountMappingService {
-  private readOverrides(settings: unknown): Partial<Record<AccountingRole, string>> {
+  private readAccounting(settings: unknown): Record<string, any> {
     if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return {};
     const accounting = (settings as any).accounting;
     if (!accounting || typeof accounting !== 'object' || Array.isArray(accounting)) return {};
-    const mapping = accounting.accountMapping;
+    return accounting as Record<string, any>;
+  }
+
+  private readOverrides(settings: unknown): Partial<Record<AccountingRole, string>> {
+    const mapping = this.readAccounting(settings).accountMapping;
     if (!mapping || typeof mapping !== 'object' || Array.isArray(mapping)) return {};
     return mapping as Partial<Record<AccountingRole, string>>;
   }
 
-  async resolve(tenantId: string, roles: AccountingRole[]) {
-    const tenant = await prisma.tenant.findUnique({
+  private async loadTenant(client: DbClient, tenantId: string) {
+    const tenant = await client.tenant.findUnique({
       where: { id: tenantId },
       select: { id: true, settings: true },
     });
     if (!tenant) throw new BadRequestException('Tenant not found');
+    return tenant;
+  }
 
+  private async resolveWithClient(client: DbClient, tenantId: string, roles: AccountingRole[]) {
+    const tenant = await this.loadTenant(client, tenantId);
     const overrides = this.readOverrides(tenant.settings);
     const requested = [...new Set(roles)];
     const codeByRole = Object.fromEntries(
@@ -53,7 +63,7 @@ export class AccountMappingService {
     ) as Record<AccountingRole, string>;
 
     const codes = [...new Set(Object.values(codeByRole))];
-    const accounts = await prisma.chartOfAccount.findMany({
+    const accounts = await client.chartOfAccount.findMany({
       where: { tenantId, code: { in: codes }, isActive: true },
       select: { id: true, code: true, name: true, type: true },
     });
@@ -71,5 +81,27 @@ export class AccountMappingService {
     return Object.fromEntries(
       requested.map(role => [role, byCode.get(codeByRole[role])!]),
     ) as Record<AccountingRole, { id: string; code: string; name: string; type: string }>;
+  }
+
+  async isAutoPostingEnabled(tenantId: string) {
+    const tenant = await this.loadTenant(prisma, tenantId);
+    return this.readAccounting(tenant.settings).autoPostingEnabled === true;
+  }
+
+  async isAutoPostingEnabledInTransaction(tx: Prisma.TransactionClient, tenantId: string) {
+    const tenant = await this.loadTenant(tx, tenantId);
+    return this.readAccounting(tenant.settings).autoPostingEnabled === true;
+  }
+
+  async resolve(tenantId: string, roles: AccountingRole[]) {
+    return this.resolveWithClient(prisma, tenantId, roles);
+  }
+
+  async resolveInTransaction(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    roles: AccountingRole[],
+  ) {
+    return this.resolveWithClient(tx, tenantId, roles);
   }
 }
