@@ -1,11 +1,14 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { prisma, tenantWhere } from '@scc/database';
 import { calculateEndService } from './end-service-calculator';
+import { AccountingPostingService } from '../accounting-core/accounting-posting.service';
 
 const money = (value: any) => Math.round(Number(value || 0) * 100) / 100;
 
 @Injectable()
 export class EndServiceSettlementsService {
+  constructor(private readonly accountingPosting: AccountingPostingService) {}
+
   async findAll(req: any, query: any) {
     const tenantId = req.user?.tenantId;
     const where: any = { ...tenantWhere(tenantId) };
@@ -123,6 +126,58 @@ export class EndServiceSettlementsService {
         approvedAt: new Date(),
         approvedById: req.user?.userId || req.user?.sub || req.user?.id || null,
       },
+    });
+  }
+
+
+  async postAccounting(req: any, id: string, dto: any) {
+    const tenantId = req.user?.tenantId;
+    const settlement = await prisma.endServiceSettlement.findFirst({
+      where: { ...tenantWhere(tenantId), id },
+    });
+    if (!settlement) throw new NotFoundException('End-service settlement not found');
+    if (!['APPROVED', 'PAID'].includes(settlement.status)) {
+      throw new ConflictException('Settlement must be approved before accounting posting');
+    }
+
+    const eos = money(settlement.eosAward);
+    const leave = money(settlement.leaveEncashment);
+    const unpaidSalary = money(settlement.unpaidSalary);
+    const otherEntitlements = money(settlement.otherEntitlements);
+    const compensation = money(settlement.compensation);
+    const loan = money(settlement.loanDeduction);
+    const otherDeductions = money(settlement.otherDeductions);
+    const net = money(settlement.netSettlement);
+
+    if (!dto.settlementPayableAccountId) throw new BadRequestException('Settlement payable account is required');
+    if (eos > 0 && !dto.eosExpenseAccountId) throw new BadRequestException('End-service expense account is required');
+    if (leave > 0 && !dto.leaveEncashmentAccountId) throw new BadRequestException('Leave encashment account is required');
+    if (unpaidSalary > 0 && !dto.unpaidSalaryAccountId) throw new BadRequestException('Unpaid salary account is required');
+    if (otherEntitlements > 0 && !dto.otherEntitlementsAccountId) throw new BadRequestException('Other entitlements account is required');
+    if (compensation > 0 && !dto.compensationAccountId) throw new BadRequestException('Compensation account is required');
+    if (loan > 0 && !dto.loanReceivableAccountId) throw new BadRequestException('Employee loan receivable account is required');
+    if (otherDeductions > 0 && !dto.otherDeductionAccountId) throw new BadRequestException('Other deduction account is required');
+
+    const lines: any[] = [];
+    if (eos > 0) lines.push({ accountId: dto.eosExpenseAccountId, debitAmount: eos, description: 'End-service award' });
+    if (leave > 0) lines.push({ accountId: dto.leaveEncashmentAccountId, debitAmount: leave, description: 'Leave encashment' });
+    if (unpaidSalary > 0) lines.push({ accountId: dto.unpaidSalaryAccountId, debitAmount: unpaidSalary, description: 'Unpaid salary settlement' });
+    if (otherEntitlements > 0) lines.push({ accountId: dto.otherEntitlementsAccountId, debitAmount: otherEntitlements, description: 'Other employee entitlements' });
+    if (compensation > 0) lines.push({ accountId: dto.compensationAccountId, debitAmount: compensation, description: 'Termination compensation' });
+    if (net > 0) lines.push({ accountId: dto.settlementPayableAccountId, creditAmount: net, description: 'Net employee settlement payable' });
+    if (loan > 0) lines.push({ accountId: dto.loanReceivableAccountId, creditAmount: loan, description: 'Employee loan receivable reduction' });
+    if (otherDeductions > 0) lines.push({ accountId: dto.otherDeductionAccountId, creditAmount: otherDeductions, description: 'Settlement deductions payable' });
+
+    if (lines.length < 2) throw new BadRequestException('Settlement has no accounting amounts to post');
+
+    return this.accountingPosting.post({
+      tenantId,
+      entryNumber: `EOS-${settlement.id.slice(-10)}`,
+      description: `End-service settlement for employee ${settlement.employeeId}`,
+      reference: `EOS-${settlement.id}`,
+      sourceType: 'END_SERVICE_SETTLEMENT',
+      sourceId: settlement.id,
+      lines,
     });
   }
 
