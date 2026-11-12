@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { prisma, tenantWhere } from '@scc/database';
 import { calculateEndService } from './end-service-calculator';
 import { AccountingPostingService } from '../accounting-core/accounting-posting.service';
+import { defaultLifecycleTasks } from './hr-lifecycle-defaults';
 
 const money = (value: any) => Math.round(Number(value || 0) * 100) / 100;
 
@@ -84,31 +85,56 @@ export class EndServiceSettlementsService {
     if (duplicate) throw new ConflictException('Employee already has an open end-service settlement');
 
     const p = await this.preview(req, dto);
-    return prisma.endServiceSettlement.create({
-      data: {
-        tenantId,
-        employeeId: dto.employeeId,
-        reason: dto.reason,
-        initiatedBy: dto.initiatedBy,
-        lastWorkingDate: new Date(dto.lastWorkingDate),
-        dueDate: p.dueDate,
-        hireDateSnapshot: p.hireDateSnapshot,
-        serviceDays: p.serviceDays,
-        lastWage: p.lastWage,
-        baseAward: p.baseAward,
-        awardFactor: p.awardFactor,
-        eosAward: p.eosAward,
-        leaveEncashment: p.leaveEncashment,
-        unpaidSalary: p.unpaidSalary,
-        otherEntitlements: p.otherEntitlements,
-        compensation: p.compensation,
-        outstandingLoanBalance: p.outstandingLoanBalance,
-        loanDeduction: p.loanDeduction,
-        otherDeductions: p.otherDeductions,
-        netSettlement: p.netSettlement,
-        status: 'DRAFT',
-        notes: dto.notes || null,
-      },
+    return prisma.$transaction(async (tx) => {
+      const settlement = await tx.endServiceSettlement.create({
+        data: {
+          tenantId,
+          employeeId: dto.employeeId,
+          reason: dto.reason,
+          initiatedBy: dto.initiatedBy,
+          lastWorkingDate: new Date(dto.lastWorkingDate),
+          dueDate: p.dueDate,
+          hireDateSnapshot: p.hireDateSnapshot,
+          serviceDays: p.serviceDays,
+          lastWage: p.lastWage,
+          baseAward: p.baseAward,
+          awardFactor: p.awardFactor,
+          eosAward: p.eosAward,
+          leaveEncashment: p.leaveEncashment,
+          unpaidSalary: p.unpaidSalary,
+          otherEntitlements: p.otherEntitlements,
+          compensation: p.compensation,
+          outstandingLoanBalance: p.outstandingLoanBalance,
+          loanDeduction: p.loanDeduction,
+          otherDeductions: p.otherDeductions,
+          netSettlement: p.netSettlement,
+          status: 'DRAFT',
+          notes: dto.notes || null,
+        },
+      });
+
+      const openOffboarding = await tx.hrLifecycleCase.findFirst({
+        where: {
+          tenantId, employeeId: dto.employeeId, type: 'OFFBOARDING',
+          status: { in: ['OPEN', 'IN_PROGRESS'] },
+        },
+      });
+      if (!openOffboarding) {
+        const tasks = defaultLifecycleTasks('OFFBOARDING');
+        await tx.hrLifecycleCase.create({
+          data: {
+            tenantId,
+            employeeId: dto.employeeId,
+            type: 'OFFBOARDING',
+            status: 'OPEN',
+            startDate: new Date(),
+            targetDate: p.dueDate,
+            createdById: req.user?.userId || req.user?.id || null,
+            tasks: { create: tasks.map((task) => ({ ...task, tenantId })) },
+          },
+        });
+      }
+      return settlement;
     });
   }
 
