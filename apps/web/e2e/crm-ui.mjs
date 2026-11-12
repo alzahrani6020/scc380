@@ -67,6 +67,9 @@ let contactDeleteId = null;
 let csvExportRequested = false;
 let csvImportPreview = null;
 let csvImportExecute = null;
+let failNextOverview = false;
+let invalidCsvPreview = false;
+let invalidCsvExecuteAttempted = false;
 let pipelinePost = null;
 let pipelinePatch = null;
 let pipelineDeleteId = null;
@@ -129,6 +132,11 @@ async function installApiMock(page) {
       return;
     }
     if (method === 'GET' && path === '/analytics/dashboard') {
+      if (failNextOverview) {
+        failNextOverview = false;
+        await route.fulfill(json({ message: 'forced overview failure' }, 500));
+        return;
+      }
       await route.fulfill(json({
         counts: {
           contacts: lifecycleMode && lifecycle.contact ? 2 : 1,
@@ -241,13 +249,24 @@ async function installApiMock(page) {
       const body = req.postDataJSON();
       if (body.dryRun) {
         csvImportPreview = body;
-        await route.fulfill(json({
-          totalRows: 1,
-          validRows: 1,
-          duplicates: [],
-          errors: [],
-        }));
+        if (invalidCsvPreview) {
+          invalidCsvPreview = false;
+          await route.fulfill(json({
+            totalRows: 1,
+            validRows: 0,
+            duplicates: [],
+            errors: [{ row: 2, message: 'invalid email' }],
+          }));
+        } else {
+          await route.fulfill(json({
+            totalRows: 1,
+            validRows: 1,
+            duplicates: [],
+            errors: [],
+          }));
+        }
       } else {
+        if (invalidCsvPreview) invalidCsvExecuteAttempted = true;
         csvImportExecute = body;
         await route.fulfill(json({ imported: 1, skippedDuplicates: 0 }));
       }
@@ -552,6 +571,65 @@ async function testActivityCrudAndErrors(page) {
 }
 
 
+
+
+async function testInvalidCsvGuard(page) {
+  invalidCsvPreview = true;
+  invalidCsvExecuteAttempted = false;
+  csvImportPreview = null;
+  csvImportExecute = null;
+
+  await page.goto(`${BASE}/dashboard/crm/contacts`);
+  await page.getByText('Ali A', { exact: true }).waitFor();
+
+  const alerts = [];
+  const onDialog = async (dialog) => {
+    alerts.push({ type: dialog.type(), message: dialog.message() });
+    await dialog.accept();
+  };
+  page.on('dialog', onDialog);
+
+  await page.locator('#crm-csv-import').setInputFiles({
+    name: 'invalid-contacts.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from('firstName,lastName,email\nBad,Email,not-an-email\n'),
+  });
+
+  await waitUntil(() => Boolean(csvImportPreview), 'Invalid CSV preview was not sent');
+  await waitUntil(
+    () => alerts.some((d) => d.type === 'alert' && d.message.includes('لن يتم الاستيراد حتى تصحيح الأخطاء')),
+    'Invalid CSV error alert was not shown',
+  );
+  assert.equal(csvImportExecute, null, 'Invalid CSV unexpectedly executed import');
+  assert.equal(invalidCsvExecuteAttempted, false, 'Invalid CSV reached execute phase');
+  page.off('dialog', onDialog);
+}
+
+async function testOverviewRecoveryAndQuickLinks(page) {
+  failNextOverview = true;
+  await page.goto(`${BASE}/dashboard/crm`);
+  await page.getByText('تعذر تحميل نظرة CRM. تحقق من الاتصال بالخادم ثم أعد المحاولة.', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'إعادة المحاولة', exact: true }).click();
+  await page.getByRole('heading', { name: 'نظرة عامة على CRM', exact: true }).waitFor();
+  await page.getByText('أحدث الأنشطة', { exact: true }).waitFor();
+
+  const links = [
+    ['جهات الاتصال', '/dashboard/crm/contacts'],
+    ['الشركات', '/dashboard/crm/companies'],
+    ['الصفقات', '/dashboard/crm/deals'],
+    ['مسارات المبيعات', '/dashboard/crm/pipelines'],
+    ['الأنشطة', '/dashboard/crm/activities'],
+  ];
+
+  for (const [label, href] of links) {
+    await page.goto(`${BASE}/dashboard/crm`);
+    await page.getByRole('heading', { name: 'نظرة عامة على CRM', exact: true }).waitFor();
+    const quickLink = page.locator('a').filter({ hasText: label }).filter({ has: page.locator('svg') }).last();
+    await quickLink.click();
+    await page.waitForURL((url) => url.pathname === href);
+    assert.equal(new URL(page.url()).pathname, href, `Quick link ${label} did not navigate to ${href}`);
+  }
+}
 
 async function testContactCrudAndCsv(page) {
   contactPost = null;
@@ -948,6 +1026,8 @@ try {
   await testDealCrudAndErrors(page);
   await testActivityCrudAndErrors(page);
   await testContactCrudAndCsv(page);
+  await testInvalidCsvGuard(page);
+  await testOverviewRecoveryAndQuickLinks(page);
   await testCompanyCrud(page);
   await testPipelineAndStageCrud(page);
   await testCrmLifecycle(page);
