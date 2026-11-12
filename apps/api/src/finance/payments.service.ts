@@ -121,7 +121,7 @@ export class PaymentsService {
       tx,
       tenantId,
       invoice.id,
-      excludePaymentId,
+      payment.id,
     );
     const newPaid = priorPaid.add(payment.amount);
     if (newPaid.gt(invoice.total)) {
