@@ -5,6 +5,7 @@ import { AccountingPostingService } from '../src/accounting-core/accounting-post
 import { AccountingDualWriteService } from '../src/accounting-core/accounting-dual-write.service';
 import { AccountMappingService } from '../src/accounting-core/account-mapping.service';
 import { InvoicesService } from '../src/erp/invoices.service';
+import { PaymentsService } from '../src/finance/payments.service';
 
 test(
   'Accounting DB-backed E2E validates balanced posting, periods, mapping, tenant isolation and dual-write',
@@ -73,6 +74,8 @@ test(
       const mapping = new AccountMappingService();
       const dualWrite = new AccountingDualWriteService(posting);
       const invoices = new InvoicesService(mapping, dualWrite);
+      const payments = new PaymentsService(mapping, dualWrite);
+      const reqA: any = { user: { tenantId: tenantA.id, role: 'ADMIN' } };
 
       const mapped = await mapping.resolve(tenantA.id, ['CASH', 'SALES_REVENUE']);
       assert.equal(mapped.CASH.id, cashA.id);
@@ -188,6 +191,92 @@ test(
       assert.equal(
         invoiceLegacy.reduce((sum, row) => sum + Number(row.debitAmount), 0),
         invoiceLegacy.reduce((sum, row) => sum + Number(row.creditAmount), 0),
+      );
+
+      const payment1 = await payments.create(reqA, {
+        invoiceId: salesInvoice.id,
+        amount: 500,
+        currency: 'SAR',
+        method: 'CASH',
+        status: 'COMPLETED',
+        reference: `PAY-CASH-${run}`,
+        paidAt: '2026-11-14T12:00:00.000Z',
+      });
+      const payment1Header = await prisma.journalEntryHeader.findFirst({
+        where: { tenantId: tenantA.id, sourceType: 'PAYMENT', sourceId: payment1.id },
+        include: { lines: true },
+      });
+      assert.ok(payment1Header);
+      assert.equal(payment1Header.lines.length, 2);
+      assert.equal(
+        payment1Header.lines.reduce((sum, line) => sum + Number(line.debitAmount), 0),
+        500,
+      );
+      assert.equal(
+        payment1Header.lines.reduce((sum, line) => sum + Number(line.creditAmount), 0),
+        500,
+      );
+      let settledInvoice = await prisma.invoice.findUnique({ where: { id: salesInvoice.id } });
+      assert.equal(Number(settledInvoice!.paidAmount), 500);
+      assert.equal(settledInvoice!.status, 'PARTIAL');
+
+      const payment2 = await payments.create(reqA, {
+        invoiceId: salesInvoice.id,
+        amount: 650,
+        currency: 'SAR',
+        method: 'CASH',
+        status: 'PENDING',
+        reference: `PAY-PENDING-${run}`,
+        paidAt: '2026-11-15T12:00:00.000Z',
+      });
+      assert.equal(
+        await prisma.journalEntryHeader.count({
+          where: { tenantId: tenantA.id, sourceType: 'PAYMENT', sourceId: payment2.id },
+        }),
+        0,
+      );
+      settledInvoice = await prisma.invoice.findUnique({ where: { id: salesInvoice.id } });
+      assert.equal(Number(settledInvoice!.paidAmount), 500);
+
+      const completedPayment2 = await payments.update(reqA, payment2.id, { status: 'COMPLETED' });
+      assert.equal(completedPayment2.status, 'COMPLETED');
+      assert.equal(
+        await prisma.journalEntryHeader.count({
+          where: { tenantId: tenantA.id, sourceType: 'PAYMENT', sourceId: payment2.id },
+        }),
+        1,
+      );
+      settledInvoice = await prisma.invoice.findUnique({ where: { id: salesInvoice.id } });
+      assert.equal(Number(settledInvoice!.paidAmount), 1150);
+      assert.equal(settledInvoice!.status, 'PAID');
+      assert.ok(settledInvoice!.paidAt);
+
+      await assert.rejects(
+        () =>
+          payments.create(reqA, {
+            invoiceId: salesInvoice.id,
+            amount: 1,
+            currency: 'SAR',
+            method: 'CASH',
+            status: 'COMPLETED',
+            reference: `PAY-OVER-${run}`,
+          }),
+        /Payment exceeds invoice outstanding balance/,
+      );
+      assert.equal(
+        await prisma.payment.count({
+          where: { tenantId: tenantA.id, reference: `PAY-OVER-${run}` },
+        }),
+        0,
+      );
+
+      await assert.rejects(
+        () => payments.update(reqA, payment1.id, { amount: 1 }),
+        /Payment is posted/,
+      );
+      await assert.rejects(
+        () => payments.remove(reqA, payment1.id),
+        /Completed payment cannot be deleted/,
       );
 
       const draftInvoice = await invoices.create(tenantA.id, {
