@@ -196,6 +196,42 @@ async function verifyPaymentSchemaPreconditions(applied) {
   console.log('PAYMENT_SCHEMA_PREFLIGHT_PASS');
 }
 
+
+async function verifySupplierApPreconditions(applied) {
+  const migration = '20261112170000_reconcile_supplier_ap_accounting';
+  if (applied.has(migration)) return;
+
+  assertEnumCompatibility(
+    'SupplierInvoiceStatus',
+    await enumValues('SupplierInvoiceStatus'),
+    ['UNPAID','PARTIAL','PAID','OVERDUE','CANCELLED'],
+  );
+
+  const required = {
+    suppliers: [
+      'id','tenantId','name','code','country','paymentTerms','balance','isActive','createdAt','updatedAt',
+    ],
+    supplier_invoices: [
+      'id','tenantId','invoiceNumber','supplierId','issueDate','subtotal','taxAmount',
+      'total','paidAmount','status','createdAt','updatedAt',
+    ],
+    supplier_invoice_items: [
+      'id','tenantId','supplierInvoiceId','description','quantity','unitPrice','total','createdAt',
+    ],
+    supplier_payments: [
+      'id','tenantId','supplierId','supplierInvoiceId','amount','method','paymentDate','createdAt',
+    ],
+  };
+
+  for (const [table, columns] of Object.entries(required)) {
+    if ((await tableExists(table)) && !(await columnsPresent(table, columns))) {
+      throw new Error(`SUPPLIER_AP_BLOCKED incomplete columns: ${table}`);
+    }
+  }
+
+  console.log('SUPPLIER_AP_PREFLIGHT_PASS');
+}
+
 async function appliedMigrations() {
   const exists = await tableExists('_prisma_migrations');
   if (!exists) return new Set();
@@ -394,6 +430,7 @@ async function resolveIfNeeded(applied, migration, verify) {
 
   await verifyAccountingCorePreconditions(applied);
   await verifyPaymentSchemaPreconditions(applied);
+  await verifySupplierApPreconditions(applied);
 
   console.log('PRISMA_MIGRATE_DEPLOY_START');
   runPrisma(['migrate', 'deploy']);
