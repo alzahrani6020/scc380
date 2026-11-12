@@ -53,6 +53,7 @@ model Tenant {
   journalEntries JournalEntry[]
   journalEntryHeaders JournalEntryHeader[]
   journalEntryLines JournalEntryLine[]
+  supplierInvoiceItems SupplierInvoiceItem[]
   bankAccounts  BankAccount[]
   purchaseOrders PurchaseOrder[]
   leaves        Leave[]
@@ -874,11 +875,14 @@ model SupplierInvoiceItem {
   quantity      Int       @default(1)
   unitPrice     Decimal   @db.Decimal(18, 4)
   total         Decimal   @db.Decimal(18, 2)
+  accountId     String?
+  chartAccount  ChartOfAccount? @relation(fields: [accountId], references: [id], onDelete: Restrict)
   
   createdAt     DateTime  @default(now())
   
   @@index([tenantId])
   @@index([supplierInvoiceId])
+  @@index([accountId])
   @@map("supplier_invoice_items")
 }
 
