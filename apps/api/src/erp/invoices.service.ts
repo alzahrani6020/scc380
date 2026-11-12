@@ -15,7 +15,7 @@ export class InvoicesService {
   private async guardZatcaLocked(tenantId: string, id: string) {
     const invoice = await prisma.invoice.findFirst({
       where: withTenant({ id }, tenantId),
-      select: { zatcaStatus: true, invoiceNumber: true },
+      select: { id: true, zatcaStatus: true, invoiceNumber: true, type: true, status: true },
     });
     if (!invoice) throw new NotFoundException('الفاتورة غير موجودة');
     if (invoice.zatcaStatus === 'CLEARED' || invoice.zatcaStatus === 'REPORTED') {
@@ -189,7 +189,51 @@ export class InvoicesService {
       throw new ForbiddenException('تغيير تاريخ الفاتورة محظور — يتم تحديده تلقائياً من الخادم');
     }
 
-    return prisma.invoice.update({ where: { id }, data, include: { items: true } });
+    const postedJournal = await prisma.journalEntryHeader.findFirst({
+      where: { tenantId, sourceType: 'INVOICE', sourceId: id },
+      select: { id: true },
+    });
+    if (postedJournal) {
+      const lockedFields = [
+        'invoiceNumber',
+        'type',
+        'subtotal',
+        'taxRate',
+        'taxAmount',
+        'discount',
+        'total',
+        'currency',
+      ];
+      const changedLockedField = lockedFields.find(field =>
+        Object.prototype.hasOwnProperty.call(data, field),
+      );
+      if (changedLockedField) {
+        throw new ForbiddenException(
+          `الفاتورة مُرحّلة محاسبياً — لا يمكن تعديل الحقل ${changedLockedField}; استخدم مستند تصحيح/عكس`,
+        );
+      }
+      if (data.status === 'CANCELLED') {
+        throw new ForbiddenException(
+          'الفاتورة مُرحّلة محاسبياً — الإلغاء يتطلب مستند عكس/إشعار دائن',
+        );
+      }
+    }
+
+    const wasEligible = this.isPostingEligible(invoice);
+
+    return prisma.$transaction(async tx => {
+      const updated = await tx.invoice.update({
+        where: { id },
+        data,
+        include: { items: true },
+      });
+
+      if (!wasEligible && this.isPostingEligible(updated)) {
+        await this.postInvoiceInTransaction(tx, tenantId, updated);
+      }
+
+      return updated;
+    });
   }
 
   async delete(tenantId: string, id: string) {
