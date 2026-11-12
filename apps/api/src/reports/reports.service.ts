@@ -176,7 +176,7 @@ export class ReportsService {
         _sum: { taxAmount: true, total: true },
         where: {
           ...tw,
-          status: { not: 'DRAFT' },
+          status: { in: ['SENT', 'VIEWED', 'PAID', 'PARTIAL', 'OVERDUE'] },
           ...(date ? { issueDate: date } : {}),
         },
       }),
@@ -184,6 +184,7 @@ export class ReportsService {
         _sum: { taxAmount: true, total: true },
         where: {
           ...tw,
+          status: { not: 'CANCELLED' },
           ...(date ? { issueDate: date } : {}),
         },
       }),
