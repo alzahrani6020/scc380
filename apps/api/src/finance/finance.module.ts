@@ -11,8 +11,10 @@ import { BankAccountsController } from './bank-accounts.controller';
 import { BankAccountsService } from './bank-accounts.service';
 import { PurchaseOrdersController } from './purchase-orders.controller';
 import { PurchaseOrdersService } from './purchase-orders.service';
+import { AccountingCoreModule } from '../accounting-core/accounting-core.module';
 
 @Module({
+  imports: [AccountingCoreModule],
   controllers: [
     PaymentsController,
     ExpensesController,
