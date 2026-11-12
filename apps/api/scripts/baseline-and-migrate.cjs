@@ -11,6 +11,7 @@ const historical = [
 const hrCoreMigration = '20261112130000_reconcile_hr_core';
 const hrIntegrityMigration = '20261112134500_hr_finance_integrity_p0';
 const hrLifecycleMigration = '20261112140000_hr_contracts_leave_balances';
+const payrollRunsMigration = '20261112143000_payroll_runs';
 const hrCoreTables = ['leaves', 'attendances', 'payrolls', 'shifts'];
 
 function runPrisma(args) {
@@ -248,6 +249,22 @@ async function verifyHrLifecyclePreconditions(applied) {
   console.log('HR_LIFECYCLE_PREFLIGHT_PASS');
 }
 
+async function verifyPayrollRunsPreconditions(applied) {
+  if (applied.has(payrollRunsMigration)) return;
+  const tables = ['payroll_runs', 'payroll_run_items'];
+  const existing = [];
+  for (const table of tables) {
+    if (await tableExists(table)) existing.push(table);
+  }
+  const payrollRunColumn = await columnState('payrolls', 'payrollRunId');
+  if (existing.length > 0 || payrollRunColumn) {
+    throw new Error(
+      `PAYROLL_RUNS_BLOCKED unmanaged schema existing_tables=${existing.join(',')} payrollRunId=${Boolean(payrollRunColumn)}`,
+    );
+  }
+  console.log('PAYROLL_RUNS_PREFLIGHT_PASS');
+}
+
 async function resolveIfNeeded(applied, migration, verify) {
   if (applied.has(migration)) return;
   await verify();
@@ -268,6 +285,7 @@ async function resolveIfNeeded(applied, migration, verify) {
     await reconcileHrCore(applied);
     await verifyHrIntegrityPreconditions(applied);
     await verifyHrLifecyclePreconditions(applied);
+    await verifyPayrollRunsPreconditions(applied);
   }
 
   console.log('PRISMA_MIGRATE_DEPLOY_START');

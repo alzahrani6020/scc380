@@ -61,6 +61,8 @@ model Tenant {
   leavePolicies LeavePolicy[]
   leaveBalances LeaveBalance[]
   leaveBalanceAdjustments LeaveBalanceAdjustment[]
+  payrollRuns PayrollRun[]
+  payrollRunItems PayrollRunItem[]
   drivers       Driver[]
   fleetMaintenances FleetMaintenance[]
   fleetFuelLogs FleetFuelLog[]
@@ -875,6 +877,7 @@ model Employee {
   shifts        Shift[]
   contracts     EmployeeContract[]
   leaveBalances LeaveBalance[]
+  payrollRunItems PayrollRunItem[]
 
   @@unique([tenantId, employeeCode])
   @@index([tenantId])
@@ -966,13 +969,81 @@ model Payroll {
   netSalary     Decimal   @db.Decimal(18, 2)
   status        PayrollStatus @default(DRAFT)
   paidAt        DateTime?
+  payrollRunId  String?
+  payrollRun    PayrollRun? @relation(fields: [payrollRunId], references: [id], onDelete: SetNull)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
   @@unique([tenantId, employeeId, year, month])
   @@index([tenantId])
   @@index([employeeId])
+  @@index([payrollRunId])
   @@map("payrolls")
+}
+
+enum PayrollRunStatus {
+  DRAFT
+  APPROVED
+  PAID
+  CANCELLED
+}
+
+model PayrollRun {
+  id              String           @id @default(cuid())
+  tenantId        String
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  year            Int
+  month           Int
+  status          PayrollRunStatus @default(DRAFT)
+  employeeCount   Int              @default(0)
+  grossTotal      Decimal          @default(0) @db.Decimal(18, 2)
+  deductionTotal  Decimal          @default(0) @db.Decimal(18, 2)
+  netTotal        Decimal          @default(0) @db.Decimal(18, 2)
+  approvedById    String?
+  approvedAt      DateTime?
+  paidAt          DateTime?
+  notes           String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  items           PayrollRunItem[]
+  payrolls        Payroll[]
+
+  @@unique([tenantId, year, month])
+  @@index([tenantId])
+  @@index([status])
+  @@map("payroll_runs")
+}
+
+model PayrollRunItem {
+  id                 String      @id @default(cuid())
+  tenantId           String
+  tenant             Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  payrollRunId       String
+  payrollRun         PayrollRun  @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  employeeId         String
+  employee           Employee    @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  employeeCode       String
+  employeeName       String
+  basicSalary        Decimal     @db.Decimal(18, 2)
+  housingAllowance   Decimal     @default(0) @db.Decimal(18, 2)
+  transportAllowance Decimal     @default(0) @db.Decimal(18, 2)
+  otherAllowances    Decimal     @default(0) @db.Decimal(18, 2)
+  gosiDeduction      Decimal     @default(0) @db.Decimal(18, 2)
+  taxDeduction       Decimal     @default(0) @db.Decimal(18, 2)
+  otherDeductions    Decimal     @default(0) @db.Decimal(18, 2)
+  grossSalary        Decimal     @db.Decimal(18, 2)
+  totalDeductions    Decimal     @db.Decimal(18, 2)
+  netSalary          Decimal     @db.Decimal(18, 2)
+  notes              String?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  @@unique([payrollRunId, employeeId])
+  @@index([tenantId])
+  @@index([payrollRunId])
+  @@index([employeeId])
+  @@map("payroll_run_items")
 }
 
 model Shift {

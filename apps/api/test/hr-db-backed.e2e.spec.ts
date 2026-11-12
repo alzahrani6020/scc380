@@ -9,6 +9,7 @@ import { ShiftsService } from '../src/hr/shifts.service';
 import { ContractsService } from '../src/hr/contracts.service';
 import { LeavePoliciesService } from '../src/hr/leave-policies.service';
 import { LeaveBalancesService } from '../src/hr/leave-balances.service';
+import { PayrollRunsService } from '../src/hr/payroll-runs.service';
 
 test(
   'HR DB-backed E2E validates schema, tenant isolation and core lifecycles',
@@ -30,6 +31,7 @@ test(
     const contracts = new ContractsService();
     const leavePolicies = new LeavePoliciesService();
     const leaveBalances = new LeaveBalancesService();
+    const payrollRuns = new PayrollRunsService();
 
     const reqA: any = { user: { tenantId: tenantA.id, userId: `approver-${run}`, role: 'ADMIN' } };
     const reqB: any = { user: { tenantId: tenantB.id, userId: `approver-b-${run}`, role: 'ADMIN' } };
@@ -242,6 +244,42 @@ test(
       const terminatedContract = await contracts.terminate(reqA, contract.id, 'E2E termination');
       assert.equal(terminatedContract.status, 'TERMINATED');
       assert.ok(terminatedContract.terminatedAt);
+
+      const payrollRun = await payrollRuns.create(reqA, { year: 2026, month: 12, notes: 'E2E payroll run' });
+      assert.equal(payrollRun.status, 'DRAFT');
+      assert.equal(payrollRun.employeeCount, 1);
+      assert.equal(payrollRun.items.length, 1);
+      assert.equal(payrollRun.items[0].employeeId, employeeA.id);
+
+      const editedRunItem = await payrollRuns.updateItem(reqA, payrollRun.id, payrollRun.items[0].id, {
+        gosiDeduction: 1000,
+        notes: 'E2E deduction',
+      });
+      assert.equal(Number(editedRunItem.gosiDeduction), 1000);
+      assert.equal(Number(editedRunItem.netSalary), 15200);
+
+      const approvedRun = await payrollRuns.approve(reqA, payrollRun.id);
+      assert.equal(approvedRun.status, 'APPROVED');
+      assert.ok(approvedRun.approvedAt);
+
+      const paidRun = await payrollRuns.pay(reqA, payrollRun.id);
+      assert.equal(paidRun.status, 'PAID');
+      assert.ok(paidRun.paidAt);
+
+      const generatedPayroll = await prisma.payroll.findFirstOrThrow({
+        where: { tenantId: tenantA.id, employeeId: employeeA.id, year: 2026, month: 12 },
+      });
+      assert.equal(generatedPayroll.status, 'PAID');
+      assert.equal(generatedPayroll.payrollRunId, payrollRun.id);
+      assert.equal(Number(generatedPayroll.netSalary), 15200);
+
+      const foreignRuns = await payrollRuns.findAll(reqB, { year: 2026, month: 12 });
+      assert.equal(foreignRuns.count, 0);
+
+      await assert.rejects(
+        () => payrollRuns.create(reqA, { year: 2026, month: 12 }),
+        /Payroll run already exists for this period/,
+      );
 
       const terminated = await employees.terminate(tenantA.id, employeeA.id);
       assert.equal(terminated.status, 'TERMINATED');
