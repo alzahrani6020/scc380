@@ -232,6 +232,35 @@ async function verifySupplierApPreconditions(applied) {
   console.log('SUPPLIER_AP_PREFLIGHT_PASS');
 }
 
+
+async function verifyExpenseAccountingPreconditions(applied) {
+  const migration = '20261112171000_reconcile_expense_accounting';
+  if (applied.has(migration)) return;
+
+  assertEnumCompatibility(
+    'ExpenseCategory',
+    await enumValues('ExpenseCategory'),
+    ['OFFICE','TRAVEL','MEALS','UTILITIES','MARKETING','SALARIES','RENT','MAINTENANCE','INSURANCE','TAXES','SUPPLIES','OTHER'],
+  );
+  assertEnumCompatibility(
+    'ExpenseStatus',
+    await enumValues('ExpenseStatus'),
+    ['PENDING','APPROVED','REJECTED','REIMBURSED'],
+  );
+
+  if (await tableExists('expenses')) {
+    const columns = [
+      'id','tenantId','category','amount','currency','description','incurredAt',
+      'status','createdAt','updatedAt',
+    ];
+    if (!(await columnsPresent('expenses', columns))) {
+      throw new Error('EXPENSE_ACCOUNTING_BLOCKED incomplete columns: expenses');
+    }
+  }
+
+  console.log('EXPENSE_ACCOUNTING_PREFLIGHT_PASS');
+}
+
 async function appliedMigrations() {
   const exists = await tableExists('_prisma_migrations');
   if (!exists) return new Set();
@@ -431,6 +460,7 @@ async function resolveIfNeeded(applied, migration, verify) {
   await verifyAccountingCorePreconditions(applied);
   await verifyPaymentSchemaPreconditions(applied);
   await verifySupplierApPreconditions(applied);
+  await verifyExpenseAccountingPreconditions(applied);
 
   console.log('PRISMA_MIGRATE_DEPLOY_START');
   runPrisma(['migrate', 'deploy']);
