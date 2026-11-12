@@ -95,7 +95,9 @@ test('accounting posting core enforces balanced transactional double-entry', () 
 test('account mapping is tenant-aware and supports explicit tenant overrides', () => {
   const service = src('src/accounting-core/account-mapping.service.ts');
   assert.match(service, /DEFAULT_CODES/);
-  assert.match(service, /accounting\.accountMapping/);
+  assert.match(service, /readAccounting\(settings\)\.accountMapping/);
+  assert.match(service, /autoPostingEnabled === true/);
+  assert.match(service, /resolveInTransaction/);
   assert.match(service, /tenantId, code: \{ in: codes \}, isActive: true/);
   assert.match(service, /Missing active accounting mappings/);
   assert.doesNotMatch(service, /findFirst\(\{\s*where:\s*\{\s*code:/);
@@ -106,6 +108,7 @@ test('dual write is atomic and preserves deterministic legacy line numbers', () 
   const service = src('src/accounting-core/accounting-dual-write.service.ts');
   assert.match(service, /prisma\.\$transaction/);
   assert.match(service, /postInTransaction\(tx, input\)/);
+  assert.match(service, /async postInTransaction\(tx: Prisma\.TransactionClient/);
   assert.match(service, /tx\.journalEntry\.createMany/);
   assert.match(service, /entryNumber: \`LEG-\$\{input\.tenantId\}-\$\{input\.entryNumber\}-L\$\{index \+ 1\}\`/);
   assert.match(service, /status:\s*JournalStatus\.POSTED/);
