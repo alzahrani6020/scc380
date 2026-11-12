@@ -11,7 +11,8 @@
     "db:generate": "prisma generate --schema ../../packages/database/prisma/schema.prisma",
     "db:migrate": "prisma migrate dev --schema ../../packages/database/prisma/schema.prisma",
     "db:push": "prisma db push --schema ../../packages/database/prisma/schema.prisma",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "test:db-e2e": "CRM_DB_E2E=1 tsx --test test/crm-db-backed.e2e.spec.ts"
   },
   "dependencies": {
     "@nestjs/bullmq": "^10.1.0",
