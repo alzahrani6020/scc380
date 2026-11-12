@@ -249,7 +249,7 @@ async function testDealQueryContracts(page) {
     'Deals search was not sent server-side after debounce',
   );
 
-  await page.getByLabel('تصفية حسب المرحلة').selectOption('QUALIFIED');
+  await page.getByLabel('تصفية حسب المرحلة', { exact: true }).selectOption('QUALIFIED');
   await waitUntil(
     () => dealListQueries.some((q) => q.search === 'needle' && q.stage === 'QUALIFIED' && q.page === '1'),
     'Deals stage filter was not sent server-side',
