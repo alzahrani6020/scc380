@@ -56,3 +56,73 @@ test('chart accounts with ledger history cannot be deleted', () => {
   assert.match(service, /prisma\.journalEntry\.count/);
   assert.match(service, /cannot be deleted; deactivate it instead/);
 });
+
+
+test('journal header-line migration is additive and preserves legacy journal table', () => {
+  const migration = readFileSync(
+    join(process.cwd(), '../../packages/database/prisma/migrations/20261112162000_add_journal_header_lines/migration.sql'),
+    'utf8',
+  );
+  assert.match(migration, /CREATE TABLE "journal_entry_headers"/);
+  assert.match(migration, /CREATE TABLE "journal_entry_lines"/);
+  assert.match(migration, /journal_entry_lines_amount_check/);
+  assert.doesNotMatch(migration, /REFERENCES "journal_entries"/);
+  assert.doesNotMatch(migration, /(^|\n)\s*DROP\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*TRUNCATE\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*DELETE\s+FROM\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*UPDATE\s+["a-z]/i);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS "journal_entries"/);
+  assert.doesNotMatch(migration, /ALTER TABLE "journal_entries"[\s\S]*?\b(DROP|RENAME|ALTER COLUMN)\b/i);
+  const legacyAlters = migration.match(/ALTER TABLE "journal_entries"[\s\S]*?;/gi) || [];
+  assert.ok(legacyAlters.length > 0);
+  assert.ok(legacyAlters.every(statement => /ADD CONSTRAINT/i.test(statement)));
+});
+
+test('accounting posting core enforces balanced transactional double-entry', () => {
+  const service = src('src/accounting-core/accounting-posting.service.ts');
+  assert.match(service, /lines\.length < 2/);
+  assert.match(service, /exactly one side must be positive/);
+  assert.match(service, /Journal is not balanced/);
+  assert.match(service, /prisma\.\$transaction/);
+  assert.match(service, /financialPeriod\.findFirst/);
+  assert.match(service, /journalEntryHeader\.create/);
+  assert.match(service, /status:\s*JournalStatus\.POSTED/);
+  assert.match(service, /sourceType/);
+  assert.match(service, /sourceId/);
+});
+
+
+test('account mapping is tenant-aware and supports explicit tenant overrides', () => {
+  const service = src('src/accounting-core/account-mapping.service.ts');
+  assert.match(service, /DEFAULT_CODES/);
+  assert.match(service, /accounting\.accountMapping/);
+  assert.match(service, /tenantId, code: \{ in: codes \}, isActive: true/);
+  assert.match(service, /Missing active accounting mappings/);
+  assert.doesNotMatch(service, /findFirst\(\{\s*where:\s*\{\s*code:/);
+});
+
+
+test('dual write is atomic and preserves deterministic legacy line numbers', () => {
+  const service = src('src/accounting-core/accounting-dual-write.service.ts');
+  assert.match(service, /prisma\.\$transaction/);
+  assert.match(service, /postInTransaction\(tx, input\)/);
+  assert.match(service, /tx\.journalEntry\.createMany/);
+  assert.match(service, /entryNumber: \`LEG-\$\{input\.tenantId\}-\$\{input\.entryNumber\}-L\$\{index \+ 1\}\`/);
+  assert.match(service, /status:\s*JournalStatus\.POSTED/);
+});
+
+
+test('production startup blocks conflicting accounting-core migration state before migrate deploy', () => {
+  const script = src('scripts/baseline-and-migrate.cjs');
+  assert.match(script, /verifyAccountingCorePreconditions/);
+  assert.match(script, /ACCOUNTING_CORE_BLOCKED/);
+  assert.match(script, /journal_entry_headers/);
+  assert.match(script, /journal_entry_lines/);
+  assert.match(script, /assertEnumCompatibility/);
+  assert.match(script, /ACCOUNTING_LEGACY_PREFLIGHT/);
+  assert.match(script, /await verifyAccountingCorePreconditions\(applied\)/);
+  assert.ok(
+    script.indexOf('await verifyAccountingCorePreconditions(applied)') <
+      script.indexOf("console.log('PRISMA_MIGRATE_DEPLOY_START')"),
+  );
+});
