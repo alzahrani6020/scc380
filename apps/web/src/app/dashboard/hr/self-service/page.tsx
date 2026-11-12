@@ -21,6 +21,7 @@ export default function HrSelfServicePage() {
   const [payroll, setPayroll] = useState<any[]>([]);
   const [documents, setDocuments] = useState<any[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
+  const [custody, setCustody] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [unlinked, setUnlinked] = useState(false);
   const [form, setForm] = useState<any>({ type: 'EMPLOYMENT_CERTIFICATE', subject: '' });
@@ -30,13 +31,14 @@ export default function HrSelfServicePage() {
   const load = async () => {
     setLoading(true); setUnlinked(false);
     try {
-      const [me, p, docs, reqs] = await Promise.all([
+      const [me, p, docs, reqs, assets] = await Promise.all([
         api.get('/hr/self/me'),
         api.get('/hr/self/payroll?limit=12'),
         api.get('/hr/self/documents'),
         api.get('/hr/self/requests'),
+        api.get('/hr/self/assets'),
       ]);
-      setData(me.data); setPayroll(p.data || []); setDocuments(docs.data || []); setRequests(reqs.data || []);
+      setData(me.data); setPayroll(p.data || []); setDocuments(docs.data || []); setRequests(reqs.data || []); setCustody(assets.data || []);
       setProfile({
         phone: me.data.employee?.phone || '',
         emergencyContactName: me.data.employee?.emergencyContactName || '',
@@ -134,6 +136,20 @@ export default function HrSelfServicePage() {
             <thead><tr className="text-slate-500 border-b border-slate-800"><th className="text-right py-2">الفترة</th><th className="text-right">الإجمالي</th><th className="text-right">خصم القرض</th><th className="text-right">الصافي</th><th className="text-right">الحالة</th></tr></thead>
             <tbody>{payroll.map(row => <tr key={row.id} className="border-b border-slate-800/60"><td className="py-3 text-white">{row.year}/{String(row.month).padStart(2,'0')}</td><td>{Number(row.grossSalary).toLocaleString('ar-SA')}</td><td>{Number(row.loanDeductions || 0).toLocaleString('ar-SA')}</td><td className="text-emerald-400">{Number(row.netSalary).toLocaleString('ar-SA')}</td><td>{row.status}</td></tr>)}</tbody>
           </table>
+        </div>
+      </div>
+
+      <div className="scc-card">
+        <h2 className="font-bold text-white flex items-center gap-2 mb-4"><FileText className="h-5 w-5 text-primary-400" /> عهدي وأصولي</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {custody.length === 0 ? <p className="text-slate-500 text-sm">لا توجد عهد مسجلة.</p> : custody.map((item:any) => (
+            <div key={item.id} className="rounded-lg border border-slate-800 p-3">
+              <div className="text-white font-medium">{item.asset?.name}</div>
+              <div className="text-xs text-slate-500 mt-1">{item.asset?.category?.name || '—'} · {item.status}</div>
+              <div className="text-xs text-slate-400 mt-1">تاريخ التسليم: {new Date(item.assignedAt).toLocaleDateString('ar-SA')}</div>
+              {item.expectedReturnAt && <div className="text-xs text-slate-400">الاسترداد المتوقع: {new Date(item.expectedReturnAt).toLocaleDateString('ar-SA')}</div>}
+            </div>
+          ))}
         </div>
       </div>
 
