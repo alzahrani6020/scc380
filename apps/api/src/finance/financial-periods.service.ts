@@ -104,8 +104,11 @@ export class FinancialPeriodsService {
 
     const range = { gte: period.startDate, lte: period.endDate };
 
-    const [draftHeaders, legacy, modern] = await Promise.all([
+    const [draftHeaders, draftLegacy, legacy, modern] = await Promise.all([
       prisma.journalEntryHeader.count({
+        where: { tenantId, status: 'DRAFT', date: range },
+      }),
+      prisma.journalEntry.count({
         where: { tenantId, status: 'DRAFT', date: range },
       }),
       prisma.journalEntry.aggregate({
@@ -130,8 +133,9 @@ export class FinancialPeriodsService {
       }),
     ]);
 
-    if (draftHeaders > 0) {
-      throw new ConflictException(`Cannot close period with ${draftHeaders} draft journal entries`);
+    const draftCount = draftHeaders + draftLegacy;
+    if (draftCount > 0) {
+      throw new ConflictException(`Cannot close period with ${draftCount} draft journal entries`);
     }
 
     const debit = Number(legacy._sum.debitAmount || 0) + Number(modern._sum.debitAmount || 0);
