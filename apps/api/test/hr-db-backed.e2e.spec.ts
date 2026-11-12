@@ -120,7 +120,7 @@ test(
           otherDeductions: 0,
           netSalary: 10000,
         }),
-        /Unique constraint failed|P2002/,
+        /Payroll already exists for this employee and period/,
       );
 
       await assert.rejects(
