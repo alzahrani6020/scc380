@@ -196,3 +196,23 @@ test('supplier AP posting policy requires explicit item accounts and atomic dual
   assert.match(service, /resolvePaymentAccountInTransaction/);
   assert.match(service, /فاتورة المورد مُرحّلة محاسبياً/);
 });
+
+
+test('expense accounting schema is additive and explicit-account posting is guarded', () => {
+  const migration = readFileSync(
+    join(process.cwd(), '../../packages/database/prisma/migrations/20261112171000_reconcile_expense_accounting/migration.sql'),
+    'utf8',
+  );
+  const startup = src('scripts/baseline-and-migrate.cjs');
+  const service = src('src/finance/expenses.service.ts');
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS "expenses"/);
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS "debitAccountId"/);
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS "creditAccountId"/);
+  assert.doesNotMatch(migration, /(^|\n)\s*DROP\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*DELETE\s+FROM\s+/i);
+  assert.match(startup, /verifyExpenseAccountingPreconditions/);
+  assert.match(service, /requires debitAccountId and creditAccountId/);
+  assert.match(service, /sourceType:\s*'EXPENSE'/);
+  assert.match(service, /postInTransaction\(tx/);
+  assert.match(service, /Posted expense cannot be deleted/);
+});
