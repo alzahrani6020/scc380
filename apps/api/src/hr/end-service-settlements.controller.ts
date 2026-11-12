@@ -42,36 +42,36 @@ export class EndServiceSettlementsController {
   constructor(private readonly service: EndServiceSettlementsService) {}
 
   @Get()
-  @RequirePermissions('hr:read')
+  @RequirePermissions('hr:settlements:read')
   findAll(@Req() req: any, @Query() query: any) { return this.service.findAll(req, query); }
 
   @Get(':id')
-  @RequirePermissions('hr:read')
+  @RequirePermissions('hr:settlements:read')
   findOne(@Req() req: any, @Param('id') id: string) { return this.service.findOne(req, id); }
 
   @Post('preview')
-  @RequirePermissions('hr:read')
+  @RequirePermissions('hr:settlements:read')
   preview(@Req() req: any, @Body() dto: SettlementDto) { return this.service.preview(req, dto); }
 
   @Post()
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:settlements:write')
   create(@Req() req: any, @Body() dto: SettlementDto) { return this.service.create(req, dto); }
 
   @Post(':id/approve')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:settlements:write')
   approve(@Req() req: any, @Param('id') id: string) { return this.service.approve(req, id); }
 
   @Post(':id/post-accounting')
-  @RequirePermissions('hr:write', 'erp:write')
+  @RequirePermissions('hr:settlements:write', 'erp:write')
   postAccounting(@Req() req: any, @Param('id') id: string, @Body() dto: PostSettlementAccountingDto) {
     return this.service.postAccounting(req, id, dto);
   }
 
   @Post(':id/pay')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:settlements:write')
   pay(@Req() req: any, @Param('id') id: string) { return this.service.pay(req, id); }
 
   @Post(':id/cancel')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:settlements:write')
   cancel(@Req() req: any, @Param('id') id: string) { return this.service.cancelDraft(req, id); }
 }
