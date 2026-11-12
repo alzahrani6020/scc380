@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import api from '@/lib/api';
-import { CheckCircle2, PackageCheck, Plus, RotateCcw, TriangleAlert } from 'lucide-react';
+import { CheckCircle2, PackageCheck, Plus, RotateCcw, AlertTriangle } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Modal from '@/components/ui/Modal';
@@ -119,8 +119,8 @@ export default function HrAssetsPage() {
             </div>
             {item.status === 'ACTIVE' && <div className="flex gap-1 items-center">
               <button onClick={() => close(item,'RETURNED')} className="p-2 text-emerald-400" title="استلام"><RotateCcw className="h-4 w-4" /></button>
-              <button onClick={() => close(item,'DAMAGED')} className="p-2 text-amber-400" title="متضرر"><TriangleAlert className="h-4 w-4" /></button>
-              <button onClick={() => close(item,'LOST')} className="p-2 text-red-400" title="مفقود"><TriangleAlert className="h-4 w-4" /></button>
+              <button onClick={() => close(item,'DAMAGED')} className="p-2 text-amber-400" title="متضرر"><AlertTriangle className="h-4 w-4" /></button>
+              <button onClick={() => close(item,'LOST')} className="p-2 text-red-400" title="مفقود"><AlertTriangle className="h-4 w-4" /></button>
             </div>}
           </div>)}
       </div>
