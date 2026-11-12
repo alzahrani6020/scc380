@@ -1,4 +1,4 @@
-export function parsePagination(query: any, defaultLimit = 25) {
+export function parsePagination(query: any, defaultLimit = 200) {
   const page = Math.max(1, Number.parseInt(String(query?.page || '1'), 10) || 1);
   const requestedLimit = Number.parseInt(String(query?.limit || defaultLimit), 10) || defaultLimit;
   const limit = Math.min(200, Math.max(1, requestedLimit));
