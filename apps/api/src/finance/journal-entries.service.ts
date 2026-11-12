@@ -105,6 +105,44 @@ export class JournalEntriesService {
     return prisma.journalEntry.update({ where: { id }, data: { ...dto, date } });
   }
 
+  async reverse(req: any, id: string, dto: any) {
+    const tenantId = req.user?.tenantId;
+    const where = { ...tenantWhere(tenantId), id };
+    const existing = await prisma.journalEntry.findFirst({ where });
+    if (!existing) throw new NotFoundException('Journal entry not found');
+    if (existing.status !== 'POSTED') {
+      throw new ConflictException('Only posted journal entries can be reversed');
+    }
+
+    const entryNumber = dto.entryNumber;
+    if (!entryNumber) throw new BadRequestException('Reversal entry number is required');
+
+    const duplicate = await prisma.journalEntry.findFirst({
+      where: { tenantId, entryNumber },
+      select: { id: true },
+    });
+    if (duplicate) throw new ConflictException('Entry number already exists');
+
+    const date = dto.date ? new Date(dto.date) : new Date();
+    if (Number.isNaN(date.getTime())) throw new BadRequestException('Invalid reversal date');
+    await this.assertPeriodOpen(tenantId, date);
+
+    return prisma.journalEntry.create({
+      data: {
+        tenantId,
+        entryNumber,
+        date,
+        description: dto.description || `Reversal of ${existing.entryNumber}: ${existing.description}`,
+        reference: dto.reference || `REV-${existing.entryNumber}`,
+        debitAmount: existing.creditAmount,
+        creditAmount: existing.debitAmount,
+        accountId: existing.accountId,
+        type: existing.type,
+        status: 'POSTED',
+      },
+    });
+  }
+
   async remove(req: any, id: string) {
     const where = { ...tenantWhere(req.user?.tenantId), id };
     const existing = await prisma.journalEntry.findFirst({ where });
