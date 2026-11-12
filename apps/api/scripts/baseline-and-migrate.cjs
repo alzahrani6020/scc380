@@ -288,6 +288,45 @@ async function verifyExpenseAccountingPreconditions(applied) {
   console.log('EXPENSE_ACCOUNTING_PREFLIGHT_PASS');
 }
 
+async function verifyBankReconciliationPreconditions(applied) {
+  const migration = '20261113010000_bank_reconciliation';
+  if (applied.has(migration)) return;
+
+  assertEnumCompatibility(
+    'BankReconciliationStatus',
+    await enumValues('BankReconciliationStatus'),
+    ['DRAFT','COMPLETED'],
+  );
+  assertEnumCompatibility(
+    'BankStatementLineStatus',
+    await enumValues('BankStatementLineStatus'),
+    ['UNMATCHED','MATCHED'],
+  );
+
+  const required = {
+    bank_accounts: [
+      'id','tenantId','bankName','accountName','accountNumber','balance',
+      'isDefault','isActive','createdAt','updatedAt',
+    ],
+    bank_reconciliations: [
+      'id','tenantId','bankAccountId','startDate','endDate','openingBalance',
+      'endingBalance','status','createdAt','updatedAt',
+    ],
+    bank_statement_lines: [
+      'id','tenantId','reconciliationId','bankAccountId','transactionDate',
+      'amount','status','createdAt','updatedAt',
+    ],
+  };
+
+  for (const [table, columns] of Object.entries(required)) {
+    if ((await tableExists(table)) && !(await columnsPresent(table, columns))) {
+      throw new Error(`BANK_RECONCILIATION_BLOCKED incomplete columns: ${table}`);
+    }
+  }
+
+  console.log('BANK_RECONCILIATION_PREFLIGHT_PASS');
+}
+
 async function appliedMigrations() {
   const exists = await tableExists('_prisma_migrations');
   if (!exists) return new Set();
@@ -506,6 +545,7 @@ async function resolveIfNeeded(applied, migration, verify) {
   await verifyPaymentSchemaPreconditions(applied);
   await verifySupplierApPreconditions(applied);
   await verifyExpenseAccountingPreconditions(applied);
+  await verifyBankReconciliationPreconditions(applied);
 
   console.log('PRISMA_MIGRATE_DEPLOY_START');
   runPrisma(['migrate', 'deploy']);
