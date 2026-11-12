@@ -150,7 +150,7 @@ test(
       assert.equal(legacyRows.length, 2);
       assert.deepEqual(
         legacyRows.map(row => row.entryNumber),
-        [`JV-DUAL-${run}-L1`, `JV-DUAL-${run}-L2`],
+        [`LEG-${tenantA.id}-JV-DUAL-${run}-L1`, `LEG-${tenantA.id}-JV-DUAL-${run}-L2`],
       );
       assert.equal(
         legacyRows.reduce((sum, row) => sum + Number(row.debitAmount), 0),
