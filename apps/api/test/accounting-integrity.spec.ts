@@ -236,3 +236,32 @@ test('unified reports read modern headers plus historical legacy without double-
   assert.match(service, /getGeneralLedger[\s\S]*getUnifiedLedgerRows/);
   assert.match(service, /getCashFlow[\s\S]*getUnifiedLedgerRows/);
 });
+
+test('bank reconciliation schema is additive and startup-gated', () => {
+  const migration = readFileSync(
+    join(process.cwd(), '../../packages/database/prisma/migrations/20261113010000_bank_reconciliation/migration.sql'),
+    'utf8',
+  );
+  const startup = src('scripts/baseline-and-migrate.cjs');
+  const service = src('src/finance/bank-reconciliation.service.ts');
+
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS "bank_accounts"/);
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS "chartAccountId"/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS "bank_reconciliations"/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS "bank_statement_lines"/);
+  assert.doesNotMatch(migration, /(^|\n)\s*DROP\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*TRUNCATE\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*DELETE\s+FROM\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*UPDATE\s+["a-z]/i);
+
+  assert.match(startup, /verifyBankReconciliationPreconditions/);
+  assert.match(startup, /BANK_RECONCILIATION_BLOCKED/);
+  assert.match(startup, /await verifyBankReconciliationPreconditions\(applied\)/);
+
+  assert.match(service, /Bank account must be linked to an active GL account/);
+  assert.match(service, /Bank GL account must be an ASSET account/);
+  assert.match(service, /Cannot complete reconciliation with/);
+  assert.match(service, /Bank reconciliation difference must be zero/);
+  assert.match(service, /startsWith:\s*'LEG-'/);
+});
+
