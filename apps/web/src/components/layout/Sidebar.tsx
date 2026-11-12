@@ -51,7 +51,8 @@ const navigation: NavEntry[] = [
   { name: 'الإجازات', href: '/dashboard/hr/leaves', icon: CalendarDays },
   { name: 'أرصدة الإجازات', href: '/dashboard/hr/leave-balances', icon: CalendarRange },
   { name: 'العقود', href: '/dashboard/hr/contracts', icon: FileSignature },
-  { name: 'الرواتب', href: '/dashboard/hr/payroll', icon: Wallet },
+  { name: 'مسيرات الرواتب', href: '/dashboard/hr/payroll-runs', icon: Wallet },
+  { name: 'سجلات الرواتب', href: '/dashboard/hr/payroll', icon: Receipt },
   { name: 'الإدارات', href: '/dashboard/hr/departments', icon: Network },
 
   { header: 'العقارات' },
