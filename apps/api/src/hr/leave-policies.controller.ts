@@ -31,15 +31,15 @@ export class LeavePoliciesController {
   constructor(private readonly service: LeavePoliciesService) {}
 
   @Get()
-  @RequirePermissions('hr:read')
+  @RequirePermissions('hr:leave-admin:read')
   findAll(@Req() req: any) { return this.service.findAll(req); }
 
   @Post()
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:leave-admin:write')
   create(@Req() req: any, @Body() dto: CreateLeavePolicyDto) { return this.service.create(req, dto); }
 
   @Patch(':id')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:leave-admin:write')
   update(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateLeavePolicyDto) {
     return this.service.update(req, id, dto);
   }

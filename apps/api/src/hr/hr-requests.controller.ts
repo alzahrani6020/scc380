@@ -24,17 +24,17 @@ export class HrRequestsController {
   constructor(private readonly service: HrRequestsService) {}
 
   @Get()
-  @RequirePermissions('hr:read')
+  @RequirePermissions('hr:requests:read')
   list(@Req() req: any, @Query() query: any) { return this.service.listAdmin(req, query); }
 
   @Post(':id/approve')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:requests:write')
   approve(@Req() req: any, @Param('id') id: string, @Body() dto: ReviewHrRequestDto) {
     return this.service.review(req, id, 'APPROVED', dto.resolution);
   }
 
   @Post(':id/reject')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:requests:write')
   reject(@Req() req: any, @Param('id') id: string, @Body() dto: ReviewHrRequestDto) {
     return this.service.review(req, id, 'REJECTED', dto.resolution);
   }
