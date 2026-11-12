@@ -57,6 +57,10 @@ model Tenant {
   attendances   Attendance[]
   payrolls      Payroll[]
   shifts        Shift[]
+  employeeContracts EmployeeContract[]
+  leavePolicies LeavePolicy[]
+  leaveBalances LeaveBalance[]
+  leaveBalanceAdjustments LeaveBalanceAdjustment[]
   drivers       Driver[]
   fleetMaintenances FleetMaintenance[]
   fleetFuelLogs FleetFuelLog[]
@@ -869,6 +873,8 @@ model Employee {
   attendances   Attendance[]
   payrolls      Payroll[]
   shifts        Shift[]
+  contracts     EmployeeContract[]
+  leaveBalances LeaveBalance[]
 
   @@unique([tenantId, employeeCode])
   @@index([tenantId])
@@ -988,6 +994,113 @@ model Shift {
   @@index([tenantId])
   @@index([employeeId])
   @@map("shifts")
+}
+
+enum ContractType {
+  FIXED_TERM
+  INDEFINITE
+  TEMPORARY
+  TRAINING
+}
+
+enum ContractStatus {
+  DRAFT
+  ACTIVE
+  EXPIRED
+  TERMINATED
+  RENEWED
+}
+
+model EmployeeContract {
+  id              String         @id @default(cuid())
+  tenantId        String
+  tenant          Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employeeId      String
+  employee        Employee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  contractNumber  String
+  type            ContractType   @default(FIXED_TERM)
+  status          ContractStatus @default(DRAFT)
+  startDate       DateTime
+  endDate         DateTime?
+  probationEndDate DateTime?
+  jobTitle        String?
+  basicSalary     Decimal?       @db.Decimal(18, 2)
+  housingAllowance Decimal?      @db.Decimal(18, 2)
+  transportAllowance Decimal?    @db.Decimal(18, 2)
+  otherAllowances Decimal?       @db.Decimal(18, 2)
+  workingHoursPerWeek Int?
+  signedAt        DateTime?
+  terminatedAt    DateTime?
+  terminationReason String?
+  notes           String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@unique([tenantId, contractNumber])
+  @@index([tenantId])
+  @@index([employeeId])
+  @@index([status])
+  @@map("employee_contracts")
+}
+
+model LeavePolicy {
+  id                String    @id @default(cuid())
+  tenantId          String
+  tenant            Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  type              LeaveType
+  name              String
+  annualEntitlement Int
+  maxCarryForward   Int       @default(0)
+  requiresApproval  Boolean   @default(true)
+  isActive          Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([tenantId, type])
+  @@index([tenantId])
+  @@index([isActive])
+  @@map("leave_policies")
+}
+
+model LeaveBalance {
+  id              String    @id @default(cuid())
+  tenantId        String
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employeeId      String
+  employee        Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  type            LeaveType
+  year            Int
+  entitlement     Int
+  carriedForward  Int       @default(0)
+  used            Int       @default(0)
+  pending         Int       @default(0)
+  adjustment      Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  adjustments     LeaveBalanceAdjustment[]
+
+  @@unique([tenantId, employeeId, type, year])
+  @@index([tenantId])
+  @@index([employeeId])
+  @@index([year])
+  @@map("leave_balances")
+}
+
+model LeaveBalanceAdjustment {
+  id          String       @id @default(cuid())
+  tenantId    String
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  balanceId   String
+  balance     LeaveBalance @relation(fields: [balanceId], references: [id], onDelete: Cascade)
+  amount      Int
+  reason      String
+  createdById String?
+  createdAt   DateTime     @default(now())
+
+  @@index([tenantId])
+  @@index([balanceId])
+  @@map("leave_balance_adjustments")
 }
 
 // ============================================================
