@@ -14,6 +14,12 @@ import { ActivitiesService } from '../src/crm/activities.service';
 import { JwtAuthGuard } from '../src/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../src/auth/guards/permissions.guard';
 
+
+Reflect.defineMetadata('design:paramtypes', [CompaniesService], CompaniesController);
+Reflect.defineMetadata('design:paramtypes', [PipelinesService], PipelinesController);
+Reflect.defineMetadata('design:paramtypes', [DealsService], DealsController);
+Reflect.defineMetadata('design:paramtypes', [ActivitiesService], ActivitiesController);
+
 async function createApp() {
   const calls: any[] = [];
   const companies = {
