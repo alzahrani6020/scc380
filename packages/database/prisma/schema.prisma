@@ -73,6 +73,7 @@ model Tenant {
   hrRequests HrRequest[]
   hrLifecycleCases HrLifecycleCase[]
   hrLifecycleTasks HrLifecycleTask[]
+  assetCustodyAssignments AssetCustodyAssignment[]
   drivers       Driver[]
   fleetMaintenances FleetMaintenance[]
   fleetFuelLogs FleetFuelLog[]
@@ -973,6 +974,7 @@ model Employee {
   endServiceSettlements EndServiceSettlement[]
   hrRequests      HrRequest[]
   lifecycleCases  HrLifecycleCase[]
+  assetCustodyAssignments AssetCustodyAssignment[]
 
   @@unique([tenantId, employeeCode])
   @@index([tenantId])
@@ -2956,6 +2958,35 @@ enum PosPaymentMethod {
 // FIXED ASSETS / الأصول الثابتة
 // ============================================================
 
+
+model AssetCustodyAssignment {
+  id               String     @id @default(cuid())
+  tenantId         String
+  tenant           Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  assetId          String
+  asset            FixedAsset @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  employeeId       String
+  employee         Employee   @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  status           String     @default("ACTIVE")
+  assignedAt       DateTime   @default(now())
+  expectedReturnAt DateTime?
+  returnedAt       DateTime?
+  conditionOut     String?
+  conditionIn      String?
+  assignedById     String?
+  returnedById     String?
+  notes            String?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  @@index([tenantId])
+  @@index([tenantId, employeeId])
+  @@index([tenantId, assetId])
+  @@index([status])
+  @@map("asset_custody_assignments")
+}
+
 model FixedAssetCategory {
   id            String    @id @default(cuid())
   tenantId      String
@@ -3005,6 +3036,7 @@ model FixedAsset {
   updatedAt     DateTime  @updatedAt
 
   entries       DepreciationEntry[]
+  custodyAssignments AssetCustodyAssignment[]
 
   @@index([tenantId])
   @@index([categoryId])
