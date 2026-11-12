@@ -106,3 +106,19 @@ test('dual write is atomic and preserves deterministic legacy line numbers', () 
   assert.match(service, /entryNumber: \`\$\{input\.entryNumber\}-L\$\{index \+ 1\}\`/);
   assert.match(service, /status:\s*JournalStatus\.POSTED/);
 });
+
+
+test('production startup blocks conflicting accounting-core migration state before migrate deploy', () => {
+  const script = src('scripts/baseline-and-migrate.cjs');
+  assert.match(script, /verifyAccountingCorePreconditions/);
+  assert.match(script, /ACCOUNTING_CORE_BLOCKED/);
+  assert.match(script, /journal_entry_headers/);
+  assert.match(script, /journal_entry_lines/);
+  assert.match(script, /assertEnumCompatibility/);
+  assert.match(script, /ACCOUNTING_LEGACY_PREFLIGHT/);
+  assert.match(script, /await verifyAccountingCorePreconditions\(applied\)/);
+  assert.ok(
+    script.indexOf('await verifyAccountingCorePreconditions(applied)') <
+      script.indexOf("console.log('PRISMA_MIGRATE_DEPLOY_START')"),
+  );
+});
