@@ -86,7 +86,7 @@ test('approved payroll runs can post one balanced multi-line accrual journal', (
   const service = src('src/hr/payroll-runs.service.ts');
   const controller = src('src/hr/payroll-runs.controller.ts');
   assert.match(controller, /@Post\(':id\/post-accounting'\)/);
-  assert.match(controller, /@RequirePermissions\('hr:write', 'erp:write'\)/);
+  assert.match(controller, /@RequirePermissions\('hr:payroll:write', 'erp:write'\)/);
   assert.match(service, /sourceType:\s*'PAYROLL_RUN'/);
   assert.match(service, /gross - \(net \+ deductions\)/);
   assert.match(service, /expenseAccountId/);
