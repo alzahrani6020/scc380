@@ -138,11 +138,11 @@ export class ApprovalsService {
     const tw = userRole === 'SUPER_ADMIN' ? {} : tenantWhere(tenantId);
     const results: any[] = [];
 
-    // Find employee by userId
-    const employee = await prisma.employee.findFirst({ where: { ...tw, email: { contains: userId } } });
+    // Resolve the authenticated user through the explicit User -> Employee link.
+    const employee = await prisma.employee.findFirst({ where: { ...tw, userId } });
     if (employee) {
       const leaves = await prisma.leave.findMany({
-        where: { employeeId: employee.id },
+        where: { ...tw, employeeId: employee.id },
         orderBy: { createdAt: 'desc' },
       });
       for (const l of leaves) {
