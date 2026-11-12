@@ -1,26 +1,25 @@
 import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, Req } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsString, IsOptional, IsNumber } from 'class-validator';
+import { IsDateString, IsIn, IsInt, IsOptional, IsString, Min } from 'class-validator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard, RequirePermissions } from '../auth/guards/permissions.guard';
 import { LeavesService } from './leaves.service';
 
 class CreateLeaveDto {
   @IsString() employeeId: string;
-  @IsString() type: string;
-  @IsString() startDate: string;
-  @IsString() endDate: string;
-  @Type(() => Number) @IsNumber() days: number;
+  @IsIn(['ANNUAL','SICK','EMERGENCY','UNPAID','MATERNITY','PATERNITY','HAJJ','STUDY','COMPASSIONATE']) type: string;
+  @IsDateString() startDate: string;
+  @IsDateString() endDate: string;
+  @Type(() => Number) @IsInt() @Min(1) days: number;
   @IsString() @IsOptional() reason?: string;
 }
 
 class UpdateLeaveDto {
-  @IsString() @IsOptional() type?: string;
-  @IsString() @IsOptional() status?: string;
-  @IsString() @IsOptional() startDate?: string;
-  @IsString() @IsOptional() endDate?: string;
-  @Type(() => Number) @IsNumber() @IsOptional() days?: number;
+  @IsIn(['PENDING','APPROVED','REJECTED','CANCELLED']) @IsOptional() status?: string;
+  @IsDateString() @IsOptional() startDate?: string;
+  @IsDateString() @IsOptional() endDate?: string;
+  @Type(() => Number) @IsInt() @Min(1) @IsOptional() days?: number;
   @IsString() @IsOptional() reason?: string;
 }
 
