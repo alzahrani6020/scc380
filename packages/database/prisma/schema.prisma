@@ -45,7 +45,6 @@ model Tenant {
   vehicles      Vehicle[]
   fleetTrips    FleetTrip[]
   auditLogs     AuditLog[]
-  employeeProfile Employee?
   projects      Project[]
   tasks         Task[]
   payments      Payment[]
@@ -71,8 +70,6 @@ model Tenant {
   employeeLoanPayments EmployeeLoanPayment[]
   payrollRunLoanDeductions PayrollRunLoanDeduction[]
   endServiceSettlements EndServiceSettlement[]
-  hrRequests      HrRequest[]
-  lifecycleCases  HrLifecycleCase[]
   hrRequests HrRequest[]
   hrLifecycleCases HrLifecycleCase[]
   hrLifecycleTasks HrLifecycleTask[]
@@ -192,6 +189,7 @@ model User {
   oauthAccounts OAuthAccount[]
   passwordResets PasswordResetToken[]
   auditLogs     AuditLog[]
+  employeeProfile Employee?
 
   assignedContacts   Contact[]  @relation("ContactAssignee")
   assignedDeals      Deal[]     @relation("DealAssignee")
@@ -973,6 +971,8 @@ model Employee {
   documents      EmployeeDocument[]
   loans          EmployeeLoan[]
   endServiceSettlements EndServiceSettlement[]
+  hrRequests      HrRequest[]
+  lifecycleCases  HrLifecycleCase[]
 
   @@unique([tenantId, employeeCode])
   @@index([tenantId])
