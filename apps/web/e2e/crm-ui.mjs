@@ -50,6 +50,14 @@ const pipeline = {
 
 let dealPatch = null;
 let activityPatch = null;
+let dealPost = null;
+let activityPost = null;
+let dealDeleteId = null;
+let activityDeleteId = null;
+let activityCompletePatch = null;
+let failNextDealList = false;
+let failNextDealPost = false;
+let failNextActivityPost = false;
 const dealListQueries = [];
 const activityListQueries = [];
 const contactListQueries = [];
@@ -128,6 +136,11 @@ async function installApiMock(page) {
     }
     if (method === 'GET' && path === '/crm/deals') {
       dealListQueries.push(queryObject(url));
+      if (failNextDealList) {
+        failNextDealList = false;
+        await route.fulfill(json({ message: 'forced list failure' }, 500));
+        return;
+      }
       await route.fulfill(json({
         data: [deal],
         count: 60,
@@ -136,9 +149,24 @@ async function installApiMock(page) {
       }));
       return;
     }
+    if (method === 'POST' && path === '/crm/deals') {
+      dealPost = req.postDataJSON();
+      if (failNextDealPost) {
+        failNextDealPost = false;
+        await route.fulfill(json({ message: 'forced deal create failure' }, 500));
+        return;
+      }
+      await route.fulfill(json({ id: 'd-new', ...dealPost }), 201);
+      return;
+    }
     if (method === 'PATCH' && path === '/crm/deals/d1') {
       dealPatch = req.postDataJSON();
       await route.fulfill(json({ ...deal, ...dealPatch }));
+      return;
+    }
+    if (method === 'DELETE' && path === '/crm/deals/d1') {
+      dealDeleteId = 'd1';
+      await route.fulfill({ status: 204 });
       return;
     }
 
@@ -156,9 +184,29 @@ async function installApiMock(page) {
       }));
       return;
     }
+    if (method === 'POST' && path === '/crm/activities') {
+      activityPost = req.postDataJSON();
+      if (failNextActivityPost) {
+        failNextActivityPost = false;
+        await route.fulfill(json({ message: 'forced activity create failure' }, 500));
+        return;
+      }
+      await route.fulfill(json({ id: 'a-new', ...activityPost }), 201);
+      return;
+    }
     if (method === 'PATCH' && path === '/crm/activities/a1') {
-      activityPatch = req.postDataJSON();
-      await route.fulfill(json({ ...activity, ...activityPatch }));
+      const body = req.postDataJSON();
+      if (body.completedAt && Object.keys(body).length === 1) {
+        activityCompletePatch = body;
+      } else {
+        activityPatch = body;
+      }
+      await route.fulfill(json({ ...activity, ...body }));
+      return;
+    }
+    if (method === 'DELETE' && path === '/crm/activities/a1') {
+      activityDeleteId = 'a1';
+      await route.fulfill({ status: 204 });
       return;
     }
 
@@ -231,6 +279,115 @@ async function testActivities(page) {
   assert.equal(activityPatch.description, null);
 }
 
+
+
+async function chooseComboboxOption(page, label, searchPlaceholder, searchValue, optionName) {
+  await comboboxByLabel(page, label).click();
+  await page.getByPlaceholder(searchPlaceholder).fill(searchValue);
+  await page.getByRole('option', { name: optionName, exact: true }).click();
+}
+
+async function testDealCrudAndErrors(page) {
+  dealPost = null;
+  dealDeleteId = null;
+
+  await page.goto(`${BASE}/dashboard/crm/deals`);
+  await page.getByText('Browser Deal', { exact: true }).waitFor();
+
+  await page.getByRole('button', { name: 'صفقة جديدة', exact: true }).click();
+  await page.getByRole('heading', { name: 'صفقة جديدة', exact: true }).waitFor();
+  await fieldByLabel(page, 'العنوان', 'input').fill('Created Browser Deal');
+  await chooseComboboxOption(page, 'العميل', 'ابحث بالاسم أو البريد أو الجوال...', 'Ali', 'Ali A');
+  await chooseComboboxOption(page, 'الشركة', 'ابحث عن شركة...', 'Browser', 'Browser Company');
+  await fieldByLabel(page, 'مسار المبيعات', 'select').selectOption('p1');
+  await fieldByLabel(page, 'المرحلة الديناميكية', 'select').selectOption('s1');
+  await fieldByLabel(page, 'القيمة', 'input').fill('50000');
+  await fieldByLabel(page, 'الاحتمالية %', 'input').fill('40');
+  await fieldByLabel(page, 'الوصف', 'textarea').fill('Created from browser E2E');
+  await page.getByRole('button', { name: 'إنشاء', exact: true }).click();
+  await waitUntil(() => Boolean(dealPost), 'Deal POST was not sent');
+  assert.equal(dealPost.title, 'Created Browser Deal');
+  assert.equal(dealPost.contactId, 'ct1');
+  assert.equal(dealPost.companyId, 'co1');
+  assert.equal(dealPost.pipelineId, 'p1');
+  assert.equal(dealPost.pipelineStageId, 's1');
+  assert.equal(dealPost.value, 50000);
+  assert.equal(dealPost.probability, 40);
+
+  const alertMessages = [];
+  const onDialog = async (dialog) => {
+    alertMessages.push(dialog.message());
+    await dialog.accept();
+  };
+  page.on('dialog', onDialog);
+  failNextDealPost = true;
+  await page.getByRole('button', { name: 'صفقة جديدة', exact: true }).click();
+  await fieldByLabel(page, 'العنوان', 'input').fill('Failing Browser Deal');
+  await chooseComboboxOption(page, 'العميل', 'ابحث بالاسم أو البريد أو الجوال...', 'Ali', 'Ali A');
+  await page.getByRole('button', { name: 'إنشاء', exact: true }).click();
+  await waitUntil(() => alertMessages.includes('حدث خطأ'), 'Deal create failure did not surface an alert');
+  await page.getByRole('heading', { name: 'صفقة جديدة', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'إلغاء', exact: true }).click();
+  page.off('dialog', onDialog);
+
+  failNextDealList = true;
+  await page.goto(`${BASE}/dashboard/crm/deals`);
+  await page.getByText('تعذر تحميل الصفقات. تحقق من الاتصال بالخادم.', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'إعادة المحاولة', exact: true }).click();
+  await page.getByText('Browser Deal', { exact: true }).waitFor();
+
+  dealListQueries.length = 0;
+  await page.getByRole('button', { name: 'التالي', exact: true }).click();
+  await waitUntil(() => dealListQueries.some((q) => q.page === '2'), 'Deals did not reach page 2 before delete');
+  page.once('dialog', (dialog) => dialog.accept());
+  const row = page.locator('.scc-card-hover').filter({ hasText: 'Browser Deal' }).first();
+  await row.hover();
+  await row.locator('button').last().click();
+  await waitUntil(() => dealDeleteId === 'd1', 'Deal DELETE was not sent');
+  await waitUntil(() => dealListQueries.some((q) => q.page === '1'), 'Deals did not return to page 1 after deleting the last row on page 2');
+}
+
+async function testActivityCrudAndErrors(page) {
+  activityPost = null;
+  activityDeleteId = null;
+  activityCompletePatch = null;
+
+  await page.goto(`${BASE}/dashboard/crm/activities`);
+  await page.getByText('Browser Activity', { exact: true }).waitFor();
+
+  await page.getByRole('button', { name: 'نشاط جديد', exact: true }).click();
+  await page.getByRole('heading', { name: 'نشاط جديد', exact: true }).waitFor();
+  await fieldByLabel(page, 'الموضوع', 'input').fill('Created Browser Activity');
+  await chooseComboboxOption(page, 'جهة الاتصال', 'ابحث عن جهة اتصال...', 'Ali', 'Ali A');
+  await chooseComboboxOption(page, 'الصفقة', 'ابحث عن صفقة...', 'Browser', 'Browser Deal');
+  await fieldByLabel(page, 'الوصف', 'textarea').fill('Created activity from browser E2E');
+  await page.getByRole('button', { name: 'إنشاء', exact: true }).click();
+  await waitUntil(() => Boolean(activityPost), 'Activity POST was not sent');
+  assert.equal(activityPost.type, 'TASK');
+  assert.equal(activityPost.subject, 'Created Browser Activity');
+  assert.equal(activityPost.contactId, 'ct1');
+  assert.equal(activityPost.dealId, 'd1');
+
+  failNextActivityPost = true;
+  await page.getByRole('button', { name: 'نشاط جديد', exact: true }).click();
+  await fieldByLabel(page, 'الموضوع', 'input').fill('Failing Browser Activity');
+  await page.getByRole('button', { name: 'إنشاء', exact: true }).click();
+  await page.getByRole('heading', { name: 'نشاط جديد', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'إلغاء', exact: true }).click();
+
+  let row = page.locator('.scc-card-hover').filter({ hasText: 'Browser Activity' }).first();
+  await row.getByTitle('إكمال').click();
+  await waitUntil(() => Boolean(activityCompletePatch?.completedAt), 'Activity completion PATCH was not sent');
+
+  activityListQueries.length = 0;
+  await page.getByRole('button', { name: 'التالي', exact: true }).click();
+  await waitUntil(() => activityListQueries.some((q) => q.page === '2'), 'Activities did not reach page 2 before delete');
+  page.once('dialog', (dialog) => dialog.accept());
+  row = page.locator('.scc-card-hover').filter({ hasText: 'Browser Activity' }).first();
+  await row.getByTitle('حذف').click();
+  await waitUntil(() => activityDeleteId === 'a1', 'Activity DELETE was not sent');
+  await waitUntil(() => activityListQueries.some((q) => q.page === '1'), 'Activities did not return to page 1 after deleting the last row on page 2');
+}
 
 async function testDealQueryContracts(page) {
   dealListQueries.length = 0;
@@ -388,6 +545,8 @@ try {
   await testActivities(page);
   await testDealQueryContracts(page);
   await testActivityQueryContracts(page);
+  await testDealCrudAndErrors(page);
+  await testActivityCrudAndErrors(page);
   console.log('CRM_BROWSER_E2E: PASS');
 } catch (error) {
   console.error('CRM_BROWSER_E2E: FAIL');
