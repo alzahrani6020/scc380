@@ -76,7 +76,6 @@ export default function LeavesPage() {
     setFormLoading(true);
     try {
       const commonPayload = {
-        type: formData.type,
         startDate: formData.startDate,
         endDate: formData.endDate,
         days: Number(formData.days) || 1,
@@ -85,7 +84,7 @@ export default function LeavesPage() {
       if (editing) {
         await api.patch(`/hr/leaves/${editing.id}`, { ...commonPayload, status: formData.status });
       } else {
-        await api.post('/hr/leaves', { employeeId: formData.employeeId, ...commonPayload });
+        await api.post('/hr/leaves', { employeeId: formData.employeeId, type: formData.type, ...commonPayload });
       }
       setIsModalOpen(false);
       fetchData();
@@ -169,8 +168,8 @@ export default function LeavesPage() {
                   </div>
                 )}
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => openEdit(l)} className="p-1.5 rounded-lg hover:bg-primary-500/10 text-primary-400"><Pencil className="h-4 w-4" /></button>
-                  <button onClick={() => handleDelete(l.id)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-400"><Trash2 className="h-4 w-4" /></button>
+                  {l.status === 'PENDING' && <button onClick={() => openEdit(l)} className="p-1.5 rounded-lg hover:bg-primary-500/10 text-primary-400"><Pencil className="h-4 w-4" /></button>}
+                  {l.status === 'PENDING' && <button onClick={() => handleDelete(l.id)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-400"><Trash2 className="h-4 w-4" /></button>}
                 </div>
               </div>
             </div>
@@ -181,7 +180,7 @@ export default function LeavesPage() {
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editing ? 'تعديل إجازة' : 'طلب إجازة'}>
         <form onSubmit={handleSubmit} className="space-y-4">
           <Select label="الموظف" required disabled={!!editing} options={empOptions} value={formData.employeeId || ''} onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })} />
-          <Select label="النوع" options={leaveTypes} value={formData.type || 'ANNUAL'} onChange={(e) => setFormData({ ...formData, type: e.target.value })} />
+          <Select label="النوع" disabled={!!editing} options={leaveTypes} value={formData.type || 'ANNUAL'} onChange={(e) => setFormData({ ...formData, type: e.target.value })} />
           <div className="grid grid-cols-2 gap-4">
             <Input label="من تاريخ" type="date" required value={formData.startDate || ''} onChange={(e) => setFormData({ ...formData, startDate: e.target.value })} />
             <Input label="إلى تاريخ" type="date" required value={formData.endDate || ''} onChange={(e) => setFormData({ ...formData, endDate: e.target.value })} />
