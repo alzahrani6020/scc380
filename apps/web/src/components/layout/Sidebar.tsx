@@ -45,7 +45,10 @@ const navigation: NavEntry[] = [
 
   { header: 'الموارد البشرية (مكين)' },
   { name: 'نظرة عامة', href: '/dashboard/hr', icon: Briefcase },
+  { name: 'الخدمة الذاتية', href: '/dashboard/hr/self-service', icon: UserCog },
   { name: 'الموظفون', href: '/dashboard/hr/employees', icon: UserCog },
+  { name: 'طلبات الموارد البشرية', href: '/dashboard/hr/requests', icon: ClipboardList },
+  { name: 'الانضمام والمغادرة', href: '/dashboard/hr/lifecycle', icon: ListChecks },
   { name: 'الحضور', href: '/dashboard/hr/attendance', icon: ClipboardList },
   { name: 'الورديات', href: '/dashboard/hr/shifts', icon: Clock3 },
   { name: 'الإجازات', href: '/dashboard/hr/leaves', icon: CalendarDays },
