@@ -144,3 +144,21 @@ test('invoice schema reconciliation is additive only', () => {
   assert.doesNotMatch(migration, /(^|\n)\s*DELETE\s+FROM\s+/i);
   assert.doesNotMatch(migration, /(^|\n)\s*UPDATE\s+["a-z]/i);
 });
+
+
+test('customer payment schema reconciliation is additive and startup-gated', () => {
+  const migration = readFileSync(
+    join(process.cwd(), '../../packages/database/prisma/migrations/20261112165000_reconcile_customer_payments/migration.sql'),
+    'utf8',
+  );
+  const startup = src('scripts/baseline-and-migrate.cjs');
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS "payments"/);
+  assert.match(migration, /CREATE TYPE "PaymentMethod"/);
+  assert.match(migration, /CREATE TYPE "PaymentStatus"/);
+  assert.doesNotMatch(migration, /(^|\n)\s*DROP\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*TRUNCATE\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*DELETE\s+FROM\s+/i);
+  assert.match(startup, /verifyPaymentSchemaPreconditions/);
+  assert.match(startup, /PAYMENT_SCHEMA_BLOCKED/);
+  assert.match(startup, /await verifyPaymentSchemaPreconditions\(applied\)/);
+});
