@@ -88,7 +88,12 @@ export default function HrDashboardPage() {
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <div className="scc-card xl:col-span-2">
-          <h2 className="text-white font-semibold mb-4">الرواتب — {data.payroll.month}/{data.payroll.year}</h2>
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <h2 className="text-white font-semibold">الرواتب — {data.payroll.month}/{data.payroll.year}</h2>
+            <Link href="/dashboard/hr/payroll-runs" className="text-primary-400 text-sm hover:text-primary-300">
+              {data.payroll.run ? `مسير الشهر: ${data.payroll.run.status}` : 'إنشاء مسير الشهر'}
+            </Link>
+          </div>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <div className="rounded-xl bg-slate-800/60 p-4">
               <p className="text-slate-500 text-xs">إجمالي الصافي</p>
