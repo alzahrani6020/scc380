@@ -36,6 +36,11 @@ export class ListActivitiesQueryDto {
   assignedToId?: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  search?: string;
+
+  @IsOptional()
   @IsIn(['scheduled', 'recent'])
   sort?: 'scheduled' | 'recent';
 }
