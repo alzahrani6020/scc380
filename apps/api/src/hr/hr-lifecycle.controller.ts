@@ -20,7 +20,12 @@ class CreateLifecycleTaskDto {
   @IsString() @IsOptional() dueDate?: string;
   @Type(() => Number) @IsInt() @Min(0) @IsOptional() order?: number;
 }
-class UpdateLifecycleTaskDto extends CreateLifecycleTaskDto {
+class UpdateLifecycleTaskDto {
+  @IsString() @MaxLength(200) @IsOptional() title?: string;
+  @IsString() @MaxLength(1000) @IsOptional() description?: string;
+  @IsString() @IsOptional() assignedToId?: string;
+  @IsString() @IsOptional() dueDate?: string;
+  @Type(() => Number) @IsInt() @Min(0) @IsOptional() order?: number;
   @IsIn(['TODO','IN_PROGRESS','DONE','SKIPPED']) @IsOptional() status?: string;
   @IsString() @MaxLength(1000) @IsOptional() notes?: string;
 }
