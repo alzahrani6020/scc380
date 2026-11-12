@@ -206,3 +206,21 @@ test('supplier AP schema reconciliation is additive and startup-gated', () => {
   assert.match(startup, /await verifySupplierApPreconditions\(applied\)/);
 });
 
+
+
+test('expense accounting is explicit-account, additive, and reversal-safe', () => {
+  const migration = readFileSync(
+    join(process.cwd(), '../../packages/database/prisma/migrations/20261112171000_reconcile_expense_accounting/migration.sql'),
+    'utf8',
+  );
+  const startup = src('scripts/baseline-and-migrate.cjs');
+  const service = src('src/finance/expenses.service.ts');
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS "debitAccountId"/);
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS "creditAccountId"/);
+  assert.doesNotMatch(migration, /(^|\n)\s*(DROP|TRUNCATE|DELETE\s+FROM)\s+/i);
+  assert.match(startup, /verifyExpenseAccountingPreconditions/);
+  assert.match(service, /requires debitAccountId and creditAccountId/);
+  assert.match(service, /sourceType:\s*'EXPENSE'/);
+  assert.match(service, /postInTransaction\(tx/);
+  assert.match(service, /Posted expense cannot be deleted/);
+});
