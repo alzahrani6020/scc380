@@ -160,7 +160,16 @@ export default function ActivitiesPage() {
     setFormLoading(true);
     try {
       const payload = { ...formData };
-      for (const key of ['contactId', 'dealId', 'scheduledAt', 'completedAt', 'remindAt', 'assignedToId', 'description']) {
+      // Preserve the distinction between "unchanged" and "explicitly cleared".
+      // PATCH omission keeps the old value, while null removes nullable
+      // relations/dates/text from the database.
+      for (const key of ['contactId', 'dealId', 'scheduledAt', 'remindAt', 'description']) {
+        if (payload[key] === '') {
+          if (editing) payload[key] = null;
+          else delete payload[key];
+        }
+      }
+      for (const key of ['completedAt', 'assignedToId']) {
         if (payload[key] === '') delete payload[key];
       }
       if (editing) await api.patch(`/crm/activities/${editing.id}`, payload);
