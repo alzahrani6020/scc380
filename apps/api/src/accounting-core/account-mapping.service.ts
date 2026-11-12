@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { Prisma, prisma } from '@scc/database';
+import { PaymentMethod, Prisma, prisma } from '@scc/database';
 
 export type AccountingRole =
   | 'CASH'
@@ -81,6 +81,38 @@ export class AccountMappingService {
     return Object.fromEntries(
       requested.map(role => [role, byCode.get(codeByRole[role])!]),
     ) as Record<AccountingRole, { id: string; code: string; name: string; type: string }>;
+  }
+
+
+  private paymentMethodCode(settings: unknown, method: PaymentMethod) {
+    const mapping = this.readAccounting(settings).paymentMethodMapping;
+    if (mapping && typeof mapping === 'object' && !Array.isArray(mapping)) {
+      const configured = (mapping as Record<string, unknown>)[method];
+      if (typeof configured === 'string' && configured.trim()) return configured.trim();
+    }
+    if (method === PaymentMethod.CASH) return DEFAULT_CODES.CASH;
+    throw new BadRequestException(
+      `Missing accounting payment-method mapping for ${method}`,
+    );
+  }
+
+  async resolvePaymentAccountInTransaction(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    method: PaymentMethod,
+  ) {
+    const tenant = await this.loadTenant(tx, tenantId);
+    const code = this.paymentMethodCode(tenant.settings, method);
+    const account = await tx.chartOfAccount.findFirst({
+      where: { tenantId, code, isActive: true },
+      select: { id: true, code: true, name: true, type: true },
+    });
+    if (!account) {
+      throw new BadRequestException(
+        `Missing active payment account mapping: ${method}=${code}`,
+      );
+    }
+    return account;
   }
 
   async isAutoPostingEnabled(tenantId: string) {
