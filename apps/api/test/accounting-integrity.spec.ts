@@ -150,6 +150,24 @@ test('invoice schema reconciliation is additive only', () => {
 });
 
 
+test('accounting dependency reconciliation is additive and startup-gated', () => {
+  const migration = readFileSync(
+    join(process.cwd(), '../../packages/database/prisma/migrations/20261112164000_reconcile_accounting_dependencies/migration.sql'),
+    'utf8',
+  );
+  const startup = src('scripts/baseline-and-migrate.cjs');
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS "chart_of_accounts"/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS "financial_periods"/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS "journal_entries"/);
+  assert.doesNotMatch(migration, /(^|\n)\s*DROP\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*TRUNCATE\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*DELETE\s+FROM\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*UPDATE\s+["a-z]/i);
+  assert.match(startup, /verifyAccountingDependenciesPreconditions/);
+  assert.match(startup, /ACCOUNTING_DEPENDENCIES_BLOCKED/);
+  assert.match(startup, /await verifyAccountingDependenciesPreconditions\(applied\)/);
+});
+
 test('customer payment schema reconciliation is additive and startup-gated', () => {
   const migration = readFileSync(
     join(process.cwd(), '../../packages/database/prisma/migrations/20261112165000_reconcile_customer_payments/migration.sql'),
