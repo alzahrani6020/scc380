@@ -6,6 +6,7 @@ import { AccountingDualWriteService } from '../src/accounting-core/accounting-du
 import { AccountMappingService } from '../src/accounting-core/account-mapping.service';
 import { InvoicesService } from '../src/erp/invoices.service';
 import { PaymentsService } from '../src/finance/payments.service';
+import { SupplierInvoiceService } from '../src/supplier-invoice/supplier-invoice.service';
 
 test(
   'Accounting DB-backed E2E validates balanced posting, periods, mapping, tenant isolation and dual-write',
@@ -28,7 +29,7 @@ test(
     });
 
     try {
-      const [cashA, arA, revenueA, vatA, cashB] = await Promise.all([
+      const [cashA, arA, revenueA, vatA, vatReceivableA, apA, expenseA, cashB] = await Promise.all([
         prisma.chartOfAccount.create({
           data: { tenantId: tenantA.id, code: '1110', name: 'Cash', type: 'ASSET' },
         }),
@@ -40,6 +41,15 @@ test(
         }),
         prisma.chartOfAccount.create({
           data: { tenantId: tenantA.id, code: '2110', name: 'VAT Payable', type: 'LIABILITY' },
+        }),
+        prisma.chartOfAccount.create({
+          data: { tenantId: tenantA.id, code: '1140', name: 'VAT Receivable', type: 'ASSET' },
+        }),
+        prisma.chartOfAccount.create({
+          data: { tenantId: tenantA.id, code: '2100', name: 'Accounts Payable', type: 'LIABILITY' },
+        }),
+        prisma.chartOfAccount.create({
+          data: { tenantId: tenantA.id, code: '5000', name: 'General Expense', type: 'EXPENSE' },
         }),
         prisma.chartOfAccount.create({
           data: { tenantId: tenantB.id, code: '1110', name: 'Cash B', type: 'ASSET' },
@@ -75,6 +85,7 @@ test(
       const dualWrite = new AccountingDualWriteService(posting);
       const invoices = new InvoicesService(mapping, dualWrite);
       const payments = new PaymentsService(mapping, dualWrite);
+      const supplierInvoices = new SupplierInvoiceService(mapping, dualWrite);
       const reqA: any = { user: { tenantId: tenantA.id, role: 'ADMIN' } };
 
       const mapped = await mapping.resolve(tenantA.id, ['CASH', 'SALES_REVENUE']);
@@ -374,6 +385,152 @@ test(
       assert.equal(
         (await prisma.invoice.findUnique({ where: { id: draftB.id } }))!.status,
         'DRAFT',
+      );
+
+      const supplierA = await prisma.supplier.create({
+        data: {
+          tenantId: tenantA.id,
+          name: 'Accounting Supplier',
+          code: `SUP-${run}`,
+          isActive: true,
+        },
+      });
+
+      const supplierInvoice = await supplierInvoices.create(tenantA.id, {
+        invoiceNumber: `APINV-${run}`,
+        supplierId: supplierA.id,
+        issueDate: new Date('2026-11-16T12:00:00.000Z'),
+        taxAmount: 15,
+        items: [
+          {
+            description: 'Professional service',
+            quantity: 1,
+            unitPrice: 100,
+            accountId: expenseA.id,
+          },
+        ],
+      });
+
+      const supplierHeader = await prisma.journalEntryHeader.findFirst({
+        where: {
+          tenantId: tenantA.id,
+          sourceType: 'SUPPLIER_INVOICE',
+          sourceId: supplierInvoice.id,
+        },
+        include: { lines: true },
+      });
+      assert.ok(supplierHeader);
+      assert.equal(supplierHeader.lines.length, 3);
+      assert.deepEqual(
+        new Set(supplierHeader.lines.map(line => line.accountId)),
+        new Set([expenseA.id, vatReceivableA.id, apA.id]),
+      );
+      assert.equal(
+        supplierHeader.lines.reduce((sum, line) => sum + Number(line.debitAmount), 0),
+        115,
+      );
+      assert.equal(
+        supplierHeader.lines.reduce((sum, line) => sum + Number(line.creditAmount), 0),
+        115,
+      );
+
+      const supplierPayment = await supplierInvoices.addPayment(
+        supplierInvoice.id,
+        tenantA.id,
+        'ADMIN',
+        {
+          amount: 115,
+          method: 'CASH',
+          reference: `APPAY-CASH-${run}`,
+          paymentDate: '2026-11-17T12:00:00.000Z',
+        },
+      );
+      const supplierPaymentHeader = await prisma.journalEntryHeader.findFirst({
+        where: {
+          tenantId: tenantA.id,
+          sourceType: 'SUPPLIER_PAYMENT',
+          sourceId: supplierPayment.id,
+        },
+        include: { lines: true },
+      });
+      assert.ok(supplierPaymentHeader);
+      assert.equal(supplierPaymentHeader.lines.length, 2);
+      assert.deepEqual(
+        new Set(supplierPaymentHeader.lines.map(line => line.accountId)),
+        new Set([apA.id, cashA.id]),
+      );
+      const settledSupplierInvoice = await prisma.supplierInvoice.findUnique({
+        where: { id: supplierInvoice.id },
+      });
+      assert.equal(Number(settledSupplierInvoice!.paidAmount), 115);
+      assert.equal(settledSupplierInvoice!.status, 'PAID');
+
+      await assert.rejects(
+        () => supplierInvoices.remove(supplierInvoice.id, tenantA.id, 'ADMIN'),
+        /مُرحّلة محاسبياً/,
+      );
+
+      const missingAccountInvoiceNumber = `APINV-MISSING-${run}`;
+      await assert.rejects(
+        () =>
+          supplierInvoices.create(tenantA.id, {
+            invoiceNumber: missingAccountInvoiceNumber,
+            supplierId: supplierA.id,
+            taxAmount: 15,
+            items: [
+              {
+                description: 'No mapped account',
+                quantity: 1,
+                unitPrice: 100,
+              },
+            ],
+          }),
+        /يحتاج accountId/,
+      );
+      assert.equal(
+        await prisma.supplierInvoice.findFirst({
+          where: { tenantId: tenantA.id, invoiceNumber: missingAccountInvoiceNumber },
+        }),
+        null,
+      );
+
+      const bankSupplierInvoice = await supplierInvoices.create(tenantA.id, {
+        invoiceNumber: `APINV-BANK-${run}`,
+        supplierId: supplierA.id,
+        taxAmount: 0,
+        items: [
+          {
+            description: 'Bank settlement test',
+            quantity: 1,
+            unitPrice: 10,
+            accountId: expenseA.id,
+          },
+        ],
+      });
+      await assert.rejects(
+        () =>
+          supplierInvoices.addPayment(bankSupplierInvoice.id, tenantA.id, 'ADMIN', {
+            amount: 10,
+            method: 'BANK_TRANSFER',
+            reference: `APPAY-BANK-${run}`,
+          }),
+        /Missing accounting payment-method mapping for BANK_TRANSFER/,
+      );
+      assert.equal(
+        await prisma.supplierPayment.count({
+          where: {
+            tenantId: tenantA.id,
+            supplierInvoiceId: bankSupplierInvoice.id,
+            reference: `APPAY-BANK-${run}`,
+          },
+        }),
+        0,
+      );
+      assert.equal(
+        Number((await prisma.supplierInvoice.findUnique({
+          where: { id: bankSupplierInvoice.id },
+        }))!.paidAmount),
+        0,
       );
 
       const dual = await dualWrite.post({
