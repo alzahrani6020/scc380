@@ -19,6 +19,8 @@ import { LeavePoliciesController } from './leave-policies.controller';
 import { LeavePoliciesService } from './leave-policies.service';
 import { LeaveBalancesController } from './leave-balances.controller';
 import { LeaveBalancesService } from './leave-balances.service';
+import { PayrollRunsController } from './payroll-runs.controller';
+import { PayrollRunsService } from './payroll-runs.service';
 
 @Module({
   controllers: [
@@ -32,6 +34,7 @@ import { LeaveBalancesService } from './leave-balances.service';
     ContractsController,
     LeavePoliciesController,
     LeaveBalancesController,
+    PayrollRunsController,
   ],
   providers: [
     EmployeesService,
@@ -44,6 +47,7 @@ import { LeaveBalancesService } from './leave-balances.service';
     ContractsService,
     LeavePoliciesService,
     LeaveBalancesService,
+    PayrollRunsService,
   ],
 })
 export class HrModule {}
