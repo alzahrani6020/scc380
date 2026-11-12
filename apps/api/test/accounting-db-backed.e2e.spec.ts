@@ -868,6 +868,17 @@ test(
         },
       ]);
 
+      const beforeAutoMatch = await bankReconciliation.findOne(reqA, reconciliation.id);
+      const statementLine = beforeAutoMatch.lines[0];
+      const candidates = await bankReconciliation.getMatchCandidates(
+        reqA,
+        reconciliation.id,
+        statementLine.id,
+      );
+      assert.equal(candidates.candidates.length, 1);
+      assert.equal(candidates.candidates[0].kind, 'MODERN');
+      assert.equal(candidates.candidates[0].id, bankLedgerLine.id);
+
       const autoMatched = await bankReconciliation.autoMatch(reqA, reconciliation.id);
       assert.equal(autoMatched.autoMatched, 1);
       assert.equal(autoMatched.lines.length, 1);
