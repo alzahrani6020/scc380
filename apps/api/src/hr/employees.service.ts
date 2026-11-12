@@ -1,6 +1,7 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { prisma, withTenant } from '@scc/database';
 import { pagedResult, parsePagination } from './pagination';
+import { defaultLifecycleTasks } from './hr-lifecycle-defaults';
 
 @Injectable()
 export class EmployeesService {
@@ -37,7 +38,21 @@ export class EmployeesService {
     if (payload.hireDate) payload.hireDate = new Date(payload.hireDate);
     if (payload.terminationDate) payload.terminationDate = new Date(payload.terminationDate);
     if (payload.departmentId) await this.assertDepartment(tenantId, payload.departmentId);
-    return prisma.employee.create({ data: payload });
+    return prisma.$transaction(async (tx) => {
+      const employee = await tx.employee.create({ data: payload });
+      const tasks = defaultLifecycleTasks('ONBOARDING');
+      await tx.hrLifecycleCase.create({
+        data: {
+          tenantId,
+          employeeId: employee.id,
+          type: 'ONBOARDING',
+          status: 'OPEN',
+          startDate: employee.hireDate,
+          tasks: { create: tasks.map((task) => ({ ...task, tenantId })) },
+        },
+      });
+      return employee;
+    });
   }
 
   async update(tenantId: string, id: string, data: any) {
@@ -50,6 +65,24 @@ export class EmployeesService {
     if (payload.departmentId) await this.assertDepartment(tenantId, payload.departmentId);
 
     return prisma.employee.update({ where: { id }, data: payload });
+  }
+
+  async linkUser(tenantId: string, id: string, userId: string) {
+    const [employee, user] = await Promise.all([
+      prisma.employee.findFirst({ where: withTenant({ id }, tenantId) }),
+      prisma.user.findFirst({ where: { id: userId, tenantId, status: 'ACTIVE' } }),
+    ]);
+    if (!employee) throw new NotFoundException('Employee not found');
+    if (!user) throw new NotFoundException('Active tenant user not found');
+    const linked = await prisma.employee.findFirst({ where: { userId } });
+    if (linked && linked.id !== employee.id) throw new ConflictException('User is already linked to another employee');
+    return prisma.employee.update({ where: { id }, data: { userId } });
+  }
+
+  async unlinkUser(tenantId: string, id: string) {
+    const employee = await prisma.employee.findFirst({ where: withTenant({ id }, tenantId) });
+    if (!employee) throw new NotFoundException('Employee not found');
+    return prisma.employee.update({ where: { id }, data: { userId: null } });
   }
 
   async terminate(tenantId: string, id: string) {
