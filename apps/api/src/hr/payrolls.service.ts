@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { prisma, tenantWhere } from '@scc/database';
+import { pagedResult, parsePagination } from './pagination';
 
 @Injectable()
 export class PayrollsService {
@@ -9,16 +10,27 @@ export class PayrollsService {
     if (query.status) where.status = query.status;
     if (query.month) where.month = parseInt(query.month);
     if (query.year) where.year = parseInt(query.year);
+    if (query.search) {
+      where.employee = {
+        OR: [
+          { firstName: { contains: query.search, mode: 'insensitive' } },
+          { lastName: { contains: query.search, mode: 'insensitive' } },
+          { employeeCode: { contains: query.search, mode: 'insensitive' } },
+        ],
+      };
+    }
+    const { page, limit, skip } = parsePagination(query);
     const [data, count] = await Promise.all([
       prisma.payroll.findMany({
         where,
         include: { employee: { select: { firstName: true, lastName: true, employeeCode: true } } },
         orderBy: [{ year: 'desc' }, { month: 'desc' }],
-        take: 200,
+        skip,
+        take: limit,
       }),
       prisma.payroll.count({ where }),
     ]);
-    return { data, count };
+    return pagedResult(data, count, page, limit);
   }
 
   async findOne(req: any, id: string) {

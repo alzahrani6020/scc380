@@ -62,8 +62,8 @@ export class EmployeesController {
 
   @Get()
   @RequirePermissions('hr:read')
-  findAll(@Request() req, @Query('status') status?: string, @Query('departmentId') departmentId?: string, @Query('search') search?: string) {
-    return this.employeesService.findAll(req.user.tenantId, { status, departmentId, search });
+  findAll(@Request() req, @Query('status') status?: string, @Query('departmentId') departmentId?: string, @Query('search') search?: string, @Query('page') page?: string, @Query('limit') limit?: string) {
+    return this.employeesService.findAll(req.user.tenantId, { status, departmentId, search, page, limit });
   }
 
   @Get(':id')
