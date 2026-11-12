@@ -65,43 +65,43 @@ export class EmployeesController {
   constructor(private readonly employeesService: EmployeesService) {}
 
   @Get()
-  @RequirePermissions('hr:read')
+  @RequirePermissions('hr:employees:read')
   findAll(@Request() req, @Query('status') status?: string, @Query('departmentId') departmentId?: string, @Query('search') search?: string, @Query('page') page?: string, @Query('limit') limit?: string) {
     return this.employeesService.findAll(req.user.tenantId, { status, departmentId, search, page, limit });
   }
 
   @Get(':id')
-  @RequirePermissions('hr:read')
+  @RequirePermissions('hr:employees:read')
   findOne(@Request() req, @Param('id') id: string) {
     return this.employeesService.findOne(req.user.tenantId, id);
   }
 
   @Post()
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:employees:write')
   create(@Request() req, @Body() body: CreateEmployeeDto) {
     return this.employeesService.create(req.user.tenantId, body);
   }
 
   @Patch(':id')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:employees:write')
   update(@Request() req, @Param('id') id: string, @Body() body: UpdateEmployeeDto) {
     return this.employeesService.update(req.user.tenantId, id, body);
   }
 
   @Post(':id/link-user')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:employees:write')
   linkUser(@Request() req, @Param('id') id: string, @Body() body: LinkEmployeeUserDto) {
     return this.employeesService.linkUser(req.user.tenantId, id, body.userId);
   }
 
   @Delete(':id/link-user')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:employees:write')
   unlinkUser(@Request() req, @Param('id') id: string) {
     return this.employeesService.unlinkUser(req.user.tenantId, id);
   }
 
   @Delete(':id')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:employees:write')
   remove(@Request() req, @Param('id') id: string) {
     return this.employeesService.terminate(req.user.tenantId, id);
   }
