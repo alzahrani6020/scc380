@@ -23,6 +23,15 @@ class UpdatePayrollRunItemDto {
   @IsString() @IsOptional() notes?: string;
 }
 
+
+class PostPayrollAccountingDto {
+  @IsString() expenseAccountId: string;
+  @IsString() netPayableAccountId: string;
+  @IsString() @IsOptional() gosiPayableAccountId?: string;
+  @IsString() @IsOptional() taxPayableAccountId?: string;
+  @IsString() @IsOptional() otherDeductionAccountId?: string;
+}
+
 @ApiTags('HR - Payroll Runs')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -55,6 +64,12 @@ export class PayrollRunsController {
   @Post(':id/pay')
   @RequirePermissions('hr:write')
   pay(@Req() req: any, @Param('id') id: string) { return this.service.pay(req, id); }
+
+  @Post(':id/post-accounting')
+  @RequirePermissions('hr:write', 'erp:write')
+  postAccounting(@Req() req: any, @Param('id') id: string, @Body() dto: PostPayrollAccountingDto) {
+    return this.service.postAccounting(req, id, dto);
+  }
 
   @Delete(':id')
   @RequirePermissions('hr:write')
