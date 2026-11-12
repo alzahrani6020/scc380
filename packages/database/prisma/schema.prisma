@@ -66,6 +66,10 @@ model Tenant {
   payrollRuns PayrollRun[]
   payrollRunItems PayrollRunItem[]
   employeeDocuments EmployeeDocument[]
+  employeeLoans EmployeeLoan[]
+  employeeLoanPayments EmployeeLoanPayment[]
+  payrollRunLoanDeductions PayrollRunLoanDeduction[]
+  endServiceSettlements EndServiceSettlement[]
   drivers       Driver[]
   fleetMaintenances FleetMaintenance[]
   fleetFuelLogs FleetFuelLog[]
@@ -951,6 +955,8 @@ model Employee {
   leaveBalances LeaveBalance[]
   payrollRunItems PayrollRunItem[]
   documents      EmployeeDocument[]
+  loans          EmployeeLoan[]
+  endServiceSettlements EndServiceSettlement[]
 
   @@unique([tenantId, employeeCode])
   @@index([tenantId])
@@ -982,6 +988,115 @@ model EmployeeDocument {
   @@index([tenantId, employeeId])
   @@index([tenantId, expiresAt])
   @@map("employee_documents")
+}
+
+
+model EmployeeLoan {
+  id                String    @id @default(cuid())
+  tenantId          String
+  tenant            Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employeeId        String
+  employee          Employee  @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  type              String    @default("LOAN")
+  principal         Decimal   @db.Decimal(18, 2)
+  installmentAmount Decimal   @db.Decimal(18, 2)
+  balance           Decimal   @db.Decimal(18, 2)
+  startDate         DateTime
+  status            String    @default("DRAFT")
+  approvedById      String?
+  approvedAt        DateTime?
+  notes             String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  payments          EmployeeLoanPayment[]
+  payrollDeductions PayrollRunLoanDeduction[]
+
+  @@index([tenantId])
+  @@index([tenantId, employeeId])
+  @@index([tenantId, status])
+  @@map("employee_loans")
+}
+
+model EmployeeLoanPayment {
+  id             String       @id @default(cuid())
+  tenantId       String
+  tenant         Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  loanId         String
+  loan           EmployeeLoan @relation(fields: [loanId], references: [id], onDelete: Cascade)
+
+  amount         Decimal      @db.Decimal(18, 2)
+  source         String
+  payrollRunId   String?
+  payrollRun     PayrollRun?  @relation(fields: [payrollRunId], references: [id], onDelete: SetNull)
+  settlementId   String?
+  paidAt         DateTime     @default(now())
+  notes          String?
+  createdAt      DateTime     @default(now())
+
+  @@index([tenantId])
+  @@index([loanId])
+  @@index([payrollRunId])
+  @@index([settlementId])
+  @@map("employee_loan_payments")
+}
+
+model PayrollRunLoanDeduction {
+  id               String         @id @default(cuid())
+  tenantId         String
+  tenant           Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  payrollRunItemId String
+  payrollRunItem   PayrollRunItem @relation(fields: [payrollRunItemId], references: [id], onDelete: Cascade)
+  loanId           String
+  loan             EmployeeLoan   @relation(fields: [loanId], references: [id], onDelete: Restrict)
+  amount           Decimal        @db.Decimal(18, 2)
+  createdAt        DateTime       @default(now())
+
+  @@unique([payrollRunItemId, loanId])
+  @@index([tenantId])
+  @@index([loanId])
+  @@map("payroll_run_loan_deductions")
+}
+
+model EndServiceSettlement {
+  id                     String    @id @default(cuid())
+  tenantId               String
+  tenant                 Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employeeId             String
+  employee               Employee  @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  reason                 String
+  initiatedBy            String
+  lastWorkingDate        DateTime
+  dueDate                DateTime
+  hireDateSnapshot       DateTime
+  serviceDays            Int
+  lastWage               Decimal   @db.Decimal(18, 2)
+  baseAward              Decimal   @db.Decimal(18, 2)
+  awardFactor            Decimal   @db.Decimal(8, 6)
+  eosAward               Decimal   @db.Decimal(18, 2)
+  leaveEncashment        Decimal   @default(0) @db.Decimal(18, 2)
+  unpaidSalary           Decimal   @default(0) @db.Decimal(18, 2)
+  otherEntitlements      Decimal   @default(0) @db.Decimal(18, 2)
+  compensation           Decimal   @default(0) @db.Decimal(18, 2)
+  outstandingLoanBalance Decimal   @default(0) @db.Decimal(18, 2)
+  loanDeduction          Decimal   @default(0) @db.Decimal(18, 2)
+  otherDeductions        Decimal   @default(0) @db.Decimal(18, 2)
+  netSettlement          Decimal   @db.Decimal(18, 2)
+  status                 String    @default("DRAFT")
+  approvedById           String?
+  approvedAt             DateTime?
+  paidAt                 DateTime?
+  notes                  String?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@index([tenantId, employeeId])
+  @@index([tenantId, status])
+  @@index([dueDate])
+  @@map("end_service_settlements")
 }
 
 model Department {
@@ -1066,6 +1181,7 @@ model Payroll {
   gosiDeduction Decimal   @default(0) @db.Decimal(18, 2)
   taxDeduction  Decimal   @default(0) @db.Decimal(18, 2)
   otherDeductions Decimal @default(0) @db.Decimal(18, 2)
+  loanDeductions Decimal @default(0) @db.Decimal(18, 2)
   netSalary     Decimal   @db.Decimal(18, 2)
   status        PayrollStatus @default(DRAFT)
   paidAt        DateTime?
@@ -1108,6 +1224,7 @@ model PayrollRun {
 
   items           PayrollRunItem[]
   payrolls        Payroll[]
+  loanPayments    EmployeeLoanPayment[]
 
   @@unique([tenantId, year, month])
   @@index([tenantId])
@@ -1132,10 +1249,12 @@ model PayrollRunItem {
   gosiDeduction      Decimal     @default(0) @db.Decimal(18, 2)
   taxDeduction       Decimal     @default(0) @db.Decimal(18, 2)
   otherDeductions    Decimal     @default(0) @db.Decimal(18, 2)
+  loanDeductionsTotal Decimal     @default(0) @db.Decimal(18, 2)
   grossSalary        Decimal     @db.Decimal(18, 2)
   totalDeductions    Decimal     @db.Decimal(18, 2)
   netSalary          Decimal     @db.Decimal(18, 2)
   notes              String?
+  loanDeductions     PayrollRunLoanDeduction[]
   createdAt          DateTime    @default(now())
   updatedAt          DateTime    @updatedAt
 
