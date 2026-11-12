@@ -3,8 +3,21 @@ import { prisma, tenantWhere } from '@scc/database';
 
 @Injectable()
 export class ReportsService {
-  private async getAccountBalances(tenantId: string | undefined, userRole: string) {
+  private buildDateFilter(from?: string, to?: string) {
+    const date: any = {};
+    if (from) date.gte = new Date(from);
+    if (to) date.lte = new Date(to);
+    return Object.keys(date).length ? date : undefined;
+  }
+
+  private async getAccountBalances(
+    tenantId: string | undefined,
+    userRole: string,
+    from?: string,
+    to?: string,
+  ) {
     const tw = userRole === 'SUPER_ADMIN' ? {} : tenantWhere(tenantId);
+    const date = this.buildDateFilter(from, to);
     const accounts = await prisma.chartOfAccount.findMany({
       where: tw,
       orderBy: { code: 'asc' },
@@ -12,20 +25,25 @@ export class ReportsService {
 
     const balances = await Promise.all(
       accounts.map(async (acc) => {
-        const debits = await prisma.journalEntry.aggregate({
-          _sum: { debitAmount: true },
-          where: { ...tw, accountId: acc.id },
-        });
-        const credits = await prisma.journalEntry.aggregate({
-          _sum: { creditAmount: true },
-          where: { ...tw, accountId: acc.id },
-        });
+        const baseWhere: any = {
+          ...tw,
+          accountId: acc.id,
+          status: 'POSTED',
+          ...(date ? { date } : {}),
+        };
+        const [debits, credits] = await Promise.all([
+          prisma.journalEntry.aggregate({
+            _sum: { debitAmount: true },
+            where: baseWhere,
+          }),
+          prisma.journalEntry.aggregate({
+            _sum: { creditAmount: true },
+            where: baseWhere,
+          }),
+        ]);
 
         const totalDebit = Number(debits._sum.debitAmount || 0);
         const totalCredit = Number(credits._sum.creditAmount || 0);
-
-        // For ASSET/EXPENSE: Debit - Credit
-        // For LIABILITY/EQUITY/REVENUE: Credit - Debit
         const isDebitNormal = acc.type === 'ASSET' || acc.type === 'EXPENSE';
         const netBalance = isDebitNormal ? totalDebit - totalCredit : totalCredit - totalDebit;
 
@@ -45,32 +63,29 @@ export class ReportsService {
     return balances;
   }
 
-  // ─── ميزان المراجعة (Trial Balance) ───
-  async getTrialBalance(tenantId: string | undefined, userRole: string) {
-    const balances = await this.getAccountBalances(tenantId, userRole);
-
+  async getTrialBalance(tenantId: string | undefined, userRole: string, from?: string, to?: string) {
+    const balances = await this.getAccountBalances(tenantId, userRole, from, to);
     const totalDebit = balances.reduce((sum, b) => sum + b.debit, 0);
     const totalCredit = balances.reduce((sum, b) => sum + b.credit, 0);
 
     return {
+      period: { from: from || 'all', to: to || 'all' },
       accounts: balances,
       totals: { debit: totalDebit, credit: totalCredit },
       balanced: Math.abs(totalDebit - totalCredit) < 0.01,
     };
   }
 
-  // ─── قائمة الدخل (Income Statement / P&L) ───
-  async getIncomeStatement(tenantId: string | undefined, userRole: string) {
-    const balances = await this.getAccountBalances(tenantId, userRole);
-
+  async getIncomeStatement(tenantId: string | undefined, userRole: string, from?: string, to?: string) {
+    const balances = await this.getAccountBalances(tenantId, userRole, from, to);
     const revenueAccounts = balances.filter(b => b.type === 'REVENUE');
     const expenseAccounts = balances.filter(b => b.type === 'EXPENSE');
 
     const totalRevenue = revenueAccounts.reduce((sum, a) => sum + a.balance, 0);
     const totalExpenses = expenseAccounts.reduce((sum, a) => sum + a.balance, 0);
-    const netIncome = totalRevenue - totalExpenses;
 
     return {
+      period: { from: from || 'all', to: to || 'all' },
       revenues: {
         items: revenueAccounts.map(a => ({ code: a.code, name: a.name, amount: a.balance })),
         total: totalRevenue,
@@ -79,14 +94,12 @@ export class ReportsService {
         items: expenseAccounts.map(a => ({ code: a.code, name: a.name, amount: a.balance })),
         total: totalExpenses,
       },
-      netIncome,
+      netIncome: totalRevenue - totalExpenses,
     };
   }
 
-  // ─── الميزانية العمومية (Balance Sheet) ───
-  async getBalanceSheet(tenantId: string | undefined, userRole: string) {
-    const balances = await this.getAccountBalances(tenantId, userRole);
-
+  async getBalanceSheet(tenantId: string | undefined, userRole: string, asOfDate?: string) {
+    const balances = await this.getAccountBalances(tenantId, userRole, undefined, asOfDate);
     const assets = balances.filter(b => b.type === 'ASSET');
     const liabilities = balances.filter(b => b.type === 'LIABILITY');
     const equity = balances.filter(b => b.type === 'EQUITY');
@@ -96,6 +109,7 @@ export class ReportsService {
     const totalEquity = equity.reduce((sum, a) => sum + a.balance, 0);
 
     return {
+      asOfDate: asOfDate || 'all',
       assets: {
         items: assets.map(a => ({ code: a.code, name: a.name, amount: a.balance })),
         total: totalAssets,
@@ -113,12 +127,23 @@ export class ReportsService {
     };
   }
 
-  // ─── الأستاذ العام (General Ledger) ───
-  async getGeneralLedger(accountId: string, tenantId: string | undefined, userRole: string) {
+  async getGeneralLedger(
+    accountId: string,
+    tenantId: string | undefined,
+    userRole: string,
+    from?: string,
+    to?: string,
+  ) {
     const tw = userRole === 'SUPER_ADMIN' ? {} : tenantWhere(tenantId);
+    const date = this.buildDateFilter(from, to);
     const entries = await prisma.journalEntry.findMany({
-      where: { ...tw, accountId },
-      orderBy: { createdAt: 'asc' },
+      where: {
+        ...tw,
+        accountId,
+        status: 'POSTED',
+        ...(date ? { date } : {}),
+      },
+      orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
     });
 
     let runningBalance = 0;
@@ -135,48 +160,56 @@ export class ReportsService {
       };
     });
 
-    return { entries: ledger, finalBalance: runningBalance };
+    return {
+      period: { from: from || 'all', to: to || 'all' },
+      entries: ledger,
+      finalBalance: runningBalance,
+    };
   }
 
-  // ─── VAT Report ───
   async getVatReport(tenantId: string | undefined, userRole: string, from?: string, to?: string) {
     const tw = userRole === 'SUPER_ADMIN' ? {} : tenantWhere(tenantId);
-    const dateFilter: any = {};
-    if (from) dateFilter.gte = new Date(from);
-    if (to) dateFilter.lte = new Date(to);
-    const invoiceDateWhere = Object.keys(dateFilter).length > 0 ? { issueDate: dateFilter } : {};
-    const expenseDateWhere = Object.keys(dateFilter).length > 0 ? { incurredAt: dateFilter } : {};
+    const date = this.buildDateFilter(from, to);
 
     const [outputVat, inputVat] = await Promise.all([
       prisma.invoice.aggregate({
         _sum: { taxAmount: true, total: true },
-        where: { ...tw, ...invoiceDateWhere },
+        where: {
+          ...tw,
+          status: { not: 'DRAFT' },
+          ...(date ? { issueDate: date } : {}),
+        },
       }),
-      prisma.expense.aggregate({
-        _sum: { amount: true },
-        where: { ...tw, ...expenseDateWhere },
+      prisma.supplierInvoice.aggregate({
+        _sum: { taxAmount: true, total: true },
+        where: {
+          ...tw,
+          ...(date ? { issueDate: date } : {}),
+        },
       }),
     ]);
 
     const outputVatAmount = Number(outputVat._sum.taxAmount || 0);
-    const totalSales = Number(outputVat._sum.total || 0);
-    const inputVatAmount = Number(inputVat._sum.amount || 0) * 0.15;
+    const inputVatAmount = Number(inputVat._sum.taxAmount || 0);
     const netVat = outputVatAmount - inputVatAmount;
 
     return {
       period: { from: from || 'all', to: to || 'all' },
-      outputVat: { totalSales, vatAmount: outputVatAmount },
-      inputVat: { totalExpenses: Number(inputVat._sum.amount || 0), vatAmount: inputVatAmount },
+      outputVat: {
+        totalSales: Number(outputVat._sum.total || 0),
+        vatAmount: outputVatAmount,
+      },
+      inputVat: {
+        totalPurchases: Number(inputVat._sum.total || 0),
+        vatAmount: inputVatAmount,
+      },
       netVatPayable: netVat > 0 ? netVat : 0,
       netVatReceivable: netVat < 0 ? Math.abs(netVat) : 0,
     };
   }
 
-  // ─── Cash Flow Statement ───
   async getCashFlow(tenantId: string | undefined, userRole: string) {
     const tw = userRole === 'SUPER_ADMIN' ? {} : tenantWhere(tenantId);
-
-    // Find cash account (code 1110)
     const cashAccount = await prisma.chartOfAccount.findFirst({
       where: { ...tw, code: '1110' },
     });
@@ -193,15 +226,13 @@ export class ReportsService {
     }
 
     const entries = await prisma.journalEntry.findMany({
-      where: { ...tw, accountId: cashAccount.id },
+      where: { ...tw, accountId: cashAccount.id, status: 'POSTED' },
       orderBy: { date: 'asc' },
       include: {
         chartAccount: { select: { code: true, name: true, type: true } },
       },
     });
 
-    // Categorize based on the OTHER account in the transaction
-    // For simplicity, categorize by reference patterns and account types
     const operatingItems: any[] = [];
     const investingItems: any[] = [];
     const financingItems: any[] = [];
@@ -215,9 +246,7 @@ export class ReportsService {
         amount,
       };
 
-      if (entry.reference?.startsWith('INV-') || entry.reference?.startsWith('PO-') || entry.reference?.startsWith('RENT-') || entry.reference?.startsWith('PAY-') || entry.reference?.startsWith('MKT-') || entry.reference?.startsWith('UTIL-') || entry.reference?.startsWith('MNT-')) {
-        operatingItems.push(item);
-      } else if (entry.reference?.startsWith('EQUIP-') || entry.reference?.startsWith('ASSET-')) {
+      if (entry.reference?.startsWith('EQUIP-') || entry.reference?.startsWith('ASSET-')) {
         investingItems.push(item);
       } else if (entry.reference?.startsWith('LOAN-') || entry.reference?.startsWith('CAP-') || entry.reference?.startsWith('OP-')) {
         financingItems.push(item);
@@ -231,27 +260,13 @@ export class ReportsService {
     const totalFinancing = financingItems.reduce((s, i) => s + i.amount, 0);
     const netChange = totalOperating + totalInvesting + totalFinancing;
 
-    // Calculate opening balance (before first entry)
-    let openingBalance = 0;
-    if (entries.length > 0) {
-      const firstEntry = entries[0];
-      const entriesBefore = await prisma.journalEntry.findMany({
-        where: {
-          ...tw,
-          accountId: cashAccount.id,
-          date: { lt: firstEntry.date },
-        },
-      });
-      openingBalance = entriesBefore.reduce((s, e) => s + Number(e.debitAmount) - Number(e.creditAmount), 0);
-    }
-
     return {
       operating: { items: operatingItems, total: totalOperating },
       investing: { items: investingItems, total: totalInvesting },
       financing: { items: financingItems, total: totalFinancing },
       netChange,
-      openingBalance,
-      closingBalance: openingBalance + netChange,
+      openingBalance: 0,
+      closingBalance: netChange,
     };
   }
 }
