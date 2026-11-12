@@ -5,19 +5,19 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard, RequirePermissions } from '../auth/guards/permissions.guard';
 import { PipelinesService } from './pipelines.service';
 
-class CreatePipelineDto {
+export class CreatePipelineDto {
   @IsString() @MinLength(1) @MaxLength(150) name: string;
   @IsOptional() @IsString() @MaxLength(500) description?: string;
   @IsOptional() @IsBoolean() isDefault?: boolean;
   @IsOptional() @IsBoolean() isActive?: boolean;
 }
-class UpdatePipelineDto {
+export class UpdatePipelineDto {
   @IsOptional() @IsString() @MinLength(1) @MaxLength(150) name?: string;
   @IsOptional() @IsString() @MaxLength(500) description?: string;
   @IsOptional() @IsBoolean() isDefault?: boolean;
   @IsOptional() @IsBoolean() isActive?: boolean;
 }
-class CreateStageDto {
+export class CreateStageDto {
   @IsString() @MinLength(1) @MaxLength(100) name: string;
   @IsString() @MinLength(1) @MaxLength(50) code: string;
   @IsInt() @Min(0) order: number;
@@ -27,7 +27,7 @@ class CreateStageDto {
   @IsOptional() @IsBoolean() isLost?: boolean;
   @IsOptional() @IsBoolean() isActive?: boolean;
 }
-class UpdateStageDto {
+export class UpdateStageDto {
   @IsOptional() @IsString() @MinLength(1) @MaxLength(100) name?: string;
   @IsOptional() @IsString() @MinLength(1) @MaxLength(50) code?: string;
   @IsOptional() @IsInt() @Min(0) order?: number;
