@@ -2,7 +2,7 @@
 -- Safety: no DROP, TRUNCATE, DELETE, UPDATE, or legacy journal mutation.
 -- Compatibility: historical migrations do not create all later finance objects on a fresh DB.
 
-DO $
+DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'AccountType') THEN
     CREATE TYPE "AccountType" AS ENUM ('ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE');
@@ -57,7 +57,7 @@ ON "financial_periods"("tenantId", "year", "month");
 CREATE INDEX IF NOT EXISTS "financial_periods_tenantId_idx"
 ON "financial_periods"("tenantId");
 
-DO $
+DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chart_of_accounts_tenantId_fkey') THEN
     ALTER TABLE "chart_of_accounts"
@@ -70,7 +70,7 @@ BEGIN
       FOREIGN KEY ("tenantId") REFERENCES "tenants"("id") ON DELETE CASCADE ON UPDATE CASCADE;
   END IF;
 END
-$;
+$$;
 
 
 CREATE TABLE IF NOT EXISTS "journal_entries" (
@@ -101,7 +101,7 @@ ON "journal_entries"("date");
 CREATE INDEX IF NOT EXISTS "journal_entries_accountId_idx"
 ON "journal_entries"("accountId");
 
-DO $
+DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'journal_entries_tenantId_fkey') THEN
     ALTER TABLE "journal_entries"
@@ -114,7 +114,7 @@ BEGIN
       FOREIGN KEY ("accountId") REFERENCES "chart_of_accounts"("id") ON DELETE SET NULL ON UPDATE CASCADE;
   END IF;
 END
-$;
+$$;
 
 CREATE TABLE "journal_entry_headers" (
     "id" TEXT NOT NULL,
