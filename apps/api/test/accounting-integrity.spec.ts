@@ -162,3 +162,24 @@ test('customer payment schema reconciliation is additive and startup-gated', () 
   assert.match(startup, /PAYMENT_SCHEMA_BLOCKED/);
   assert.match(startup, /await verifyPaymentSchemaPreconditions\(applied\)/);
 });
+
+
+test('supplier AP schema reconciliation is additive and startup-gated', () => {
+  const migration = readFileSync(
+    join(process.cwd(), '../../packages/database/prisma/migrations/20261112170000_reconcile_supplier_ap_accounting/migration.sql'),
+    'utf8',
+  );
+  const startup = src('scripts/baseline-and-migrate.cjs');
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS "suppliers"/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS "supplier_invoices"/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS "supplier_invoice_items"/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS "supplier_payments"/);
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS "accountId"/);
+  assert.doesNotMatch(migration, /(^|\n)\s*DROP\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*TRUNCATE\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*DELETE\s+FROM\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*UPDATE\s+["a-z]/i);
+  assert.match(startup, /verifySupplierApPreconditions/);
+  assert.match(startup, /SUPPLIER_AP_BLOCKED/);
+  assert.match(startup, /await verifySupplierApPreconditions\(applied\)/);
+});
