@@ -257,8 +257,6 @@ export default function ActivitiesPage() {
         <>
           <div className="space-y-3">
             {items.map((item) => {
-              const contact = contacts.find((c) => c.id === item.contactId);
-              const deal = deals.find((d) => d.id === item.dealId);
               return (
                 <div key={item.id} className="scc-card-hover flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                   <div className="min-w-0">
