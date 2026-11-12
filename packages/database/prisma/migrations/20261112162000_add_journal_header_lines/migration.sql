@@ -109,7 +109,7 @@ ALTER TABLE "journal_entry_lines"
 ADD CONSTRAINT "journal_entry_lines_journalEntryId_fkey"
 FOREIGN KEY ("journalEntryId") REFERENCES "journal_entry_headers"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
-DO $
+DO $$
 BEGIN
   IF to_regclass('public.chart_of_accounts') IS NOT NULL THEN
     ALTER TABLE "journal_entry_lines"
@@ -135,4 +135,4 @@ BEGIN
       FOREIGN KEY ("branchId") REFERENCES "branches"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
   END IF;
 END
-$;
+$$;
