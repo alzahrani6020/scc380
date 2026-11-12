@@ -27,7 +27,7 @@ export class PayrollRunsService {
     const item = await prisma.payrollRun.findFirst({
       where: { ...tenantWhere(req.user?.tenantId), id },
       include: {
-        items: { orderBy: { employeeName: 'asc' } },
+        items: { include: { loanDeductions: true }, orderBy: { employeeName: 'asc' } },
       },
     });
     if (!item) throw new NotFoundException('Payroll run not found');
@@ -69,6 +69,24 @@ export class PayrollRunsService {
       );
     }
 
+    const periodEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
+    const eligibleLoans = await prisma.employeeLoan.findMany({
+      where: {
+        ...tenantWhere(tenantId),
+        employeeId: { in: employees.map((employee) => employee.id) },
+        status: 'ACTIVE',
+        balance: { gt: 0 },
+        startDate: { lte: periodEnd },
+      },
+      orderBy: [{ startDate: 'asc' }, { createdAt: 'asc' }],
+    });
+    const loansByEmployee = new Map<string, any[]>();
+    for (const loan of eligibleLoans) {
+      const list = loansByEmployee.get(loan.employeeId) || [];
+      list.push(loan);
+      loansByEmployee.set(loan.employeeId, list);
+    }
+
     return prisma.$transaction(async (tx) => {
       const run = await tx.payrollRun.create({
         data: { tenantId, year, month, notes: dto.notes || null },
@@ -87,10 +105,21 @@ export class PayrollRunsService {
         const gosiDeduction = 0;
         const taxDeduction = 0;
         const otherDeductions = 0;
-        const totalDeductions = 0;
-        const netSalary = grossSalary;
+        let remainingForLoanDeduction = grossSalary;
+        const loanSnapshots: Array<{ loanId: string; amount: number }> = [];
+        for (const loan of loansByEmployee.get(employee.id) || []) {
+          if (remainingForLoanDeduction <= 0) break;
+          const amount = Math.min(money(loan.balance), money(loan.installmentAmount), remainingForLoanDeduction);
+          if (amount > 0) {
+            loanSnapshots.push({ loanId: loan.id, amount });
+            remainingForLoanDeduction -= amount;
+          }
+        }
+        const loanDeductionsTotal = loanSnapshots.reduce((sum, row) => sum + row.amount, 0);
+        const totalDeductions = loanDeductionsTotal;
+        const netSalary = grossSalary - totalDeductions;
 
-        await tx.payrollRunItem.create({
+        const runItem = await tx.payrollRunItem.create({
           data: {
             tenantId,
             payrollRunId: run.id,
@@ -104,11 +133,22 @@ export class PayrollRunsService {
             gosiDeduction,
             taxDeduction,
             otherDeductions,
+            loanDeductionsTotal,
             grossSalary,
             totalDeductions,
             netSalary,
           },
         });
+        for (const snapshot of loanSnapshots) {
+          await tx.payrollRunLoanDeduction.create({
+            data: {
+              tenantId,
+              payrollRunItemId: runItem.id,
+              loanId: snapshot.loanId,
+              amount: snapshot.amount,
+            },
+          });
+        }
 
         grossTotal += grossSalary;
         deductionTotal += totalDeductions;
@@ -148,17 +188,18 @@ export class PayrollRunsService {
     const gosiDeduction = dto.gosiDeduction ?? money(item.gosiDeduction);
     const taxDeduction = dto.taxDeduction ?? money(item.taxDeduction);
     const otherDeductions = dto.otherDeductions ?? money(item.otherDeductions);
+    const loanDeductionsTotal = money(item.loanDeductionsTotal);
 
     const values = [
       basicSalary, housingAllowance, transportAllowance, otherAllowances,
-      gosiDeduction, taxDeduction, otherDeductions,
+      gosiDeduction, taxDeduction, otherDeductions, loanDeductionsTotal,
     ].map(Number);
     if (values.some((value) => !Number.isFinite(value) || value < 0)) {
       throw new BadRequestException('Payroll amounts must be non-negative numbers');
     }
 
     const grossSalary = Number(basicSalary) + Number(housingAllowance) + Number(transportAllowance) + Number(otherAllowances);
-    const totalDeductions = Number(gosiDeduction) + Number(taxDeduction) + Number(otherDeductions);
+    const totalDeductions = Number(gosiDeduction) + Number(taxDeduction) + Number(otherDeductions) + Number(loanDeductionsTotal);
     const netSalary = grossSalary - totalDeductions;
     if (netSalary < 0) throw new BadRequestException('Payroll net salary cannot be negative');
 
@@ -217,7 +258,7 @@ export class PayrollRunsService {
     const tenantId = req.user?.tenantId;
     const run = await prisma.payrollRun.findFirst({
       where: { ...tenantWhere(tenantId), id },
-      include: { items: true },
+      include: { items: { include: { loanDeductions: true } } },
     });
     if (!run) throw new NotFoundException('Payroll run not found');
     if (run.status !== 'APPROVED') throw new ConflictException('Only approved payroll runs can be paid');
@@ -243,12 +284,40 @@ export class PayrollRunsService {
             gosiDeduction: item.gosiDeduction,
             taxDeduction: item.taxDeduction,
             otherDeductions: item.otherDeductions,
+            loanDeductions: item.loanDeductionsTotal,
             netSalary: item.netSalary,
             status: 'PAID',
             paidAt,
             payrollRunId: run.id,
           },
         });
+
+        for (const deduction of item.loanDeductions) {
+          const loan = await tx.employeeLoan.findFirst({
+            where: { ...tenantWhere(tenantId), id: deduction.loanId, status: 'ACTIVE' },
+          });
+          if (!loan) throw new ConflictException('Payroll loan deduction references an inactive loan');
+          const amount = money(deduction.amount);
+          const balance = money(loan.balance);
+          if (balance + 0.001 < amount) {
+            throw new ConflictException('Loan balance changed after payroll run creation');
+          }
+          const newBalance = Math.max(0, Math.round((balance - amount) * 100) / 100);
+          await tx.employeeLoanPayment.create({
+            data: {
+              tenantId,
+              loanId: loan.id,
+              amount,
+              source: 'PAYROLL',
+              payrollRunId: run.id,
+              notes: `Payroll ${run.year}-${String(run.month).padStart(2, '0')}`,
+            },
+          });
+          await tx.employeeLoan.update({
+            where: { id: loan.id },
+            data: { balance: newBalance, status: newBalance === 0 ? 'PAID' : 'ACTIVE' },
+          });
+        }
       }
 
       return tx.payrollRun.update({
@@ -279,7 +348,8 @@ export class PayrollRunsService {
     const gosi = run.items.reduce((sum, item) => sum + money(item.gosiDeduction), 0);
     const tax = run.items.reduce((sum, item) => sum + money(item.taxDeduction), 0);
     const other = run.items.reduce((sum, item) => sum + money(item.otherDeductions), 0);
-    const deductions = gosi + tax + other;
+    const loans = run.items.reduce((sum, item) => sum + money(item.loanDeductionsTotal), 0);
+    const deductions = gosi + tax + other + loans;
 
     if (gross <= 0 || Math.abs(gross - (net + deductions)) > 0.01) {
       throw new BadRequestException('Payroll run totals are not balanced for accounting');
@@ -295,6 +365,9 @@ export class PayrollRunsService {
     }
     if (other > 0 && !dto.otherDeductionAccountId) {
       throw new BadRequestException('Other deductions payable account is required for this payroll run');
+    }
+    if (loans > 0 && !dto.loanReceivableAccountId) {
+      throw new BadRequestException('Employee loan receivable account is required for this payroll run');
     }
 
     const lines: any[] = [
@@ -312,6 +385,7 @@ export class PayrollRunsService {
     if (gosi > 0) lines.push({ accountId: dto.gosiPayableAccountId, creditAmount: gosi, description: 'GOSI payable' });
     if (tax > 0) lines.push({ accountId: dto.taxPayableAccountId, creditAmount: tax, description: 'Payroll tax payable' });
     if (other > 0) lines.push({ accountId: dto.otherDeductionAccountId, creditAmount: other, description: 'Other payroll deductions payable' });
+    if (loans > 0) lines.push({ accountId: dto.loanReceivableAccountId, creditAmount: loans, description: 'Employee loan receivable reduction' });
 
     const period = `${run.year}${String(run.month).padStart(2, '0')}`;
     return this.accountingPosting.post({
