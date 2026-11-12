@@ -37,25 +37,25 @@ export class EmployeeDocumentsController {
   constructor(private readonly service: EmployeeDocumentsService) {}
 
   @Get()
-  @RequirePermissions('hr:read')
+  @RequirePermissions('hr:documents:read')
   findAll(@Req() req: any, @Query() query: any) {
     return this.service.findAll(req, query);
   }
 
   @Post()
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:documents:write')
   create(@Req() req: any, @Body() dto: CreateEmployeeDocumentDto) {
     return this.service.create(req, dto);
   }
 
   @Patch(':id')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:documents:write')
   update(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateEmployeeDocumentDto) {
     return this.service.update(req, id, dto);
   }
 
   @Get(':id/download')
-  @RequirePermissions('hr:read')
+  @RequirePermissions('hr:documents:read')
   async download(@Req() req: any, @Param('id') id: string, @Res({ passthrough: true }) res: Response) {
     const doc = await this.service.getFile(req, id);
     res.setHeader('Content-Type', doc.mimeType);
@@ -66,7 +66,7 @@ export class EmployeeDocumentsController {
   }
 
   @Delete(':id')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:documents:write')
   remove(@Req() req: any, @Param('id') id: string) {
     return this.service.remove(req, id);
   }
