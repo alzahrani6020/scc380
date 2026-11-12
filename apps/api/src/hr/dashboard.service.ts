@@ -1,0 +1,91 @@
+import { Injectable } from '@nestjs/common';
+import { prisma, tenantWhere } from '@scc/database';
+
+function riyadhDayRange(now = new Date()) {
+  const riyadh = new Date(now.getTime() + 3 * 60 * 60 * 1000);
+  const year = riyadh.getUTCFullYear();
+  const month = riyadh.getUTCMonth();
+  const day = riyadh.getUTCDate();
+  const start = new Date(Date.UTC(year, month, day) - 3 * 60 * 60 * 1000);
+  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+  return { start, end, year, month: month + 1 };
+}
+
+@Injectable()
+export class HrDashboardService {
+  async getSummary(req: any) {
+    const tenantId = req.user?.tenantId;
+    const tenant = tenantWhere(tenantId);
+    const { start, end, year, month } = riyadhDayRange();
+
+    const [
+      totalEmployees,
+      activeEmployees,
+      onLeaveEmployees,
+      suspendedEmployees,
+      terminatedEmployees,
+      presentToday,
+      absentToday,
+      lateToday,
+      remoteToday,
+      pendingLeaves,
+      departments,
+      shifts,
+      payrollAggregate,
+      draftPayrolls,
+      approvedPayrolls,
+      paidPayrolls,
+    ] = await Promise.all([
+      prisma.employee.count({ where: tenant }),
+      prisma.employee.count({ where: { ...tenant, status: 'ACTIVE' } }),
+      prisma.employee.count({ where: { ...tenant, status: 'ON_LEAVE' } }),
+      prisma.employee.count({ where: { ...tenant, status: 'SUSPENDED' } }),
+      prisma.employee.count({ where: { ...tenant, status: 'TERMINATED' } }),
+      prisma.attendance.count({ where: { ...tenant, date: { gte: start, lt: end }, status: 'PRESENT' } }),
+      prisma.attendance.count({ where: { ...tenant, date: { gte: start, lt: end }, status: 'ABSENT' } }),
+      prisma.attendance.count({ where: { ...tenant, date: { gte: start, lt: end }, status: 'LATE' } }),
+      prisma.attendance.count({ where: { ...tenant, date: { gte: start, lt: end }, status: 'REMOTE' } }),
+      prisma.leave.count({ where: { ...tenant, status: 'PENDING' } }),
+      prisma.department.count({ where: tenant }),
+      prisma.shift.count({ where: tenant }),
+      prisma.payroll.aggregate({
+        where: { ...tenant, month, year },
+        _sum: { netSalary: true },
+        _count: { _all: true },
+      }),
+      prisma.payroll.count({ where: { ...tenant, month, year, status: 'DRAFT' } }),
+      prisma.payroll.count({ where: { ...tenant, month, year, status: 'APPROVED' } }),
+      prisma.payroll.count({ where: { ...tenant, month, year, status: 'PAID' } }),
+    ]);
+
+    return {
+      generatedAt: new Date().toISOString(),
+      timezone: 'Asia/Riyadh',
+      workforce: {
+        total: totalEmployees,
+        active: activeEmployees,
+        onLeave: onLeaveEmployees,
+        suspended: suspendedEmployees,
+        terminated: terminatedEmployees,
+      },
+      attendanceToday: {
+        present: presentToday,
+        absent: absentToday,
+        late: lateToday,
+        remote: remoteToday,
+      },
+      pendingLeaves,
+      departments,
+      shifts,
+      payroll: {
+        month,
+        year,
+        records: payrollAggregate._count._all,
+        netTotal: Number(payrollAggregate._sum.netSalary || 0),
+        draft: draftPayrolls,
+        approved: approvedPayrolls,
+        paid: paidPayrolls,
+      },
+    };
+  }
+}
