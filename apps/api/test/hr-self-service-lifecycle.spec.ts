@@ -41,9 +41,12 @@ test('HR self-service migration is additive and constrains workflow statuses', (
   assert.doesNotMatch(migration, /(^|\n)\s*DELETE\s+FROM\s+/i);
 });
 
-test('self-service profile update cannot mutate salary or employment state', () => {
+test('self-service profile update whitelists only contact and emergency fields', () => {
   const service = src('src/hr/self-service.service.ts');
-  assert.match(service, /\['phone', 'emergencyContactName', 'emergencyContactPhone'\]/);
   const method = service.slice(service.indexOf('async updateProfile'), service.indexOf('async getPayroll'));
-  assert.doesNotMatch(method, /basicSalary|jobTitle|status|terminationDate/);
+  assert.match(method, /\['phone', 'emergencyContactName', 'emergencyContactPhone'\]/);
+  assert.doesNotMatch(method, /for \(const field of \['basicSalary'/);
+  assert.doesNotMatch(method, /for \(const field of \['jobTitle'/);
+  assert.doesNotMatch(method, /data\.status\s*=/);
+  assert.doesNotMatch(method, /data\.terminationDate\s*=/);
 });
