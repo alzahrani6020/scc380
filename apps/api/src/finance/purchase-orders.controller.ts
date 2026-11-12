@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, Req } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PermissionsGuard, RequirePermissions } from '../auth/guards/permissions.guard';
 import { PurchaseOrdersService } from './purchase-orders.service';
 import { IsString, IsOptional, IsNumber } from 'class-validator';
 
@@ -24,23 +25,28 @@ class UpdatePODto {
 
 @ApiTags('Finance - Purchase Orders')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('finance/purchase-orders')
 export class PurchaseOrdersController {
   constructor(private readonly service: PurchaseOrdersService) {}
 
   @Get()
+  @RequirePermissions('erp:read')
   findAll(@Req() req: any, @Query() query: any) { return this.service.findAll(req, query); }
 
   @Get(':id')
+  @RequirePermissions('erp:read')
   findOne(@Req() req: any, @Param('id') id: string) { return this.service.findOne(req, id); }
 
   @Post()
+  @RequirePermissions('erp:write')
   create(@Req() req: any, @Body() dto: CreatePODto) { return this.service.create(req, dto); }
 
   @Patch(':id')
+  @RequirePermissions('erp:write')
   update(@Req() req: any, @Param('id') id: string, @Body() dto: UpdatePODto) { return this.service.update(req, id, dto); }
 
   @Delete(':id')
+  @RequirePermissions('erp:write')
   remove(@Req() req: any, @Param('id') id: string) { return this.service.remove(req, id); }
 }
