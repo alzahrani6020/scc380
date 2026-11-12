@@ -7,7 +7,7 @@ import { IsString, IsOptional, IsEnum, IsISO8601, MaxLength, MinLength } from 'c
 import { ActivityType } from '@prisma/client';
 import { ListActivitiesQueryDto } from './dto/list-activities-query.dto';
 
-class CreateActivityDto {
+export class CreateActivityDto {
   @IsEnum(ActivityType) type: ActivityType;
   @IsString() @MinLength(1) @MaxLength(150) subject: string;
   @IsString() @MaxLength(2000) @IsOptional() description?: string;
@@ -18,7 +18,7 @@ class CreateActivityDto {
   @IsString() @MaxLength(50) @IsOptional() assignedToId?: string;
 }
 
-class UpdateActivityDto {
+export class UpdateActivityDto {
   @IsEnum(ActivityType) @IsOptional() type?: ActivityType;
   @IsString() @MinLength(1) @MaxLength(150) @IsOptional() subject?: string;
   @IsString() @MaxLength(2000) @IsOptional() description?: string;
