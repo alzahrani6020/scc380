@@ -47,7 +47,6 @@ model Tenant {
   auditLogs     AuditLog[]
   projects      Project[]
   tasks         Task[]
-  journalEntryLines JournalEntryLine[]
   payments      Payment[]
   expenses      Expense[]
   chartOfAccounts ChartOfAccount[]
@@ -55,7 +54,6 @@ model Tenant {
   journalEntryHeaders JournalEntryHeader[]
   journalEntryLines JournalEntryLine[]
   bankAccounts  BankAccount[]
-  journalEntryLines JournalEntryLine[]
   purchaseOrders PurchaseOrder[]
   leaves        Leave[]
   attendances   Attendance[]
@@ -780,6 +778,7 @@ model Branch {
   posSessions   PosSession[]
   posOrders     PosOrder[]
   bankAccounts  BankAccount[]
+  journalEntryLines JournalEntryLine[]
 
   @@index([tenantId])
   @@index([code])
@@ -1754,6 +1753,7 @@ model Project {
   updatedAt     DateTime  @updatedAt
 
   tasks         Task[]
+  journalEntryLines JournalEntryLine[]
 
   @@index([tenantId])
   @@index([status])
