@@ -4,7 +4,13 @@ import assert from 'node:assert/strict';
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { hasPermission } from '@scc/auth';
-import { PermissionsGuard, RequirePermissions } from '../src/auth/guards/permissions.guard';
+import { PermissionsGuard, RequirePermissions, REQUIRE_PERMISSIONS_KEY } from '../src/auth/guards/permissions.guard';
+import { PaymentsController } from '../src/finance/payments.controller';
+import { ExpensesController } from '../src/finance/expenses.controller';
+import { ChartOfAccountsController } from '../src/finance/chart-of-accounts.controller';
+import { JournalEntriesController } from '../src/finance/journal-entries.controller';
+import { BankAccountsController } from '../src/finance/bank-accounts.controller';
+import { PurchaseOrdersController } from '../src/finance/purchase-orders.controller';
 
 test('permission matrix: roles vs crm and hr permissions', () => {
   assert.equal(hasPermission('SUPER_ADMIN', 'crm:write'), true);
@@ -120,4 +126,33 @@ test('PermissionsGuard allows USER/AUDITOR boundary correctly', () => {
   assert.equal(guard.canActivate(ctx({ role: 'AUDITOR' }, 'read')), true);
   assert.throws(() => guard.canActivate(ctx({ role: 'AUDITOR' }, 'write')), ForbiddenException);
   assert.throws(() => guard.canActivate(ctx({}, 'read')), ForbiddenException);
+});
+
+
+test('Finance controllers declare ERP permissions on every route', () => {
+  const controllers: Array<[any, string[], string[]]> = [
+    [PaymentsController, ['findAll', 'findOne'], ['create', 'update', 'remove']],
+    [ExpensesController, ['findAll', 'findOne'], ['create', 'update', 'remove']],
+    [ChartOfAccountsController, ['findAll', 'findOne'], ['create', 'update', 'remove']],
+    [JournalEntriesController, ['findAll', 'findOne'], ['create', 'reverse', 'update', 'remove']],
+    [BankAccountsController, ['findAll', 'findOne'], ['create', 'update', 'remove']],
+    [PurchaseOrdersController, ['findAll', 'findOne'], ['create', 'update', 'remove']],
+  ];
+
+  for (const [ControllerClass, readMethods, writeMethods] of controllers) {
+    for (const method of readMethods) {
+      assert.deepEqual(
+        Reflect.getMetadata(REQUIRE_PERMISSIONS_KEY, ControllerClass.prototype[method]),
+        ['erp:read'],
+        `${ControllerClass.name}.${method} must require erp:read`,
+      );
+    }
+    for (const method of writeMethods) {
+      assert.deepEqual(
+        Reflect.getMetadata(REQUIRE_PERMISSIONS_KEY, ControllerClass.prototype[method]),
+        ['erp:write'],
+        `${ControllerClass.name}.${method} must require erp:write`,
+      );
+    }
+  }
 });
