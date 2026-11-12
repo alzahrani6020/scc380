@@ -24,17 +24,17 @@ export class LeaveBalancesController {
   constructor(private readonly service: LeaveBalancesService) {}
 
   @Get()
-  @RequirePermissions('hr:read')
+  @RequirePermissions('hr:leave-admin:read')
   findAll(@Req() req: any, @Query() query: any) { return this.service.findAll(req, query); }
 
   @Post('initialize')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:leave-admin:write')
   initialize(@Req() req: any, @Body() dto: InitializeBalanceDto) {
     return this.service.initialize(req, dto.employeeId, dto.year);
   }
 
   @Post(':id/adjust')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:leave-admin:write')
   adjust(@Req() req: any, @Param('id') id: string, @Body() dto: AdjustBalanceDto) {
     return this.service.adjust(req, id, dto.amount, dto.reason);
   }
