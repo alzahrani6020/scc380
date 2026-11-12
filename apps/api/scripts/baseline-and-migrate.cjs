@@ -131,6 +131,7 @@ async function verifyAccountingCorePreconditions(applied) {
   const financeDependencyColumns = {
     chart_of_accounts: ['id','tenantId','code','name','type','balance','isActive','createdAt','updatedAt'],
     financial_periods: ['id','tenantId','name','year','startDate','endDate','isClosed','createdAt'],
+    journal_entries: ['id','tenantId','entryNumber','date','description','debitAmount','creditAmount','accountId','type','status','createdAt'],
   };
   for (const [table, columns] of Object.entries(financeDependencyColumns)) {
     if ((await tableExists(table)) && !(await columnsPresent(table, columns))) {
