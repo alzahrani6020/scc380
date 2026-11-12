@@ -29,6 +29,10 @@ class CreateEmployeeDto {
   @IsString() @IsOptional() emergencyContactPhone?: string;
 }
 
+class LinkEmployeeUserDto {
+  @IsString() userId: string;
+}
+
 class UpdateEmployeeDto {
   @IsString() @IsOptional() employeeCode?: string;
   @IsString() @IsOptional() firstName?: string;
@@ -82,6 +86,18 @@ export class EmployeesController {
   @RequirePermissions('hr:write')
   update(@Request() req, @Param('id') id: string, @Body() body: UpdateEmployeeDto) {
     return this.employeesService.update(req.user.tenantId, id, body);
+  }
+
+  @Post(':id/link-user')
+  @RequirePermissions('hr:write')
+  linkUser(@Request() req, @Param('id') id: string, @Body() body: LinkEmployeeUserDto) {
+    return this.employeesService.linkUser(req.user.tenantId, id, body.userId);
+  }
+
+  @Delete(':id/link-user')
+  @RequirePermissions('hr:write')
+  unlinkUser(@Request() req, @Param('id') id: string) {
+    return this.employeesService.unlinkUser(req.user.tenantId, id);
   }
 
   @Delete(':id')
