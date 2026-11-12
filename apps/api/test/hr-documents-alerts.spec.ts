@@ -11,8 +11,8 @@ test('employee documents are tenant-scoped, size-limited and stored with checksu
   assert.match(service, /tenantWhere\(tenantId\)/);
   assert.match(service, /MAX_DOCUMENT_BYTES = 5 \* 1024 \* 1024/);
   assert.match(service, /createHash\('sha256'\)/);
-  assert.match(controller, /@RequirePermissions\('hr:read'\)/);
-  assert.match(controller, /@RequirePermissions\('hr:write'\)/);
+  assert.match(controller, /@RequirePermissions\('hr:documents:read'\)/);
+  assert.match(controller, /@RequirePermissions\('hr:documents:write'\)/);
   assert.match(controller, /X-Content-Type-Options/);
 });
 
