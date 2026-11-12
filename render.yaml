@@ -5,7 +5,7 @@ services:
     plan: free
     region: frankfurt
     image:
-      url: ghcr.io/alzahrani6020/scc380-api-prod:d2f1ae811e8fd9aa19a29ea4d0380c37908060b8
+      url: ghcr.io/alzahrani6020/scc380-api-prod:9f66867fb6c3d076e324bda9d508795c5866520a
     envVars:
       - key: DATABASE_URL
         fromDatabase:
