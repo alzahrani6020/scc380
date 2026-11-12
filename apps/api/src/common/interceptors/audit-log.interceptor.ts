@@ -28,7 +28,8 @@ function sanitizeBody(value: any): any {
 }
 
 function hasPath(path: string, segment: string): boolean {
-  return path === segment || path.startsWith(segment + '/') || path.startsWith(segment + '?');
+  const cleanPath = path.split('?')[0];
+  return cleanPath === segment || cleanPath.endsWith(segment) || cleanPath.includes(segment + '/');
 }
 
 function getEntityType(path: string): string {
