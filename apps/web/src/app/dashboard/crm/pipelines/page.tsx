@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import api from '@/lib/api';
-import { GitBranch, Plus, Pencil, Trash2, X, RefreshCw } from 'lucide-react';
+import { GitBranch, Plus, Pencil, Trash2, X, RefreshCw, AlertCircle } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
@@ -11,33 +11,44 @@ import Textarea from '@/components/ui/Textarea';
 export default function PipelinesPage() {
   const [pipelines, setPipelines] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [operationError, setOperationError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState('');
   const [pipelineModal, setPipelineModal] = useState(false);
   const [stageModal, setStageModal] = useState(false);
   const [editingPipeline, setEditingPipeline] = useState<any>(null);
   const [editingStage, setEditingStage] = useState<any>(null);
+  const [pipelineSaving, setPipelineSaving] = useState(false);
+  const [stageSaving, setStageSaving] = useState(false);
+  const [pipelineError, setPipelineError] = useState<string | null>(null);
+  const [stageError, setStageError] = useState<string | null>(null);
   const [pipelineForm, setPipelineForm] = useState<any>({ isActive: true, isDefault: false });
   const [stageForm, setStageForm] = useState<any>({ order: 0, probability: 0, isActive: true, isWon: false, isLost: false });
 
   const fetchData = async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const res = await api.get('/crm/pipelines');
       const list = res.data || [];
       setPipelines(list);
       if (!selectedId && list[0]) setSelectedId(list[0].id);
       if (selectedId && !list.some((p: any) => p.id === selectedId)) setSelectedId(list[0]?.id || '');
+    } catch {
+      setLoadError('تعذر تحميل مسارات المبيعات. تحقق من الاتصال بالخادم.');
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { fetchData().catch(console.error); }, []);
+  useEffect(() => { void fetchData(); }, []);
 
   const selected = useMemo(() => pipelines.find((p) => p.id === selectedId), [pipelines, selectedId]);
 
   const openPipeline = (p?: any) => {
     setEditingPipeline(p || null);
+    setPipelineError(null);
+    setOperationError(null);
     setPipelineForm(p ? {
       name: p.name,
       description: p.description || '',
@@ -49,22 +60,37 @@ export default function PipelinesPage() {
 
   const savePipeline = async (e: React.FormEvent) => {
     e.preventDefault();
-    const payload = { ...pipelineForm };
-    if (!payload.description) delete payload.description;
-    if (editingPipeline) await api.patch('/crm/pipelines/' + editingPipeline.id, payload);
-    else await api.post('/crm/pipelines', payload);
-    setPipelineModal(false);
-    await fetchData();
+    setPipelineSaving(true);
+    setPipelineError(null);
+    try {
+      const payload = { ...pipelineForm };
+      if (!payload.description) delete payload.description;
+      if (editingPipeline) await api.patch('/crm/pipelines/' + editingPipeline.id, payload);
+      else await api.post('/crm/pipelines', payload);
+      setPipelineModal(false);
+      await fetchData();
+    } catch {
+      setPipelineError('تعذر حفظ مسار المبيعات. حاول مرة أخرى.');
+    } finally {
+      setPipelineSaving(false);
+    }
   };
 
   const deletePipeline = async (id: string) => {
     if (!confirm('حذف مسار المبيعات؟ لا يمكن الحذف إذا كان مستخدمًا في صفقات.')) return;
-    await api.delete('/crm/pipelines/' + id);
-    await fetchData();
+    setOperationError(null);
+    try {
+      await api.delete('/crm/pipelines/' + id);
+      await fetchData();
+    } catch {
+      setOperationError('تعذر حذف مسار المبيعات. قد يكون مستخدمًا في صفقات أو تعذر الاتصال بالخادم.');
+    }
   };
 
   const openStage = (stage?: any) => {
     setEditingStage(stage || null);
+    setStageError(null);
+    setOperationError(null);
     setStageForm(stage ? {
       name: stage.name,
       code: stage.code,
@@ -90,22 +116,35 @@ export default function PipelinesPage() {
   const saveStage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selected) return;
-    const payload = {
-      ...stageForm,
-      order: Number(stageForm.order),
-      probability: Number(stageForm.probability),
-    };
-    if (!payload.color) delete payload.color;
-    if (editingStage) await api.patch('/crm/pipelines/' + selected.id + '/stages/' + editingStage.id, payload);
-    else await api.post('/crm/pipelines/' + selected.id + '/stages', payload);
-    setStageModal(false);
-    await fetchData();
+    setStageSaving(true);
+    setStageError(null);
+    try {
+      const payload = {
+        ...stageForm,
+        order: Number(stageForm.order),
+        probability: Number(stageForm.probability),
+      };
+      if (!payload.color) delete payload.color;
+      if (editingStage) await api.patch('/crm/pipelines/' + selected.id + '/stages/' + editingStage.id, payload);
+      else await api.post('/crm/pipelines/' + selected.id + '/stages', payload);
+      setStageModal(false);
+      await fetchData();
+    } catch {
+      setStageError('تعذر حفظ المرحلة. حاول مرة أخرى.');
+    } finally {
+      setStageSaving(false);
+    }
   };
 
   const deleteStage = async (stageId: string) => {
     if (!selected || !confirm('حذف المرحلة؟ لا يمكن حذف مرحلة مستخدمة في صفقات.')) return;
-    await api.delete('/crm/pipelines/' + selected.id + '/stages/' + stageId);
-    await fetchData();
+    setOperationError(null);
+    try {
+      await api.delete('/crm/pipelines/' + selected.id + '/stages/' + stageId);
+      await fetchData();
+    } catch {
+      setOperationError('تعذر حذف المرحلة. قد تكون مستخدمة في صفقات أو تعذر الاتصال بالخادم.');
+    }
   };
 
   return (
@@ -121,8 +160,25 @@ export default function PipelinesPage() {
         <Button onClick={() => openPipeline()}><Plus className="h-5 w-5" /> مسار جديد</Button>
       </div>
 
+      {operationError && (
+        <div className="scc-card border-red-500/30 text-red-400 flex items-center gap-2">
+          <AlertCircle className="h-5 w-5 shrink-0" />
+          <span>{operationError}</span>
+        </div>
+      )}
+
       {loading ? (
         <div className="h-64 flex items-center justify-center"><RefreshCw className="h-8 w-8 animate-spin text-primary-400" /></div>
+      ) : loadError ? (
+        <div className="h-64 flex flex-col items-center justify-center gap-4">
+          <div className="flex items-center gap-2 text-red-400">
+            <AlertCircle className="h-5 w-5" />
+            <span>{loadError}</span>
+          </div>
+          <Button variant="ghost" onClick={() => void fetchData()}>
+            <RefreshCw className="h-4 w-4" /> إعادة المحاولة
+          </Button>
+        </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-5">
           <div className="space-y-2">
@@ -135,7 +191,7 @@ export default function PipelinesPage() {
                   </div>
                   <div className="flex items-center gap-1">
                     <span onClick={(e) => { e.stopPropagation(); openPipeline(p); }} className="p-1.5 rounded-lg hover:bg-primary-500/10 text-primary-400"><Pencil className="h-4 w-4" /></span>
-                    <span onClick={(e) => { e.stopPropagation(); deletePipeline(p.id); }} className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-400"><Trash2 className="h-4 w-4" /></span>
+                    <span onClick={(e) => { e.stopPropagation(); void deletePipeline(p.id); }} className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-400"><Trash2 className="h-4 w-4" /></span>
                   </div>
                 </div>
               </button>
@@ -164,7 +220,7 @@ export default function PipelinesPage() {
                       </div>
                       <div className="flex items-center gap-1">
                         <button onClick={() => openStage(stage)} className="p-2 text-primary-400"><Pencil className="h-4 w-4" /></button>
-                        <button onClick={() => deleteStage(stage.id)} className="p-2 text-red-400"><Trash2 className="h-4 w-4" /></button>
+                        <button onClick={() => void deleteStage(stage.id)} className="p-2 text-red-400"><Trash2 className="h-4 w-4" /></button>
                       </div>
                     </div>
                   ))}
@@ -179,11 +235,12 @@ export default function PipelinesPage() {
         <form onSubmit={savePipeline} className="space-y-4">
           <Input label="الاسم" required value={pipelineForm.name || ''} onChange={(e) => setPipelineForm({ ...pipelineForm, name: e.target.value })} />
           <Textarea label="الوصف" rows={3} value={pipelineForm.description || ''} onChange={(e) => setPipelineForm({ ...pipelineForm, description: e.target.value })} />
+          {pipelineError && <p className="text-sm text-red-400">{pipelineError}</p>}
           <div className="flex gap-4 text-sm text-slate-300">
             <label><input type="checkbox" className="ml-2" checked={Boolean(pipelineForm.isDefault)} onChange={(e) => setPipelineForm({ ...pipelineForm, isDefault: e.target.checked })} />افتراضي</label>
             <label><input type="checkbox" className="ml-2" checked={Boolean(pipelineForm.isActive)} onChange={(e) => setPipelineForm({ ...pipelineForm, isActive: e.target.checked })} />نشط</label>
           </div>
-          <div className="flex justify-end gap-3"><Button type="button" variant="ghost" onClick={() => setPipelineModal(false)}><X className="h-4 w-4" /> إلغاء</Button><Button type="submit">حفظ</Button></div>
+          <div className="flex justify-end gap-3"><Button type="button" variant="ghost" onClick={() => setPipelineModal(false)}><X className="h-4 w-4" /> إلغاء</Button><Button type="submit" isLoading={pipelineSaving}>حفظ</Button></div>
         </form>
       </Modal>
 
@@ -196,12 +253,13 @@ export default function PipelinesPage() {
             <Input label="الاحتمالية %" type="number" min="0" max="100" required value={stageForm.probability ?? 0} onChange={(e) => setStageForm({ ...stageForm, probability: e.target.value })} />
             <Input label="اللون" value={stageForm.color || ''} onChange={(e) => setStageForm({ ...stageForm, color: e.target.value })} />
           </div>
+          {stageError && <p className="text-sm text-red-400">{stageError}</p>}
           <div className="flex flex-wrap gap-4 text-sm text-slate-300">
             <label><input type="checkbox" className="ml-2" checked={Boolean(stageForm.isWon)} onChange={(e) => setStageForm({ ...stageForm, isWon: e.target.checked, isLost: e.target.checked ? false : stageForm.isLost })} />مرحلة ربح</label>
             <label><input type="checkbox" className="ml-2" checked={Boolean(stageForm.isLost)} onChange={(e) => setStageForm({ ...stageForm, isLost: e.target.checked, isWon: e.target.checked ? false : stageForm.isWon })} />مرحلة خسارة</label>
             <label><input type="checkbox" className="ml-2" checked={Boolean(stageForm.isActive)} onChange={(e) => setStageForm({ ...stageForm, isActive: e.target.checked })} />نشطة</label>
           </div>
-          <div className="flex justify-end gap-3"><Button type="button" variant="ghost" onClick={() => setStageModal(false)}><X className="h-4 w-4" /> إلغاء</Button><Button type="submit">حفظ</Button></div>
+          <div className="flex justify-end gap-3"><Button type="button" variant="ghost" onClick={() => setStageModal(false)}><X className="h-4 w-4" /> إلغاء</Button><Button type="submit" isLoading={stageSaving}>حفظ</Button></div>
         </form>
       </Modal>
     </div>

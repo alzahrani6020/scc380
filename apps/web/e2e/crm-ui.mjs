@@ -72,6 +72,11 @@ let invalidCsvPreview = false;
 let invalidCsvExecuteAttempted = false;
 let failNextCompanyList = false;
 let failNextContactList = false;
+let failNextPipelineList = false;
+let failNextPipelinePost = false;
+let failNextStagePost = false;
+let failNextPipelineDelete = false;
+let failNextStageDelete = false;
 let pipelinePost = null;
 let pipelinePatch = null;
 let pipelineDeleteId = null;
@@ -159,6 +164,11 @@ async function installApiMock(page) {
     }
 
     if (method === 'GET' && path === '/crm/pipelines') {
+      if (failNextPipelineList) {
+        failNextPipelineList = false;
+        await route.fulfill(json({ message: 'forced pipeline list failure' }, 500));
+        return;
+      }
       if (lifecycleMode && lifecycle.pipeline) {
         await route.fulfill(json([lifecycle.pipeline, pipeline]));
       } else {
@@ -168,6 +178,11 @@ async function installApiMock(page) {
     }
     if (method === 'POST' && path === '/crm/pipelines') {
       pipelinePost = req.postDataJSON();
+      if (failNextPipelinePost) {
+        failNextPipelinePost = false;
+        await route.fulfill(json({ message: 'forced pipeline save failure' }, 500));
+        return;
+      }
       const created = { id: 'p-new', stages: [], ...pipelinePost };
       if (lifecycleMode) lifecycle.pipeline = created;
       await route.fulfill(json(created, 201));
@@ -179,12 +194,22 @@ async function installApiMock(page) {
       return;
     }
     if (method === 'DELETE' && path === '/crm/pipelines/p1') {
+      if (failNextPipelineDelete) {
+        failNextPipelineDelete = false;
+        await route.fulfill(json({ message: 'forced pipeline delete failure' }, 409));
+        return;
+      }
       pipelineDeleteId = 'p1';
       await route.fulfill({ status: 204 });
       return;
     }
     if (method === 'POST' && path === '/crm/pipelines/p1/stages') {
       stagePost = req.postDataJSON();
+      if (failNextStagePost) {
+        failNextStagePost = false;
+        await route.fulfill(json({ message: 'forced stage save failure' }, 500));
+        return;
+      }
       await route.fulfill(json({ id: 's-new', ...stagePost }, 201));
       return;
     }
@@ -194,6 +219,11 @@ async function installApiMock(page) {
       return;
     }
     if (method === 'DELETE' && path === '/crm/pipelines/p1/stages/s1') {
+      if (failNextStageDelete) {
+        failNextStageDelete = false;
+        await route.fulfill(json({ message: 'forced stage delete failure' }, 409));
+        return;
+      }
       stageDeleteId = 's1';
       await route.fulfill({ status: 204 });
       return;
@@ -834,6 +864,53 @@ async function testCompanyCrud(page) {
   await waitUntil(() => companyDeleteId === 'co1', 'Company DELETE was not sent');
 }
 
+
+async function testPipelineErrorRecovery(page) {
+  failNextPipelineList = true;
+  await page.goto(`${BASE}/dashboard/crm/pipelines`);
+  await page.getByText('تعذر تحميل مسارات المبيعات. تحقق من الاتصال بالخادم.', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'إعادة المحاولة', exact: true }).click();
+  await page.getByText('Browser Pipeline', { exact: true }).first().waitFor();
+
+  failNextPipelinePost = true;
+  pipelinePost = null;
+  await page.getByRole('button', { name: 'مسار جديد', exact: true }).click();
+  await fieldByLabel(page, 'الاسم', 'input').fill('Failing Pipeline');
+  await page.getByRole('button', { name: 'حفظ', exact: true }).click();
+  await page.getByText('تعذر حفظ مسار المبيعات. حاول مرة أخرى.', { exact: true }).waitFor();
+  await page.getByRole('heading', { name: 'مسار جديد', exact: true }).waitFor();
+  assert.equal(pipelinePost?.name, 'Failing Pipeline');
+  await page.getByRole('button', { name: 'إلغاء', exact: true }).click();
+
+  failNextStagePost = true;
+  stagePost = null;
+  await page.getByText('Browser Pipeline', { exact: true }).first().click();
+  await page.getByRole('button', { name: 'مرحلة', exact: true }).click();
+  await fieldByLabel(page, 'الاسم', 'input').fill('Failing Stage');
+  await fieldByLabel(page, 'الكود', 'input').fill('failing');
+  await fieldByLabel(page, 'الترتيب', 'input').fill('2');
+  await fieldByLabel(page, 'الاحتمالية %', 'input').fill('10');
+  await page.getByRole('button', { name: 'حفظ', exact: true }).click();
+  await page.getByText('تعذر حفظ المرحلة. حاول مرة أخرى.', { exact: true }).waitFor();
+  await page.getByRole('heading', { name: 'مرحلة جديدة', exact: true }).waitFor();
+  assert.equal(stagePost?.name, 'Failing Stage');
+  await page.getByRole('button', { name: 'إلغاء', exact: true }).click();
+
+  failNextStageDelete = true;
+  page.once('dialog', (dialog) => dialog.accept());
+  const stageRow = page.locator('.rounded-xl.border').filter({ hasText: 'Browser Stage' }).first();
+  await stageRow.locator('button').last().click();
+  await page.getByText('تعذر حذف المرحلة. قد تكون مستخدمة في صفقات أو تعذر الاتصال بالخادم.', { exact: true }).waitFor();
+  await page.getByText('Browser Stage', { exact: true }).waitFor();
+
+  failNextPipelineDelete = true;
+  page.once('dialog', (dialog) => dialog.accept());
+  const pipelineButton = page.locator('button.scc-card-hover').filter({ hasText: 'Browser Pipeline' }).first();
+  await pipelineButton.locator('span').filter({ has: page.locator('svg') }).last().click();
+  await page.getByText('تعذر حذف مسار المبيعات. قد يكون مستخدمًا في صفقات أو تعذر الاتصال بالخادم.', { exact: true }).waitFor();
+  await page.getByText('Browser Pipeline', { exact: true }).first().waitFor();
+}
+
 async function testPipelineAndStageCrud(page) {
   pipelinePost = null;
   pipelinePatch = null;
@@ -1133,6 +1210,7 @@ try {
   await testCompanyQueryAndRecovery(page);
   await testContactQueryAndRecovery(page);
   await testCompanyCrud(page);
+  await testPipelineErrorRecovery(page);
   await testPipelineAndStageCrud(page);
   await testCrmLifecycle(page);
   console.log('CRM_BROWSER_E2E: PASS');
