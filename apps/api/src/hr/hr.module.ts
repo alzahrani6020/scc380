@@ -24,6 +24,10 @@ import { PayrollRunsService } from './payroll-runs.service';
 import { AccountingCoreModule } from '../accounting-core/accounting-core.module';
 import { EmployeeDocumentsController } from './employee-documents.controller';
 import { EmployeeDocumentsService } from './employee-documents.service';
+import { EmployeeLoansController } from './employee-loans.controller';
+import { EmployeeLoansService } from './employee-loans.service';
+import { EndServiceSettlementsController } from './end-service-settlements.controller';
+import { EndServiceSettlementsService } from './end-service-settlements.service';
 
 @Module({
   imports: [AccountingCoreModule],
@@ -40,6 +44,8 @@ import { EmployeeDocumentsService } from './employee-documents.service';
     LeaveBalancesController,
     PayrollRunsController,
     EmployeeDocumentsController,
+    EmployeeLoansController,
+    EndServiceSettlementsController,
   ],
   providers: [
     EmployeesService,
@@ -54,6 +60,8 @@ import { EmployeeDocumentsService } from './employee-documents.service';
     LeaveBalancesService,
     PayrollRunsService,
     EmployeeDocumentsService,
+    EmployeeLoansService,
+    EndServiceSettlementsService,
   ],
 })
 export class HrModule {}
