@@ -55,36 +55,36 @@ export class ContractsController {
   constructor(private readonly service: ContractsService) {}
 
   @Get()
-  @RequirePermissions('hr:read')
+  @RequirePermissions('hr:contracts:read')
   findAll(@Req() req: any, @Query() query: any) { return this.service.findAll(req, query); }
 
   @Get(':id')
-  @RequirePermissions('hr:read')
+  @RequirePermissions('hr:contracts:read')
   findOne(@Req() req: any, @Param('id') id: string) { return this.service.findOne(req, id); }
 
   @Post()
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:contracts:write')
   create(@Req() req: any, @Body() dto: CreateContractDto) { return this.service.create(req, dto); }
 
   @Patch(':id')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:contracts:write')
   update(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateContractDto) {
     return this.service.updateDraft(req, id, dto);
   }
 
   @Post(':id/activate')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:contracts:write')
   activate(@Req() req: any, @Param('id') id: string, @Body() dto: ActivateContractDto) {
     return this.service.activate(req, id, dto.signedAt);
   }
 
   @Post(':id/terminate')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:contracts:write')
   terminate(@Req() req: any, @Param('id') id: string, @Body() dto: TerminateContractDto) {
     return this.service.terminate(req, id, dto.reason);
   }
 
   @Delete(':id')
-  @RequirePermissions('hr:write')
+  @RequirePermissions('hr:contracts:write')
   remove(@Req() req: any, @Param('id') id: string) { return this.service.removeDraft(req, id); }
 }
