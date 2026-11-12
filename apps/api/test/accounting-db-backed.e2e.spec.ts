@@ -4,6 +4,7 @@ import { prisma } from '@scc/database';
 import { AccountingPostingService } from '../src/accounting-core/accounting-posting.service';
 import { AccountingDualWriteService } from '../src/accounting-core/accounting-dual-write.service';
 import { AccountMappingService } from '../src/accounting-core/account-mapping.service';
+import { InvoicesService } from '../src/erp/invoices.service';
 
 test(
   'Accounting DB-backed E2E validates balanced posting, periods, mapping, tenant isolation and dual-write',
@@ -11,19 +12,33 @@ test(
   async () => {
     const run = `${process.pid}-${Date.now()}`;
     const tenantA = await prisma.tenant.create({
-      data: { name: `ACC E2E A ${run}`, slug: `acc-e2e-a-${run}` },
+      data: {
+        name: `ACC E2E A ${run}`,
+        slug: `acc-e2e-a-${run}`,
+        settings: { accounting: { autoPostingEnabled: true } },
+      },
     });
     const tenantB = await prisma.tenant.create({
-      data: { name: `ACC E2E B ${run}`, slug: `acc-e2e-b-${run}` },
+      data: {
+        name: `ACC E2E B ${run}`,
+        slug: `acc-e2e-b-${run}`,
+        settings: { accounting: { autoPostingEnabled: true } },
+      },
     });
 
     try {
-      const [cashA, revenueA, cashB] = await Promise.all([
+      const [cashA, arA, revenueA, vatA, cashB] = await Promise.all([
         prisma.chartOfAccount.create({
           data: { tenantId: tenantA.id, code: '1110', name: 'Cash', type: 'ASSET' },
         }),
         prisma.chartOfAccount.create({
+          data: { tenantId: tenantA.id, code: '1120', name: 'Accounts Receivable', type: 'ASSET' },
+        }),
+        prisma.chartOfAccount.create({
           data: { tenantId: tenantA.id, code: '4100', name: 'Sales Revenue', type: 'REVENUE' },
+        }),
+        prisma.chartOfAccount.create({
+          data: { tenantId: tenantA.id, code: '2110', name: 'VAT Payable', type: 'LIABILITY' },
         }),
         prisma.chartOfAccount.create({
           data: { tenantId: tenantB.id, code: '1110', name: 'Cash B', type: 'ASSET' },
@@ -57,6 +72,7 @@ test(
       const posting = new AccountingPostingService();
       const mapping = new AccountMappingService();
       const dualWrite = new AccountingDualWriteService(posting);
+      const invoices = new InvoicesService(mapping, dualWrite);
 
       const mapped = await mapping.resolve(tenantA.id, ['CASH', 'SALES_REVENUE']);
       assert.equal(mapped.CASH.id, cashA.id);
@@ -125,6 +141,81 @@ test(
             ],
           }),
         /outside tenant/,
+      );
+
+      const contactA = await prisma.contact.create({
+        data: { tenantId: tenantA.id, firstName: 'Accounting', lastName: 'Customer' },
+      });
+
+      const salesInvoice = await invoices.create(tenantA.id, {
+        invoiceNumber: `INV-E2E-${run}`,
+        contactId: contactA.id,
+        type: 'STANDARD',
+        status: 'SENT',
+        subtotal: 1000,
+        taxRate: 15,
+        taxAmount: 150,
+        discount: 0,
+        total: 1150,
+        currency: 'SAR',
+        dueDate: new Date('2026-11-30T00:00:00.000Z'),
+      });
+
+      const invoiceHeader = await prisma.journalEntryHeader.findFirst({
+        where: { tenantId: tenantA.id, sourceType: 'INVOICE', sourceId: salesInvoice.id },
+        include: { lines: true },
+      });
+      assert.ok(invoiceHeader);
+      assert.equal(invoiceHeader.status, 'POSTED');
+      assert.equal(invoiceHeader.lines.length, 3);
+      assert.deepEqual(
+        new Set(invoiceHeader.lines.map(line => line.accountId)),
+        new Set([arA.id, revenueA.id, vatA.id]),
+      );
+      assert.equal(
+        invoiceHeader.lines.reduce((sum, line) => sum + Number(line.debitAmount), 0),
+        1150,
+      );
+      assert.equal(
+        invoiceHeader.lines.reduce((sum, line) => sum + Number(line.creditAmount), 0),
+        1150,
+      );
+
+      const invoiceLegacy = await prisma.journalEntry.findMany({
+        where: { tenantId: tenantA.id, reference: salesInvoice.invoiceNumber },
+      });
+      assert.equal(invoiceLegacy.length, 3);
+      assert.equal(
+        invoiceLegacy.reduce((sum, row) => sum + Number(row.debitAmount), 0),
+        invoiceLegacy.reduce((sum, row) => sum + Number(row.creditAmount), 0),
+      );
+
+      const contactB = await prisma.contact.create({
+        data: { tenantId: tenantB.id, firstName: 'Rollback', lastName: 'Customer' },
+      });
+      const rollbackInvoiceNumber = `INV-ROLLBACK-${run}`;
+      await assert.rejects(
+        () =>
+          invoices.create(tenantB.id, {
+            invoiceNumber: rollbackInvoiceNumber,
+            contactId: contactB.id,
+            type: 'STANDARD',
+            status: 'SENT',
+            subtotal: 100,
+            taxRate: 15,
+            taxAmount: 15,
+            discount: 0,
+            total: 115,
+            currency: 'SAR',
+            dueDate: new Date('2026-11-30T00:00:00.000Z'),
+          }),
+        /Missing active accounting mappings/,
+      );
+      assert.equal(
+        await prisma.invoice.findFirst({
+          where: { tenantId: tenantB.id, invoiceNumber: rollbackInvoiceNumber },
+        }),
+        null,
       );
 
       const dual = await dualWrite.post({
