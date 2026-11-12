@@ -22,6 +22,18 @@ class SettlementDto {
   @IsString() @IsOptional() notes?: string;
 }
 
+
+class PostSettlementAccountingDto {
+  @IsString() settlementPayableAccountId: string;
+  @IsString() @IsOptional() eosExpenseAccountId?: string;
+  @IsString() @IsOptional() leaveEncashmentAccountId?: string;
+  @IsString() @IsOptional() unpaidSalaryAccountId?: string;
+  @IsString() @IsOptional() otherEntitlementsAccountId?: string;
+  @IsString() @IsOptional() compensationAccountId?: string;
+  @IsString() @IsOptional() loanReceivableAccountId?: string;
+  @IsString() @IsOptional() otherDeductionAccountId?: string;
+}
+
 @ApiTags('HR - End Service Settlements')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -48,6 +60,12 @@ export class EndServiceSettlementsController {
   @Post(':id/approve')
   @RequirePermissions('hr:write')
   approve(@Req() req: any, @Param('id') id: string) { return this.service.approve(req, id); }
+
+  @Post(':id/post-accounting')
+  @RequirePermissions('hr:write', 'erp:write')
+  postAccounting(@Req() req: any, @Param('id') id: string, @Body() dto: PostSettlementAccountingDto) {
+    return this.service.postAccounting(req, id, dto);
+  }
 
   @Post(':id/pay')
   @RequirePermissions('hr:write')
