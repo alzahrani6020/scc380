@@ -390,7 +390,9 @@ export class ReportsService {
         (a, b) => b.outstanding - a.outstanding || a.partyName.localeCompare(b.partyName),
       ),
       invoices: rows.sort(
-        (a, b) => b.overdueDays - a.overdueDays || a.dueDate.localeCompare(b.dueDate),
+        (a, b) =>
+          b.overdueDays - a.overdueDays ||
+          String(a.dueDate || '').localeCompare(String(b.dueDate || '')),
       ),
     };
   }
@@ -439,6 +441,7 @@ export class ReportsService {
       prisma.payment.groupBy({
         by: ['invoiceId'],
         where: {
+          ...tenant,
           invoiceId: { in: invoiceIds },
           status: 'COMPLETED',
           paidAt: { lte: asOf },
@@ -537,6 +540,7 @@ export class ReportsService {
     const payments = await prisma.supplierPayment.groupBy({
       by: ['supplierInvoiceId'],
       where: {
+        ...tenant,
         supplierInvoiceId: { in: invoiceIds },
         paymentDate: { lte: asOf },
       },
