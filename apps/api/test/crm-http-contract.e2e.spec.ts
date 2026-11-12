@@ -3,22 +3,42 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { CompaniesController } from '../src/crm/companies.controller';
+import { CompaniesController, CreateCompanyDto, ListCompaniesQueryDto, UpdateCompanyDto } from '../src/crm/companies.controller';
 import { CompaniesService } from '../src/crm/companies.service';
-import { PipelinesController } from '../src/crm/pipelines.controller';
+import { PipelinesController, CreatePipelineDto, UpdatePipelineDto, CreateStageDto, UpdateStageDto } from '../src/crm/pipelines.controller';
 import { PipelinesService } from '../src/crm/pipelines.service';
-import { DealsController } from '../src/crm/deals.controller';
+import { DealsController, CreateDealDto, UpdateDealDto } from '../src/crm/deals.controller';
 import { DealsService } from '../src/crm/deals.service';
-import { ActivitiesController } from '../src/crm/activities.controller';
+import { ActivitiesController, CreateActivityDto, UpdateActivityDto } from '../src/crm/activities.controller';
 import { ActivitiesService } from '../src/crm/activities.service';
 import { JwtAuthGuard } from '../src/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../src/auth/guards/permissions.guard';
+import { ListDealsQueryDto } from '../src/crm/dto/list-deals-query.dto';
+import { ListActivitiesQueryDto } from '../src/crm/dto/list-activities-query.dto';
 
 
 Reflect.defineMetadata('design:paramtypes', [CompaniesService], CompaniesController);
 Reflect.defineMetadata('design:paramtypes', [PipelinesService], PipelinesController);
 Reflect.defineMetadata('design:paramtypes', [DealsService], DealsController);
 Reflect.defineMetadata('design:paramtypes', [ActivitiesService], ActivitiesController);
+
+
+Reflect.defineMetadata('design:paramtypes', [Object, ListCompaniesQueryDto], CompaniesController.prototype, 'findAll');
+Reflect.defineMetadata('design:paramtypes', [Object, CreateCompanyDto], CompaniesController.prototype, 'create');
+Reflect.defineMetadata('design:paramtypes', [Object, String, UpdateCompanyDto], CompaniesController.prototype, 'update');
+
+Reflect.defineMetadata('design:paramtypes', [Object, ListDealsQueryDto], DealsController.prototype, 'findAll');
+Reflect.defineMetadata('design:paramtypes', [Object, CreateDealDto], DealsController.prototype, 'create');
+Reflect.defineMetadata('design:paramtypes', [Object, String, UpdateDealDto], DealsController.prototype, 'update');
+
+Reflect.defineMetadata('design:paramtypes', [Object, ListActivitiesQueryDto], ActivitiesController.prototype, 'findAll');
+Reflect.defineMetadata('design:paramtypes', [Object, CreateActivityDto], ActivitiesController.prototype, 'create');
+Reflect.defineMetadata('design:paramtypes', [Object, String, UpdateActivityDto], ActivitiesController.prototype, 'update');
+
+Reflect.defineMetadata('design:paramtypes', [Object, CreatePipelineDto], PipelinesController.prototype, 'create');
+Reflect.defineMetadata('design:paramtypes', [Object, String, UpdatePipelineDto], PipelinesController.prototype, 'update');
+Reflect.defineMetadata('design:paramtypes', [Object, String, CreateStageDto], PipelinesController.prototype, 'createStage');
+Reflect.defineMetadata('design:paramtypes', [Object, String, String, UpdateStageDto], PipelinesController.prototype, 'updateStage');
 
 async function createApp() {
   const calls: any[] = [];
