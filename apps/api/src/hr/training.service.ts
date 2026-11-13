@@ -4,7 +4,44 @@ export class TrainingService{
  async listCourses(req:any){const data=await prisma.trainingCourse.findMany({where:{...tenantWhere(req.user?.tenantId)},include:{_count:{select:{enrollments:true}}},orderBy:{createdAt:'desc'}});return{data,count:data.length}}
  async createCourse(req:any,dto:any){const tenantId=req.user?.tenantId;if(await prisma.trainingCourse.findFirst({where:{...tenantWhere(tenantId),code:dto.code}}))throw new ConflictException('Training course code already exists');return prisma.trainingCourse.create({data:{tenantId,...dto,startDate:dto.startDate?new Date(dto.startDate):null,endDate:dto.endDate?new Date(dto.endDate):null}})}
  async listEnrollments(req:any,q:any){const where:any={...tenantWhere(req.user?.tenantId)};if(q.courseId)where.courseId=q.courseId;if(q.employeeId)where.employeeId=q.employeeId;const data=await prisma.trainingEnrollment.findMany({where,include:{employee:{select:{firstName:true,lastName:true,employeeCode:true}},course:{select:{code:true,title:true}}},orderBy:{createdAt:'desc'}});return{data,count:data.length}}
- async enroll(req:any,dto:any){const tenantId=req.user?.tenantId;const [c,e]=await Promise.all([prisma.trainingCourse.findFirst({where:{...tenantWhere(tenantId),id:dto.courseId}}),prisma.employee.findFirst({where:{...tenantWhere(tenantId),id:dto.employeeId}})]);if(!c)throw new NotFoundException('Training course not found');if(!e)throw new NotFoundException('Employee not found');if(['COMPLETED','CANCELLED'].includes(c.status))throw new BadRequestException('Training course is closed');if(await prisma.trainingEnrollment.findFirst({where:{...tenantWhere(tenantId),courseId:dto.courseId,employeeId:dto.employeeId}}))throw new ConflictException('Employee already enrolled');if(c.capacity){const count=await prisma.trainingEnrollment.count({where:{tenantId,courseId:c.id,status:{not:'CANCELLED'}}});if(count>=c.capacity)throw new BadRequestException('Training course capacity reached')}return prisma.trainingEnrollment.create({data:{tenantId,courseId:dto.courseId,employeeId:dto.employeeId,notes:dto.notes||null}})}
+ async enroll(req:any,dto:any){
+  const tenantId=req.user?.tenantId;
+  if(!tenantId)throw new BadRequestException('Tenant is required');
+  return prisma.$transaction(async tx=>{
+    const course=await tx.trainingCourse.findFirst({where:{...tenantWhere(tenantId),id:dto.courseId}});
+    if(!course)throw new NotFoundException('Training course not found');
+
+    const locked=await tx.$queryRaw<Array<{id:string}>>`
+      SELECT "id" FROM "training_courses"
+      WHERE "id" = ${course.id} AND "tenantId" = ${tenantId}
+      FOR UPDATE
+    `;
+    if(locked.length!==1)throw new NotFoundException('Training course not found');
+
+    const currentCourse=await tx.trainingCourse.findFirst({where:{...tenantWhere(tenantId),id:dto.courseId}});
+    if(!currentCourse)throw new NotFoundException('Training course not found');
+    if(currentCourse.status!=='OPEN')throw new BadRequestException('Training course must be OPEN for enrollment');
+
+    const employee=await tx.employee.findFirst({where:{...tenantWhere(tenantId),id:dto.employeeId}});
+    if(!employee)throw new NotFoundException('Employee not found');
+    if(employee.status!=='ACTIVE')throw new BadRequestException('Only active employees can be enrolled in training');
+
+    if(await tx.trainingEnrollment.findFirst({where:{...tenantWhere(tenantId),courseId:dto.courseId,employeeId:dto.employeeId}})){
+      throw new ConflictException('Employee already enrolled');
+    }
+
+    if(currentCourse.capacity){
+      const count=await tx.trainingEnrollment.count({
+        where:{tenantId,courseId:currentCourse.id,status:{not:'CANCELLED'}},
+      });
+      if(count>=currentCourse.capacity)throw new BadRequestException('Training course capacity reached');
+    }
+
+    return tx.trainingEnrollment.create({
+      data:{tenantId,courseId:dto.courseId,employeeId:dto.employeeId,notes:dto.notes||null},
+    });
+  });
+ }
  async complete(req:any,id:string,dto:any){const e=await prisma.trainingEnrollment.findFirst({where:{...tenantWhere(req.user?.tenantId),id}});if(!e)throw new NotFoundException('Training enrollment not found');if(e.status==='COMPLETED')throw new ConflictException('Training enrollment already completed');if(dto.score!==undefined&&(Number(dto.score)<0||Number(dto.score)>100))throw new BadRequestException('Training score must be between 0 and 100');return prisma.trainingEnrollment.update({where:{id},data:{status:'COMPLETED',score:dto.score??null,certificateNumber:dto.certificateNumber||null,notes:dto.notes??e.notes,completedAt:new Date()}})}
  async status(req:any,id:string,status:string){const c=await prisma.trainingCourse.findFirst({where:{...tenantWhere(req.user?.tenantId),id}});if(!c)throw new NotFoundException('Training course not found');return prisma.trainingCourse.update({where:{id},data:{status}})}
 }
