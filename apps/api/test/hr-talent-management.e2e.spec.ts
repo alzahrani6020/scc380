@@ -91,3 +91,58 @@ test('Concurrent course enrollment respects a single available seat', {
     await prisma.$disconnect();
   }
 });
+
+test('Training lifecycle rejects invalid status transitions and duplicate completions', {
+  skip: process.env.CRM_DB_E2E !== '1' ? 'CRM_DB_E2E=1 is required' : false,
+}, async () => {
+  const run = `training-lifecycle-${process.pid}-${Date.now()}`;
+  const tenant = await prisma.tenant.create({ data: { name: run, slug: run } });
+  const req: any = { user: { tenantId: tenant.id, userId: `admin-${run}`, role: 'ADMIN' } };
+  const training = new TrainingService();
+  try {
+    const employee = await prisma.employee.create({
+      data: { tenantId: tenant.id, employeeCode: `EMP-${run}`,
+        firstName: 'Active', lastName: 'Trainee', hireDate: new Date('2026-01-01') },
+    });
+    const planned = await training.createCourse(req, {
+      code: `PLANNED-${run}`, title: 'Planned course', capacity: 1,
+    });
+    await assert.rejects(() => training.status(req, planned.id, 'COMPLETED'),
+      /Invalid training course status transition/);
+    await training.status(req, planned.id, 'OPEN');
+    const enrolled = await training.enroll(req, { courseId: planned.id, employeeId: employee.id });
+    await assert.rejects(() => training.complete(req, enrolled.id, { score: 101 }),
+      /Training score must be between 0 and 100/);
+    const completed = await training.complete(req, enrolled.id, {
+      score: 92, certificateNumber: `CERT-${run}`,
+    });
+    assert.equal(completed.status, 'COMPLETED');
+    await assert.rejects(() => training.complete(req, enrolled.id, { score: 80 }),
+      /Only enrolled participants can be completed/);
+    await training.status(req, planned.id, 'COMPLETED');
+    await assert.rejects(() => training.status(req, planned.id, 'OPEN'),
+      /Invalid training course status transition/);
+    await assert.rejects(() => training.enroll(req, { courseId: planned.id, employeeId: employee.id }),
+      /must be OPEN/);
+
+    const cancelled = await training.createCourse(req, {
+      code: `CANCELLED-${run}`, title: 'Cancelled course',
+    });
+    await training.status(req, cancelled.id, 'OPEN');
+    const extra = await prisma.employee.create({
+      data: { tenantId: tenant.id, employeeCode: `EMP2-${run}`,
+        firstName: 'Second', lastName: 'Trainee', hireDate: new Date('2026-01-01') },
+    });
+    const cancelledEnrollment = await training.enroll(req, {
+      courseId: cancelled.id, employeeId: extra.id,
+    });
+    await training.status(req, cancelled.id, 'CANCELLED');
+    await assert.rejects(() => training.complete(req, cancelledEnrollment.id, { score: 90 }),
+      /Training course must be open or completed/);
+    await assert.rejects(() => training.status(req, cancelled.id, 'OPEN'),
+      /Invalid training course status transition/);
+  } finally {
+    await prisma.tenant.delete({ where: { id: tenant.id } });
+    await prisma.$disconnect();
+  }
+});
