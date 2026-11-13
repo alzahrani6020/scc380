@@ -22,6 +22,7 @@ export default function HrSelfServicePage() {
   const [documents, setDocuments] = useState<any[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
   const [custody, setCustody] = useState<any[]>([]);
+  const [performance, setPerformance] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [unlinked, setUnlinked] = useState(false);
   const [form, setForm] = useState<any>({ type: 'EMPLOYMENT_CERTIFICATE', subject: '' });
@@ -31,14 +32,15 @@ export default function HrSelfServicePage() {
   const load = async () => {
     setLoading(true); setUnlinked(false);
     try {
-      const [me, p, docs, reqs, assets] = await Promise.all([
+      const [me, p, docs, reqs, assets, reviews] = await Promise.all([
         api.get('/hr/self/me'),
         api.get('/hr/self/payroll?limit=12'),
         api.get('/hr/self/documents'),
         api.get('/hr/self/requests'),
         api.get('/hr/self/assets'),
+        api.get('/hr/self/performance'),
       ]);
-      setData(me.data); setPayroll(p.data || []); setDocuments(docs.data || []); setRequests(reqs.data || []); setCustody(assets.data || []);
+      setData(me.data); setPayroll(p.data || []); setDocuments(docs.data || []); setRequests(reqs.data || []); setCustody(assets.data || []); setPerformance(reviews.data || []);
       setProfile({
         phone: me.data.employee?.phone || '',
         emergencyContactName: me.data.employee?.emergencyContactName || '',
@@ -74,6 +76,20 @@ export default function HrSelfServicePage() {
     if (!confirm('إلغاء الطلب المعلق؟')) return;
     await api.post(`/hr/self/requests/${id}/cancel`, {});
     await load();
+  };
+
+  const acknowledgePerformance = async (id: string) => {
+    const employeeComments = prompt('تعليق الموظف على التقييم (اختياري):', '') ?? null;
+    if (employeeComments === null) return;
+    setBusy(true);
+    try {
+      await api.post(`/hr/self/performance/${id}/acknowledge`, { employeeComments: employeeComments || undefined });
+      await load();
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'تعذر إقرار التقييم');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const download = async (item: any) => {
@@ -136,6 +152,27 @@ export default function HrSelfServicePage() {
             <thead><tr className="text-slate-500 border-b border-slate-800"><th className="text-right py-2">الفترة</th><th className="text-right">الإجمالي</th><th className="text-right">خصم القرض</th><th className="text-right">الصافي</th><th className="text-right">الحالة</th></tr></thead>
             <tbody>{payroll.map(row => <tr key={row.id} className="border-b border-slate-800/60"><td className="py-3 text-white">{row.year}/{String(row.month).padStart(2,'0')}</td><td>{Number(row.grossSalary).toLocaleString('ar-SA')}</td><td>{Number(row.loanDeductions || 0).toLocaleString('ar-SA')}</td><td className="text-emerald-400">{Number(row.netSalary).toLocaleString('ar-SA')}</td><td>{row.status}</td></tr>)}</tbody>
           </table>
+        </div>
+      </div>
+
+      <div className="scc-card">
+        <h2 className="font-bold text-white flex items-center gap-2 mb-4">تقييمات الأداء</h2>
+        <div className="space-y-3">
+          {performance.length === 0 ? <p className="text-slate-500 text-sm">لا توجد تقييمات أداء.</p> : performance.map((review: any) => (
+            <div key={review.id} className="rounded-lg border border-slate-800 p-3 flex flex-wrap justify-between gap-3">
+              <div>
+                <div className="text-white font-medium">
+                  {new Date(review.periodStart).toLocaleDateString('ar-SA')} — {new Date(review.periodEnd).toLocaleDateString('ar-SA')}
+                </div>
+                <div className="text-xs text-slate-500 mt-1">الحالة: {review.status} · النتيجة: {review.overallScore ?? '—'} / 5</div>
+                {review.summary && <div className="text-sm text-slate-300 mt-2">{review.summary}</div>}
+                {review.employeeComments && <div className="text-xs text-slate-400 mt-2">تعليقك: {review.employeeComments}</div>}
+              </div>
+              {review.status === 'SUBMITTED' && (
+                <Button size="sm" isLoading={busy} onClick={() => acknowledgePerformance(review.id)}>إقرار التقييم</Button>
+              )}
+            </div>
+          ))}
         </div>
       </div>
 
