@@ -144,121 +144,121 @@ export default function FinancePage() {
         <a href="/dashboard/finance/purchase-orders" className="scc-card-hover"><CreditCard className="h-5 w-5 text-amber-400 mb-2" /><h3 className="text-white font-bold">أوامر الشراء</h3><p className="text-slate-400 text-sm">متابعة دورة أوامر الشراء</p></a>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-12 gap-4">
-        <a href="/dashboard/finance/journal-entries" className="scc-card-hover flex items-center gap-4 group">
-          <div className="w-12 h-12 rounded-xl bg-primary-500/10 flex items-center justify-center group-hover:bg-primary-500/20 transition-colors">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+        <a href="/dashboard/finance/journal-entries" className="scc-card-hover group flex min-w-0 items-start gap-3">
+          <div className="w-12 h-12 shrink-0 rounded-xl bg-primary-500/10 flex items-center justify-center group-hover:bg-primary-500/20 transition-colors">
             <BookOpen className="h-6 w-6 text-primary-400" />
           </div>
-          <div>
-            <h3 className="font-bold text-white">القيود اليومية</h3>
+          <div className="min-w-0 flex-1">
+            <h3 className="break-words font-bold text-white">القيود اليومية</h3>
             <p className="text-slate-400 text-sm">إدارة القيود المحاسبية</p>
           </div>
         </a>
-        <a href="/dashboard/finance/general-ledger" className="scc-card-hover flex items-center gap-4 group">
-          <div className="w-12 h-12 rounded-xl bg-indigo-500/10 flex items-center justify-center group-hover:bg-indigo-500/20 transition-colors">
+        <a href="/dashboard/finance/general-ledger" className="scc-card-hover group flex min-w-0 items-start gap-3">
+          <div className="w-12 h-12 shrink-0 rounded-xl bg-indigo-500/10 flex items-center justify-center group-hover:bg-indigo-500/20 transition-colors">
             <BookText className="h-6 w-6 text-indigo-400" />
           </div>
-          <div>
-            <h3 className="font-bold text-white">دفتر الأستاذ</h3>
+          <div className="min-w-0 flex-1">
+            <h3 className="break-words font-bold text-white">دفتر الأستاذ</h3>
             <p className="text-slate-400 text-sm">عرض الأرصدة لكل حساب</p>
           </div>
         </a>
-        <a href="/dashboard/finance/chart-of-accounts" className="scc-card-hover flex items-center gap-4 group">
-          <div className="w-12 h-12 rounded-xl bg-teal-500/10 flex items-center justify-center group-hover:bg-teal-500/20 transition-colors">
+        <a href="/dashboard/finance/chart-of-accounts" className="scc-card-hover group flex min-w-0 items-start gap-3">
+          <div className="w-12 h-12 shrink-0 rounded-xl bg-teal-500/10 flex items-center justify-center group-hover:bg-teal-500/20 transition-colors">
             <TreePine className="h-6 w-6 text-teal-400" />
           </div>
-          <div>
-            <h3 className="font-bold text-white">دليل الحسابات</h3>
+          <div className="min-w-0 flex-1">
+            <h3 className="break-words font-bold text-white">دليل الحسابات</h3>
             <p className="text-slate-400 text-sm">شجرة الحسابات المحاسبية</p>
           </div>
         </a>
-        <a href="/dashboard/finance/financial-periods" className="scc-card-hover flex items-center gap-4 group">
-          <div className="w-12 h-12 rounded-xl bg-amber-500/10 flex items-center justify-center group-hover:bg-amber-500/20 transition-colors">
+        <a href="/dashboard/finance/financial-periods" className="scc-card-hover group flex min-w-0 items-start gap-3">
+          <div className="w-12 h-12 shrink-0 rounded-xl bg-amber-500/10 flex items-center justify-center group-hover:bg-amber-500/20 transition-colors">
             <CalendarRange className="h-6 w-6 text-amber-400" />
           </div>
-          <div>
-            <h3 className="font-bold text-white">الفترات المالية</h3>
+          <div className="min-w-0 flex-1">
+            <h3 className="break-words font-bold text-white">الفترات المالية</h3>
             <p className="text-slate-400 text-sm">فتح وإغلاق الفترات المحاسبية</p>
           </div>
         </a>
-        <a href="/dashboard/finance/bank-reconciliation" className="scc-card-hover flex items-center gap-4 group">
-          <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center group-hover:bg-emerald-500/20 transition-colors">
+        <a href="/dashboard/finance/bank-reconciliation" className="scc-card-hover group flex min-w-0 items-start gap-3">
+          <div className="w-12 h-12 shrink-0 rounded-xl bg-emerald-500/10 flex items-center justify-center group-hover:bg-emerald-500/20 transition-colors">
             <Landmark className="h-6 w-6 text-emerald-400" />
           </div>
-          <div>
-            <h3 className="font-bold text-white">التسوية البنكية</h3>
+          <div className="min-w-0 flex-1">
+            <h3 className="break-words font-bold text-white">التسوية البنكية</h3>
             <p className="text-slate-400 text-sm">مطابقة كشف البنك مع دفتر الأستاذ</p>
           </div>
         </a>
-        <a href="/dashboard/finance/aging" className="scc-card-hover flex items-center gap-4 group">
-          <div className="w-12 h-12 rounded-xl bg-rose-500/10 flex items-center justify-center group-hover:bg-rose-500/20 transition-colors">
+        <a href="/dashboard/finance/aging" className="scc-card-hover group flex min-w-0 items-start gap-3">
+          <div className="w-12 h-12 shrink-0 rounded-xl bg-rose-500/10 flex items-center justify-center group-hover:bg-rose-500/20 transition-colors">
             <Clock3 className="h-6 w-6 text-rose-400" />
           </div>
-          <div>
-            <h3 className="font-bold text-white">أعمار الذمم</h3>
+          <div className="min-w-0 flex-1">
+            <h3 className="break-words font-bold text-white">أعمار الذمم</h3>
             <p className="text-slate-400 text-sm">المدينة والدائنة حسب الاستحقاق</p>
           </div>
         </a>
-        <a href="/dashboard/finance/cost-centers" className="scc-card-hover flex items-center gap-4 group">
-          <div className="w-12 h-12 rounded-xl bg-cyan-500/10 flex items-center justify-center group-hover:bg-cyan-500/20 transition-colors">
+        <a href="/dashboard/finance/cost-centers" className="scc-card-hover group flex min-w-0 items-start gap-3">
+          <div className="w-12 h-12 shrink-0 rounded-xl bg-cyan-500/10 flex items-center justify-center group-hover:bg-cyan-500/20 transition-colors">
             <Target className="h-6 w-6 text-cyan-400" />
           </div>
-          <div>
-            <h3 className="font-bold text-white">مراكز التكلفة</h3>
+          <div className="min-w-0 flex-1">
+            <h3 className="break-words font-bold text-white">مراكز التكلفة</h3>
             <p className="text-slate-400 text-sm">الموازنة والفعلية حسب البعد المحاسبي</p>
           </div>
         </a>
-        <a href="/dashboard/finance/fixed-assets" className="scc-card-hover flex items-center gap-4 group">
-          <div className="w-12 h-12 rounded-xl bg-orange-500/10 flex items-center justify-center group-hover:bg-orange-500/20 transition-colors">
+        <a href="/dashboard/finance/fixed-assets" className="scc-card-hover group flex min-w-0 items-start gap-3">
+          <div className="w-12 h-12 shrink-0 rounded-xl bg-orange-500/10 flex items-center justify-center group-hover:bg-orange-500/20 transition-colors">
             <Boxes className="h-6 w-6 text-orange-400" />
           </div>
-          <div>
-            <h3 className="font-bold text-white">الأصول الثابتة</h3>
+          <div className="min-w-0 flex-1">
+            <h3 className="break-words font-bold text-white">الأصول الثابتة</h3>
             <p className="text-slate-400 text-sm">سجل الأصول والاستهلاك المحاسبي</p>
           </div>
         </a>
-        <a href="/dashboard/finance/budgets" className="scc-card-hover flex items-center gap-4 group">
-          <div className="w-12 h-12 rounded-xl bg-violet-500/10 flex items-center justify-center group-hover:bg-violet-500/20 transition-colors">
+        <a href="/dashboard/finance/budgets" className="scc-card-hover group flex min-w-0 items-start gap-3">
+          <div className="w-12 h-12 shrink-0 rounded-xl bg-violet-500/10 flex items-center justify-center group-hover:bg-violet-500/20 transition-colors">
             <WalletCards className="h-6 w-6 text-violet-400" />
           </div>
-          <div>
-            <h3 className="font-bold text-white">الموازنات</h3>
+          <div className="min-w-0 flex-1">
+            <h3 className="break-words font-bold text-white">الموازنات</h3>
             <p className="text-slate-400 text-sm">المعتمد مقابل الفعلي والانحراف</p>
           </div>
         </a>
-        <a href="/dashboard/finance/fx" className="scc-card-hover flex items-center gap-4 group">
-          <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center group-hover:bg-emerald-500/20 transition-colors">
+        <a href="/dashboard/finance/fx" className="scc-card-hover group flex min-w-0 items-start gap-3">
+          <div className="w-12 h-12 shrink-0 rounded-xl bg-emerald-500/10 flex items-center justify-center group-hover:bg-emerald-500/20 transition-colors">
             <Coins className="h-6 w-6 text-emerald-400" />
           </div>
-          <div>
-            <h3 className="font-bold text-white">العملات وأسعار الصرف</h3>
+          <div className="min-w-0 flex-1">
+            <h3 className="break-words font-bold text-white">العملات وأسعار الصرف</h3>
             <p className="text-slate-400 text-sm">قيود أجنبية وفروق إعادة التقييم</p>
           </div>
         </a>
-        <a href="/dashboard/finance/accounting-schedules" className="scc-card-hover flex items-center gap-4 group">
-          <div className="w-12 h-12 rounded-xl bg-violet-500/10 flex items-center justify-center group-hover:bg-violet-500/20 transition-colors">
+        <a href="/dashboard/finance/accounting-schedules" className="scc-card-hover group flex min-w-0 items-start gap-3">
+          <div className="w-12 h-12 shrink-0 rounded-xl bg-violet-500/10 flex items-center justify-center group-hover:bg-violet-500/20 transition-colors">
             <CalendarRange className="h-6 w-6 text-violet-400" />
           </div>
-          <div>
-            <h3 className="font-bold text-white">القيود الدورية والاستحقاقات</h3>
+          <div className="min-w-0 flex-1">
+            <h3 className="break-words font-bold text-white">القيود الدورية والاستحقاقات</h3>
             <p className="text-slate-400 text-sm">دوري · استحقاق · مصروف مقدم</p>
           </div>
         </a>
-        <a href="/dashboard/finance/vat-returns" className="scc-card-hover flex items-center gap-4 group">
-          <div className="w-12 h-12 rounded-xl bg-sky-500/10 flex items-center justify-center group-hover:bg-sky-500/20 transition-colors">
+        <a href="/dashboard/finance/vat-returns" className="scc-card-hover group flex min-w-0 items-start gap-3">
+          <div className="w-12 h-12 shrink-0 rounded-xl bg-sky-500/10 flex items-center justify-center group-hover:bg-sky-500/20 transition-colors">
             <FileCheck2 className="h-6 w-6 text-sky-400" />
           </div>
-          <div>
-            <h3 className="font-bold text-white">إقرارات ضريبة القيمة المضافة</h3>
+          <div className="min-w-0 flex-1">
+            <h3 className="break-words font-bold text-white">إقرارات ضريبة القيمة المضافة</h3>
             <p className="text-slate-400 text-sm">فترات الإقرار والإقفال والتسوية</p>
           </div>
         </a>
-        <a href="/dashboard/finance/year-end-closing" className="scc-card-hover flex items-center gap-4 group">
-          <div className="w-12 h-12 rounded-xl bg-indigo-500/10 flex items-center justify-center group-hover:bg-indigo-500/20 transition-colors">
+        <a href="/dashboard/finance/year-end-closing" className="scc-card-hover group flex min-w-0 items-start gap-3">
+          <div className="w-12 h-12 shrink-0 rounded-xl bg-indigo-500/10 flex items-center justify-center group-hover:bg-indigo-500/20 transition-colors">
             <CalendarCheck2 className="h-6 w-6 text-indigo-400" />
           </div>
-          <div>
-            <h3 className="font-bold text-white">الإقفال السنوي</h3>
+          <div className="min-w-0 flex-1">
+            <h3 className="break-words font-bold text-white">الإقفال السنوي</h3>
             <p className="text-slate-400 text-sm">إقفال الأرباح والخسائر وعكسها تدقيقيًا</p>
           </div>
         </a>
