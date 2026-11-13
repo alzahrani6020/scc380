@@ -16,6 +16,7 @@ export default function ContractsPage(){
  const [properties,setProperties]=useState<any[]>([]);
  const [units,setUnits]=useState<any[]>([]);
  const [loading,setLoading]=useState(true);
+ const [loadError,setLoadError]=useState(false);
  const [open,setOpen]=useState(false);
  const [editing,setEditing]=useState<any>(null);
  const [saving,setSaving]=useState(false);
@@ -25,7 +26,7 @@ export default function ContractsPage(){
    api.get('/real-estate/contracts').then(r=>setItems(r.data.data||[])),
    api.get('/real-estate/properties').then(r=>setProperties(r.data.data||[])),
    api.get('/real-estate/units').then(r=>setUnits(r.data.data||[])),
- ]).finally(()=>setLoading(false));
+ ]).then(()=>setLoadError(false)).catch(err=>{setLoadError(true);throw err}).finally(()=>setLoading(false));
 
  useEffect(()=>{load().catch(console.error)},[]);
 
@@ -44,12 +45,12 @@ export default function ContractsPage(){
 
  return <div className="space-y-6 animate-fade-in-up">
   <div className="flex items-center justify-between"><div><h1 className="text-2xl font-bold text-white flex items-center gap-2"><FileSignature className="h-6 w-6 text-primary-400"/>عقود الإيجار</h1><p className="text-slate-400 text-sm mt-1">{items.length} عقد</p></div><Button onClick={create}><Plus className="h-5 w-5"/>عقد جديد</Button></div>
-  {loading?<div className="h-64 flex items-center justify-center"><RefreshCw className="h-8 w-8 animate-spin text-primary-400"/></div>:<div className="space-y-3">{items.map(x=><div key={x.id} className="scc-card-hover">
+  {loading?<div className="h-64 flex items-center justify-center"><RefreshCw className="h-8 w-8 animate-spin text-primary-400"/></div>:loadError?<div role="alert" className="rounded-lg border border-red-800 p-4 text-red-200">تعذر تحميل العقود والعقارات والوحدات. تحقق من الاتصال والصلاحيات ثم أعد تحميل الصفحة.</div>:<div className="space-y-3">{items.map(x=><div key={x.id} className="scc-card-hover">
    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
     <div><p className="text-white font-bold">{x.lesseeName}</p><p className="text-slate-400 text-sm">{x.property?.name||'—'} · وحدة {x.unit?.unitNumber||'—'}</p><p className="text-slate-500 text-xs mt-1">{new Date(x.startDate).toLocaleDateString('ar-SA')} — {new Date(x.endDate).toLocaleDateString('ar-SA')}</p></div>
     <div className="flex items-center gap-3 flex-wrap"><span className="text-primary-400 font-bold">{Number(x.rentAmount).toLocaleString()} ر.س</span><span className="text-xs text-slate-400">{statuses.find(s=>s.value===x.status)?.label||x.status}</span><span className="text-xs text-slate-500">{x._count?.payments||0} دفعة</span></div>
    </div>
-   <div className="mt-4 flex gap-3 flex-wrap"><button onClick={()=>edit(x)} className="text-primary-400 text-sm">تعديل</button>{x.status==='ACTIVE'&&<button onClick={()=>terminate(x.id)} className="text-amber-400 text-sm">إنهاء</button>}<button onClick={()=>syncEjar(x.id)} className="text-emerald-400 text-sm">مزامنة إيجار</button><button onClick={()=>remove(x.id)} className="text-red-400"><Trash2 className="h-4 w-4"/></button></div>
+   <div className="mt-4 flex gap-3 flex-wrap"><button onClick={()=>edit(x)} className="text-primary-400 text-sm">تعديل</button>{x.status==='ACTIVE'&&<button onClick={()=>terminate(x.id)} className="text-amber-400 text-sm">إنهاء</button>}{x.status==='ACTIVE'&&<button onClick={()=>syncEjar(x.id)} className="text-emerald-400 text-sm">مزامنة إيجار</button>}{x.status==='DRAFT'&&<button onClick={()=>remove(x.id)} className="text-red-400" title="الحذف متاح فقط للمسودات الخالية من الاستحقاقات"><Trash2 className="h-4 w-4"/></button>}</div>
   </div>)}</div>}
   <Modal isOpen={open} onClose={()=>setOpen(false)} title={editing?'تعديل عقد':'عقد جديد'} size="xl"><form onSubmit={submit} className="space-y-4">
    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
