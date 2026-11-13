@@ -232,30 +232,47 @@ export class LeaseContractsService {
   private async generatePaymentSchedule(contract: any, db: Pick<typeof prisma, 'rentPayment'> = prisma) {
     const start = new Date(contract.startDate);
     const end = new Date(contract.endDate);
+    this.assertLeaseDates(start.toISOString(), end.toISOString());
+
+    const frequency = contract.paymentFrequency || 'MONTHLY';
+    const monthSteps: Record<string, number> = {
+      MONTHLY: 1, QUARTERLY: 3, SEMI_ANNUAL: 6, ANNUAL: 12,
+    };
+    if (frequency !== 'WEEKLY' && !monthSteps[frequency]) {
+      throw new BadRequestException('Unsupported rent payment frequency');
+    }
+
+    // Anchor each date to the original start day: Jan 31 -> Feb 28 -> Mar 31.
+    // The end date is an exclusive boundary, avoiding an extra installment at expiry.
+    const dueAt = (step: number): Date => {
+      if (frequency === 'WEEKLY') {
+        return new Date(start.getTime() + step * 7 * 24 * 60 * 60 * 1000);
+      }
+      const target = new Date(Date.UTC(
+        start.getUTCFullYear(), start.getUTCMonth() + step * monthSteps[frequency], 1,
+        start.getUTCHours(), start.getUTCMinutes(), start.getUTCSeconds(), start.getUTCMilliseconds(),
+      ));
+      const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+      target.setUTCDate(Math.min(start.getUTCDate(), lastDay));
+      return target;
+    };
+
     const payments = [];
-    let current = new Date(start);
-
-    const intervalMonths =
-      contract.paymentFrequency === 'MONTHLY' ? 1 :
-      contract.paymentFrequency === 'QUARTERLY' ? 3 :
-      contract.paymentFrequency === 'SEMI_ANNUAL' ? 6 :
-      contract.paymentFrequency === 'ANNUAL' ? 12 : 1;
-
-    while (current <= end) {
+    for (let step = 0; ; step++) {
+      const dueDate = dueAt(step);
+      if (dueDate >= end) break;
       payments.push({
         tenantId: contract.tenantId,
         contractId: contract.id,
         propertyId: contract.propertyId,
         unitId: contract.unitId,
-        dueDate: new Date(current),
+        dueDate,
         amount: contract.rentAmount,
         status: 'PENDING',
       });
-      current.setMonth(current.getMonth() + intervalMonths);
+      if (payments.length > 1200) throw new BadRequestException('Lease schedule exceeds supported length');
     }
+    if (payments.length) await db.rentPayment.createMany({ data: payments });
 
-    if (payments.length > 0) {
-      await db.rentPayment.createMany({ data: payments });
-    }
   }
 }
