@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { getToken, getRefreshToken, getTenantSlug, getRememberPreference, setAuth, clearAuth } from './auth';
+import { sessionAuth } from './session-auth';
 
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api',
@@ -42,37 +43,32 @@ async function refreshAccessToken(): Promise<string | null> {
   if (typeof window === 'undefined') return null;
   if (refreshPromise) return refreshPromise;
 
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) return null;
-
-  refreshPromise = axios
-    .post(
-      `${api.defaults.baseURL}/auth/refresh`,
-      { refreshToken },
-      { headers: { 'Content-Type': 'application/json' } },
-    )
-    .then((res) => {
+  const legacyToken = getRefreshToken();
+  refreshPromise = (async () => {
+    try {
+      let res: any;
+      // One-time migration for existing signed-in users. Rotate the old
+      // credential server-side, then remove it from browser storage.
+      if (legacyToken) {
+        res = await sessionAuth('migrate', { refreshToken: legacyToken, remember: getRememberPreference() });
+      } else {
+        res = await sessionAuth('refresh', { remember: getRememberPreference() });
+      }
       const remember = getRememberPreference();
-      setAuth(
-        {
-          accessToken: res.data.accessToken,
-          refreshToken: res.data.refreshToken,
-          role: res.data.user.role,
-          tenantSlug: res.data.user?.tenantSlug || null,
-          tenantId: res.data.user?.tenantId || null,
-          user: {
-            email: res.data.user.email,
-          },
-        },
-        remember,
-      );
-      return res.data.accessToken as string;
-    })
-    .catch(() => null)
-    .finally(() => {
+      setAuth({
+        accessToken: res.accessToken,
+        role: res.user.role,
+        tenantSlug: res.user?.tenantSlug || null,
+        tenantId: res.user?.tenantId || null,
+        user: { email: res.user.email },
+      }, remember);
+      return res.accessToken as string;
+    } catch {
+      return null;
+    } finally {
       refreshPromise = null;
-    });
-
+    }
+  })();
   return refreshPromise;
 }
 
