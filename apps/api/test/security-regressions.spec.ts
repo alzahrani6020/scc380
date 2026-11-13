@@ -233,9 +233,11 @@ test('Next auth session proxy protects refresh cookie and enforces same-origin C
   assert.match(auth, /store\.remove\('refreshToken'\)/);
   assert.doesNotMatch(auth, /store\.set\('refreshToken'/);
   assert.match(sessionClient, /credentials: 'same-origin'/);
-  assert.match(login, /sessionAuth\('login'/);
-  assert.match(login, /sessionAuth\('google'/);
-  assert.match(twoFactor, /sessionAuth\('verify-2fa-login'/);
+  assert.match(login, /api\.post\('\/auth\/login'/);
+  assert.match(login, /sessionAuth\('migrate'/);
+  assert.match(login, /api\.post\('\/auth\/google'/);
+  assert.match(twoFactor, /api\.post\('\/auth\/verify-2fa-login'/);
+  assert.match(twoFactor, /sessionAuth\('migrate'/);
   assert.match(sidebar, /sessionAuth\('logout'/);
   assert.match(middleware, /const mayRefresh = !!request\.cookies\.get\(refreshCookieName\)/);
   assert.match(middleware, /if \(!sessionValid && !mayRefresh\)/);
