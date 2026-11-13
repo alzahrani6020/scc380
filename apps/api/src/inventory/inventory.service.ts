@@ -31,22 +31,48 @@ export class InventoryService {
   }
 
   async createProduct(dto: CreateProductDto, tenantId: string | undefined, userRole: string) {
-    const data: any = { ...dto };
-    if (userRole !== 'SUPER_ADMIN') data.tenantId = tenantId;
+    if (!tenantId) throw new BadRequestException('Tenant is required');
+    if (Number(dto.currentStock || 0) !== 0) {
+      throw new BadRequestException(
+        'Initial stock must be zero; receive opening stock through an inventory movement',
+      );
+    }
+    const data: any = { ...dto, tenantId, currentStock: 0 };
     return prisma.product.create({ data });
   }
 
   async updateProduct(id: string, dto: Partial<CreateProductDto>, tenantId: string | undefined, userRole: string) {
-    const tw = userRole === 'SUPER_ADMIN' ? {} : tenantWhere(tenantId);
+    if (!tenantId) throw new BadRequestException('Tenant is required');
+    if (dto.currentStock !== undefined) {
+      throw new BadRequestException(
+        'currentStock cannot be edited directly; use an inventory movement',
+      );
+    }
     return prisma.product.updateMany({
-      where: { id, ...tw },
+      where: { id, tenantId },
       data: dto,
     });
   }
 
   async deleteProduct(id: string, tenantId: string | undefined, userRole: string) {
-    const tw = userRole === 'SUPER_ADMIN' ? {} : tenantWhere(tenantId);
-    return prisma.product.deleteMany({ where: { id, ...tw } });
+    if (!tenantId) throw new BadRequestException('Tenant is required');
+    const product = await prisma.product.findFirst({
+      where: { id, tenantId },
+      select: { id: true, currentStock: true },
+    });
+    if (!product) throw new NotFoundException('Product not found');
+    const [movements, transferItems, invoiceItems, posItems] = await Promise.all([
+      prisma.stockMovement.count({ where: { tenantId, productId: id } }),
+      prisma.stockTransferItem.count({ where: { tenantId, productId: id } }),
+      prisma.invoiceItem.count({ where: { tenantId, productId: id } }),
+      prisma.posOrderItem.count({ where: { tenantId, productId: id } }),
+    ]);
+    if (product.currentStock !== 0 || movements + transferItems + invoiceItems + posItems > 0) {
+      throw new ConflictException(
+        'Product has stock or transaction history and cannot be deleted; deactivate it instead',
+      );
+    }
+    return prisma.product.delete({ where: { id } });
   }
 
   // ─── Categories ───
