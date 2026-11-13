@@ -24,7 +24,8 @@ export class TrainingService{
    ]);
    if(!course)throw new NotFoundException('Training course not found');
    if(!employee)throw new NotFoundException('Employee not found');
-   if(['COMPLETED','CANCELLED'].includes(course.status))throw new BadRequestException('Training course is closed');
+   if(course.status!=='OPEN')throw new BadRequestException('Training course must be OPEN for enrollment');
+   if(employee.status!=='ACTIVE')throw new BadRequestException('Only active employees can be enrolled in training');
 
    const existing=await tx.trainingEnrollment.findFirst({
     where:{...tenantWhere(tenantId),courseId:dto.courseId,employeeId:dto.employeeId},
