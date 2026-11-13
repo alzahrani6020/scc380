@@ -20,6 +20,11 @@ class CurrencyDto {
   currency: string;
 }
 
+class FxSettlementAccountsDto {
+  @IsString() gainAccountId: string;
+  @IsString() lossAccountId: string;
+}
+
 class ExchangeRateDto {
   @IsString() @Matches(/^[A-Za-z]{3}$/) fromCurrency: string;
   @IsString() @Matches(/^[A-Za-z]{3}$/) toCurrency: string;
@@ -80,6 +85,12 @@ export class ForeignExchangeController {
   @RequirePermissions('erp:write')
   setBaseCurrency(@Req() req: any, @Body() dto: CurrencyDto) {
     return this.service.setBaseCurrency(req, dto.currency);
+  }
+
+  @Patch('config/settlement-accounts')
+  @RequirePermissions('erp:write')
+  setSettlementAccounts(@Req() req: any, @Body() dto: FxSettlementAccountsDto) {
+    return this.service.setSettlementAccounts(req, dto.gainAccountId, dto.lossAccountId);
   }
 
   @Get('rates')

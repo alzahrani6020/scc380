@@ -28,6 +28,8 @@ model Tenant {
   logoUrl       String?
   primaryColor  String?   @default("#0066CC")
   baseCurrency  String    @default("SAR")
+  fxGainAccountId String?
+  fxLossAccountId String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   deletedAt     DateTime?
@@ -520,6 +522,8 @@ model Invoice {
   discount      Decimal?  @default(0) @db.Decimal(18, 2)
   total         Decimal   @db.Decimal(18, 2)
   currency      String?   @default("SAR")
+  exchangeRate  Decimal?  @db.Decimal(18,8)
+  baseTotal     Decimal?  @db.Decimal(18,2)
   issueDate     DateTime  @default(now())
   dueDate       DateTime
   paidAt        DateTime?
@@ -580,6 +584,9 @@ model Payment {
   invoice       Invoice?  @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
   amount        Decimal   @db.Decimal(18, 2)
   currency      String?   @default("SAR")
+  exchangeRate  Decimal?  @db.Decimal(18,8)
+  baseAmount    Decimal?  @db.Decimal(18,2)
+  realizedFxDifference Decimal? @db.Decimal(18,2)
   method        PaymentMethod @default(CASH)
   status        PaymentStatus @default(COMPLETED)
   reference     String?
@@ -980,6 +987,9 @@ model SupplierInvoice {
   subtotal      Decimal   @db.Decimal(18, 2)
   taxAmount     Decimal   @default(0) @db.Decimal(18, 2)
   total         Decimal   @db.Decimal(18, 2)
+  currency      String    @default("SAR")
+  exchangeRate  Decimal?  @db.Decimal(18,8)
+  baseTotal     Decimal?  @db.Decimal(18,2)
   paidAmount    Decimal   @default(0) @db.Decimal(18, 2)
   status        SupplierInvoiceStatus @default(UNPAID)
   
@@ -1030,6 +1040,10 @@ model SupplierPayment {
   supplierInvoice   SupplierInvoice? @relation(fields: [supplierInvoiceId], references: [id], onDelete: SetNull)
   
   amount        Decimal   @db.Decimal(18, 2)
+  currency      String    @default("SAR")
+  exchangeRate  Decimal?  @db.Decimal(18,8)
+  baseAmount    Decimal?  @db.Decimal(18,2)
+  realizedFxDifference Decimal? @db.Decimal(18,2)
   method        String    @default("BANK_TRANSFER")
   reference     String?
   paymentDate   DateTime  @default(now())

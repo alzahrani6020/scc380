@@ -9,6 +9,7 @@ class CreatePaymentDto {
   @IsString() @IsOptional() invoiceId?: string;
   @IsNumber() amount: number;
   @IsString() @IsOptional() currency?: string;
+  @IsNumber() @IsOptional() exchangeRate?: number;
   @IsString() method: string;
   @IsString() @IsOptional() reference?: string;
   @IsString() @IsOptional() notes?: string;
@@ -17,6 +18,7 @@ class CreatePaymentDto {
 
 class UpdatePaymentDto {
   @IsNumber() @IsOptional() amount?: number;
+  @IsNumber() @IsOptional() exchangeRate?: number;
   @IsString() @IsOptional() method?: string;
   @IsString() @IsOptional() status?: string;
   @IsString() @IsOptional() reference?: string;

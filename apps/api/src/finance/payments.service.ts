@@ -8,12 +8,14 @@ import {
 import { PaymentMethod, Prisma, prisma, tenantWhere } from '@scc/database';
 import { AccountMappingService } from '../accounting-core/account-mapping.service';
 import { AccountingDualWriteService } from '../accounting-core/accounting-dual-write.service';
+import { CurrencyAccountingService } from '../accounting-core/currency-accounting.service';
 
 @Injectable()
 export class PaymentsService {
   constructor(
     private readonly accountMapping: AccountMappingService,
     private readonly dualWrite: AccountingDualWriteService,
+    private readonly currencyAccounting: CurrencyAccountingService,
   ) {}
 
   async findAll(req: any, query: any) {
@@ -48,6 +50,9 @@ export class PaymentsService {
         status: true,
         total: true,
         currency: true,
+        issueDate: true,
+        exchangeRate: true,
+        baseTotal: true,
       },
     });
     if (!invoice) throw new BadRequestException('Invoice not found for tenant');
@@ -90,6 +95,7 @@ export class PaymentsService {
       status: string;
       reference: string | null;
       paidAt: Date;
+      exchangeRate: Prisma.Decimal | null;
     },
   ) {
     if (payment.status !== 'COMPLETED') return;
@@ -136,6 +142,35 @@ export class PaymentsService {
       },
     });
 
+    const invoiceFx = await this.currencyAccounting.resolveRateInTransaction(
+      tx,
+      tenantId,
+      invoiceCurrency,
+      invoice.issueDate,
+      invoice.exchangeRate ?? undefined,
+    );
+    const paymentFx = await this.currencyAccounting.resolveRateInTransaction(
+      tx,
+      tenantId,
+      paymentCurrency,
+      payment.paidAt,
+      payment.exchangeRate ?? undefined,
+    );
+
+    const baseReceivable = this.currencyAccounting.convert(payment.amount, invoiceFx.exchangeRate);
+    const baseSettlement = this.currencyAccounting.convert(payment.amount, paymentFx.exchangeRate);
+    const realizedDifference = baseSettlement.sub(baseReceivable);
+
+    await tx.payment.update({
+      where: { id: payment.id },
+      data: {
+        currency: paymentFx.transactionCurrency,
+        exchangeRate: paymentFx.exchangeRate,
+        baseAmount: baseSettlement,
+        realizedFxDifference: realizedDifference,
+      },
+    });
+
     if (!autoPosting) return;
 
     const invoiceJournal = await tx.journalEntryHeader.findFirst({
@@ -159,6 +194,39 @@ export class PaymentsService {
       payment.method,
     );
 
+    const fxAccounts = realizedDifference.isZero()
+      ? null
+      : await this.currencyAccounting.resolveFxAccountsInTransaction(tx, tenantId);
+
+    const lines: any[] = [
+      {
+        accountId: settlementAccount.id,
+        debitAmount: baseSettlement,
+        foreignDebitAmount: payment.amount,
+        description: `Settlement received - ${invoice.invoiceNumber}`,
+      },
+      {
+        accountId: accounts.ACCOUNTS_RECEIVABLE.id,
+        creditAmount: baseReceivable,
+        foreignCreditAmount: payment.amount,
+        description: `Accounts receivable settlement - ${invoice.invoiceNumber}`,
+      },
+    ];
+
+    if (realizedDifference.gt(0)) {
+      lines.push({
+        accountId: fxAccounts!.gain.id,
+        creditAmount: realizedDifference,
+        description: `Realized FX gain - ${invoice.invoiceNumber}`,
+      });
+    } else if (realizedDifference.lt(0)) {
+      lines.push({
+        accountId: fxAccounts!.loss.id,
+        debitAmount: realizedDifference.abs(),
+        description: `Realized FX loss - ${invoice.invoiceNumber}`,
+      });
+    }
+
     await this.dualWrite.postInTransaction(tx, {
       tenantId,
       entryNumber: `PAY-${payment.id}`,
@@ -167,19 +235,11 @@ export class PaymentsService {
       reference: payment.reference || payment.id,
       sourceType: 'PAYMENT',
       sourceId: payment.id,
-      lines: [
-        {
-          accountId: settlementAccount.id,
-          debitAmount: payment.amount,
-          description: `Settlement received - ${invoice.invoiceNumber}`,
-        },
-        {
-          accountId: accounts.ACCOUNTS_RECEIVABLE.id,
-          creditAmount: payment.amount,
-          description: `Accounts receivable settlement - ${invoice.invoiceNumber}`,
-        },
-      ],
+      transactionCurrency: paymentFx.transactionCurrency,
+      exchangeRate: paymentFx.exchangeRate,
+      lines,
     });
+
   }
 
   async create(req: any, dto: any) {
@@ -190,9 +250,19 @@ export class PaymentsService {
     if (dto.paidAt) data.paidAt = new Date(dto.paidAt);
 
     return prisma.$transaction(async tx => {
+      if (data.invoiceId && !dto.currency) {
+        const invoice = await tx.invoice.findFirst({
+          where: { id: data.invoiceId, tenantId },
+          select: { currency: true },
+        });
+        if (!invoice) throw new BadRequestException('Invoice not found for tenant');
+        data.currency = invoice.currency || 'SAR';
+      } else if (data.currency) {
+        data.currency = this.currencyAccounting.normalizeCurrency(data.currency);
+      }
       const payment = await tx.payment.create({ data });
       await this.applyCompletedPayment(tx, tenantId, payment);
-      return payment;
+      return tx.payment.findUniqueOrThrow({ where: { id: payment.id } });
     });
   }
 
@@ -211,6 +281,7 @@ export class PaymentsService {
         'invoiceId',
         'amount',
         'currency',
+        'exchangeRate',
         'method',
         'reference',
         'paidAt',
@@ -246,6 +317,7 @@ export class PaymentsService {
       const updated = await tx.payment.update({ where: { id }, data });
       if (becomesCompleted) {
         await this.applyCompletedPayment(tx, tenantId, updated);
+        return tx.payment.findUniqueOrThrow({ where: { id: updated.id } });
       }
       return updated;
     });

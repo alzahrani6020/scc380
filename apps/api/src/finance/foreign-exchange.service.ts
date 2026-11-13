@@ -35,7 +35,7 @@ export class ForeignExchangeService {
   private async tenantConfig(client: Prisma.TransactionClient | typeof prisma, tenantId: string) {
     const tenant = await client.tenant.findUnique({
       where: { id: tenantId },
-      select: { id: true, baseCurrency: true },
+      select: { id: true, baseCurrency: true, fxGainAccountId: true, fxLossAccountId: true },
     });
     if (!tenant) throw new NotFoundException('Tenant not found');
     return tenant;
@@ -67,6 +67,42 @@ export class ForeignExchangeService {
       where: { id: tenantId },
       data: { baseCurrency: currency },
       select: { id: true, baseCurrency: true },
+    });
+  }
+
+  async setSettlementAccounts(req: any, gainAccountId: string, lossAccountId: string) {
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) throw new BadRequestException('Tenant is required');
+    if (!gainAccountId || !lossAccountId || gainAccountId === lossAccountId) {
+      throw new BadRequestException('Distinct FX gain and loss accounts are required');
+    }
+
+    const accounts = await prisma.chartOfAccount.findMany({
+      where: {
+        tenantId,
+        id: { in: [gainAccountId, lossAccountId] },
+        isActive: true,
+      },
+      select: { id: true, type: true },
+    });
+    const gain = accounts.find((account) => account.id === gainAccountId);
+    const loss = accounts.find((account) => account.id === lossAccountId);
+    if (!gain || gain.type !== 'REVENUE') {
+      throw new BadRequestException('FX gain account must be an active REVENUE account');
+    }
+    if (!loss || loss.type !== 'EXPENSE') {
+      throw new BadRequestException('FX loss account must be an active EXPENSE account');
+    }
+
+    return prisma.tenant.update({
+      where: { id: tenantId },
+      data: { fxGainAccountId: gainAccountId, fxLossAccountId: lossAccountId },
+      select: {
+        id: true,
+        baseCurrency: true,
+        fxGainAccountId: true,
+        fxLossAccountId: true,
+      },
     });
   }
 

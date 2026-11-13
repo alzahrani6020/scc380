@@ -10,6 +10,10 @@ import Select from '@/components/ui/Select';
 export default function ForeignExchangePage() {
   const [baseCurrency, setBaseCurrency] = useState('SAR');
   const [rates, setRates] = useState<any[]>([]);
+  const [settlementAccounts, setSettlementAccounts] = useState<any>({
+    gainAccountId: '',
+    lossAccountId: '',
+  });
   const [accounts, setAccounts] = useState<any[]>([]);
   const [busy, setBusy] = useState(false);
   const [rateForm, setRateForm] = useState<any>({
@@ -55,6 +59,10 @@ export default function ForeignExchangePage() {
       api.get('/finance/fx/config').then((r) => {
         const currency = r.data?.baseCurrency || 'SAR';
         setBaseCurrency(currency);
+        setSettlementAccounts({
+          gainAccountId: r.data?.fxGainAccountId || '',
+          lossAccountId: r.data?.fxLossAccountId || '',
+        });
         setRateForm((old: any) => ({ ...old, toCurrency: currency }));
       }),
       api.get('/finance/fx/rates').then((r) => setRates(r.data?.data || [])),
@@ -62,6 +70,19 @@ export default function ForeignExchangePage() {
     ]).catch((err) => alert(err.response?.data?.message || 'تعذر تحميل إعدادات العملات'));
 
   useEffect(() => { load(); }, []);
+
+  const saveSettlementAccounts = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await api.patch('/finance/fx/config/settlement-accounts', settlementAccounts);
+      await load();
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'تعذر حفظ حسابات فروق العملة');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const saveRate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -160,6 +181,20 @@ export default function ForeignExchangePage() {
           العملة الأساسية: <span className="text-white font-medium">{baseCurrency}</span> — القيود تحفظ المبلغ الأصلي وسعر الصرف والقيمة بالعملة الأساسية
         </p>
       </div>
+
+      <section className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
+        <div>
+          <h2 className="text-white font-bold">حسابات فروق العملة المحققة</h2>
+          <p className="text-xs text-slate-500 mt-1">
+            تستخدم تلقائيًا عند تحصيل فاتورة عميل أو سداد فاتورة مورد بسعر مختلف عن سعر إثباتها.
+          </p>
+        </div>
+        <form onSubmit={saveSettlementAccounts} className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <Select label="حساب أرباح فروق العملة" required value={settlementAccounts.gainAccountId} onChange={(e) => setSettlementAccounts({ ...settlementAccounts, gainAccountId: e.target.value })} options={revenueAccounts.map((a) => ({ value: a.id, label: `${a.code} — ${a.name}` }))} />
+          <Select label="حساب خسائر فروق العملة" required value={settlementAccounts.lossAccountId} onChange={(e) => setSettlementAccounts({ ...settlementAccounts, lossAccountId: e.target.value })} options={expenseAccounts.map((a) => ({ value: a.id, label: `${a.code} — ${a.name}` }))} />
+          <div className="md:col-span-2 flex justify-end"><Button type="submit" isLoading={busy}>حفظ الحسابات</Button></div>
+        </form>
+      </section>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
         <section className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
