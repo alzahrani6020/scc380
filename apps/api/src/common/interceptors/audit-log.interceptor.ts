@@ -7,7 +7,7 @@ const SENSITIVE_FIELDS = new Set([
   'password', 'passwordhash', 'accesstoken', 'refreshtoken', 'resettoken',
   'token', 'authorization', 'twofactorsecret', 'twofactorbackupcodes',
   'backupcodes', 'apikey', 'apikeys', 'secret', 'otp', 'csid',
-  'privatekey', 'cookie', 'cookies',
+  'privatekey', 'cookie', 'cookies', 'contentbase64',
 ]);
 
 function sanitizeBody(value: any): any {
