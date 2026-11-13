@@ -9,6 +9,8 @@ export type PostingLine = {
   costCenterId?: string;
   projectId?: string;
   branchId?: string;
+  foreignDebitAmount?: Prisma.Decimal.Value;
+  foreignCreditAmount?: Prisma.Decimal.Value;
 };
 
 export type PostJournalInput = {
@@ -20,6 +22,8 @@ export type PostJournalInput = {
   type?: JournalType;
   sourceType?: string;
   sourceId?: string;
+  transactionCurrency?: string;
+  exchangeRate?: Prisma.Decimal.Value;
   lines: PostingLine[];
 };
 
@@ -151,6 +155,9 @@ export class AccountingPostingService {
         status: JournalStatus.POSTED,
         sourceType: input.sourceType,
         sourceId: input.sourceId,
+        transactionCurrency: input.transactionCurrency,
+        exchangeRate:
+          input.exchangeRate === undefined ? undefined : this.decimal(input.exchangeRate),
         postedAt: new Date(),
         lines: {
           create: input.lines.map((line, index) => ({
@@ -163,6 +170,10 @@ export class AccountingPostingService {
             costCenterId: line.costCenterId,
             projectId: line.projectId,
             branchId: line.branchId,
+            foreignDebitAmount:
+              line.foreignDebitAmount === undefined ? undefined : this.decimal(line.foreignDebitAmount),
+            foreignCreditAmount:
+              line.foreignCreditAmount === undefined ? undefined : this.decimal(line.foreignCreditAmount),
           })),
         },
       },

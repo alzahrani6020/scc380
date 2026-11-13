@@ -27,6 +27,7 @@ model Tenant {
   features      String[]  @default([])
   logoUrl       String?
   primaryColor  String?   @default("#0066CC")
+  baseCurrency  String    @default("SAR")
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   deletedAt     DateTime?
@@ -115,6 +116,7 @@ model Tenant {
   financialPeriods FinancialPeriod[]
   budgetPlans BudgetPlan[]
   budgetLines BudgetLine[]
+  exchangeRates ExchangeRate[]
   yearEndCloses YearEndClose[]
   zatcaCredential ZatcaCredential?
   dataSubjectConsents DataSubjectConsent[]
@@ -682,6 +684,8 @@ model JournalEntryHeader {
   status        JournalStatus @default(DRAFT)
   sourceType    String?
   sourceId      String?
+  transactionCurrency String?
+  exchangeRate   Decimal?      @db.Decimal(18,8)
   reversalOfId  String?
   reversalOf    JournalEntryHeader? @relation("JournalEntryReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
   reversals     JournalEntryHeader[] @relation("JournalEntryReversal")
@@ -715,6 +719,8 @@ model JournalEntryLine {
   debitAmount   Decimal   @default(0) @db.Decimal(18, 2)
   creditAmount  Decimal   @default(0) @db.Decimal(18, 2)
   description   String?
+  foreignDebitAmount  Decimal? @db.Decimal(18,4)
+  foreignCreditAmount Decimal? @db.Decimal(18,4)
 
   costCenterId  String?
   costCenter    CostCenter? @relation(fields: [costCenterId], references: [id], onDelete: Restrict)
@@ -3490,6 +3496,27 @@ model BudgetLine {
 enum BudgetStatus {
   DRAFT
   APPROVED
+}
+
+// ============================================================
+// FOREIGN EXCHANGE / العملات وأسعار الصرف
+// ============================================================
+
+model ExchangeRate {
+  id            String   @id @default(cuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fromCurrency  String
+  toCurrency    String
+  rate          Decimal  @db.Decimal(18,8)
+  effectiveDate DateTime
+  source        String   @default("MANUAL")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([tenantId, fromCurrency, toCurrency, effectiveDate])
+  @@index([tenantId, fromCurrency, toCurrency, effectiveDate])
+  @@map("exchange_rates")
 }
 
 // ============================================================
