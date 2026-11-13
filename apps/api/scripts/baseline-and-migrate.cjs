@@ -12,6 +12,7 @@ const hrCoreMigration = '20261112130000_reconcile_hr_core';
 const hrIntegrityMigration = '20261112134500_hr_finance_integrity_p0';
 const hrLifecycleMigration = '20261112140000_hr_contracts_leave_balances';
 const payrollRunsMigration = '20261112143000_payroll_runs';
+const authSecurityMigration = '20261113050000_reconcile_auth_security_tables';
 const hrCoreTables = ['leaves', 'attendances', 'payrolls', 'shifts'];
 
 function runPrisma(args) {
@@ -544,6 +545,64 @@ async function verifyPayrollRunsPreconditions(applied) {
   console.log('PAYROLL_RUNS_PREFLIGHT_PASS');
 }
 
+
+async function verifyAuthSecuritySchemaPreconditions(applied) {
+  if (applied.has(authSecurityMigration)) return;
+
+  const tables = {
+    password_reset_tokens: ['id','email','token','expiresAt','createdAt','userId'],
+    oauth_accounts: ['id','userId','provider','providerAccountId','createdAt','updatedAt'],
+    sessions: ['id','tenantId','userId','token','lastActiveAt','expiresAt','createdAt'],
+    api_keys: ['id','tenantId','userId','name','key','scopes','createdAt'],
+    login_attempts: ['id','tenantId','userId','ipAddress','success','createdAt'],
+    notifications: ['id','tenantId','userId','type','title','body','channel','status','createdAt'],
+    subscriptions: ['id','tenantId','userId','plan','status','startDate','pricePerSeat','totalPrice','billingCycle','createdAt','updatedAt'],
+  };
+
+  for (const [table, columns] of Object.entries(tables)) {
+    if ((await tableExists(table)) && !(await columnsPresent(table, columns))) {
+      throw new Error(`AUTH_SECURITY_BLOCKED incomplete columns: ${table}`);
+    }
+  }
+
+  if (await tableExists('audit_logs')) {
+    const historicalColumns = [
+      'id','tenantId','userId','action','entityType','createdAt',
+    ];
+    if (!(await columnsPresent('audit_logs', historicalColumns))) {
+      throw new Error('AUTH_SECURITY_BLOCKED incomplete columns: audit_logs');
+    }
+  }
+
+  assertEnumCompatibility(
+    'NotificationType',
+    await enumValues('NotificationType'),
+    ['IN_APP','EMAIL','SMS','PUSH','WHATSAPP','TELEGRAM'],
+  );
+  assertEnumCompatibility(
+    'NotificationChannel',
+    await enumValues('NotificationChannel'),
+    ['IN_APP','EMAIL','SMS','PUSH','WHATSAPP','TELEGRAM'],
+  );
+  assertEnumCompatibility(
+    'NotificationDeliveryStatus',
+    await enumValues('NotificationDeliveryStatus'),
+    ['PENDING','SENT','DELIVERED','READ','FAILED'],
+  );
+  assertEnumCompatibility(
+    'SubscriptionStatus',
+    await enumValues('SubscriptionStatus'),
+    ['ACTIVE','TRIAL','PAST_DUE','CANCELLED','EXPIRED'],
+  );
+  assertEnumCompatibility(
+    'BillingCycle',
+    await enumValues('BillingCycle'),
+    ['MONTHLY','QUARTERLY','YEARLY'],
+  );
+
+  console.log('AUTH_SECURITY_PREFLIGHT_PASS');
+}
+
 async function resolveIfNeeded(applied, migration, verify) {
   if (applied.has(migration)) return;
   await verify();
@@ -567,6 +626,7 @@ async function resolveIfNeeded(applied, migration, verify) {
     await verifyPayrollRunsPreconditions(applied);
   }
 
+  await verifyAuthSecuritySchemaPreconditions(applied);
   await verifyAccountingCorePreconditions(applied);
   await verifyAccountingDependenciesPreconditions(applied);
   await verifyPaymentSchemaPreconditions(applied);
