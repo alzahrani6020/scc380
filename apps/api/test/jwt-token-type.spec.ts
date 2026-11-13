@@ -245,9 +245,9 @@ test('access tokens are bound to persisted session ids for immediate revocation'
     'utf8',
   );
 
-  assert.ok((authSource.match(/id:\s*tokens\.sessionKey/g) ?? []).length >= 3);
+  assert.ok((authSource.match(/id:\s*tokens\.sessionKey/g) ?? []).length >= 2);
   assert.match(authSource, /sid:\s*sessionKey/);
-  assert.match(authSource, /jti:\s*sessionKey/);
+  assert.match(authSource, /jti:\s*randomBytes\(24\)\.toString\('hex'\)/);
   assert.match(strategySource, /validateAccessSessionPayload/);
   assert.match(validatorSource, /where:\s*\{\s*id:\s*payload\.sid\s*\}/);
   assert.match(validatorSource, /session\.revokedAt/);
