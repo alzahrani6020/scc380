@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import api from '@/lib/api';
-import { Receipt, ArrowUpRight, ArrowDownRight, Wallet, TrendingUp, CreditCard, Landmark, Plus, Pencil, Trash2, X, BookOpen, BookText, TreePine, CalendarRange, Clock3, CalendarCheck2, Target } from 'lucide-react';
+import { Receipt, ArrowUpRight, ArrowDownRight, Wallet, TrendingUp, CreditCard, Landmark, Plus, Pencil, Trash2, X, BookOpen, BookText, TreePine, CalendarRange, Clock3, CalendarCheck2, Target, Boxes } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
 import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
@@ -144,7 +144,7 @@ export default function FinancePage() {
         <a href="/dashboard/finance/purchase-orders" className="scc-card-hover"><CreditCard className="h-5 w-5 text-amber-400 mb-2" /><h3 className="text-white font-bold">أوامر الشراء</h3><p className="text-slate-400 text-sm">متابعة دورة أوامر الشراء</p></a>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-9 gap-4">
         <a href="/dashboard/finance/journal-entries" className="scc-card-hover flex items-center gap-4 group">
           <div className="w-12 h-12 rounded-xl bg-primary-500/10 flex items-center justify-center group-hover:bg-primary-500/20 transition-colors">
             <BookOpen className="h-6 w-6 text-primary-400" />
@@ -206,6 +206,15 @@ export default function FinancePage() {
           <div>
             <h3 className="font-bold text-white">مراكز التكلفة</h3>
             <p className="text-slate-400 text-sm">الموازنة والفعلية حسب البعد المحاسبي</p>
+          </div>
+        </a>
+        <a href="/dashboard/finance/fixed-assets" className="scc-card-hover flex items-center gap-4 group">
+          <div className="w-12 h-12 rounded-xl bg-orange-500/10 flex items-center justify-center group-hover:bg-orange-500/20 transition-colors">
+            <Boxes className="h-6 w-6 text-orange-400" />
+          </div>
+          <div>
+            <h3 className="font-bold text-white">الأصول الثابتة</h3>
+            <p className="text-slate-400 text-sm">سجل الأصول والاستهلاك المحاسبي</p>
           </div>
         </a>
         <a href="/dashboard/finance/year-end-closing" className="scc-card-hover flex items-center gap-4 group">
