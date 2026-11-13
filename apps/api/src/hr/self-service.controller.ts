@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Query, Req, Res, StreamableFile, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, Req, Res, StreamableFile, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { IsOptional, IsString } from 'class-validator';
 import type { Response } from 'express';
@@ -9,6 +9,10 @@ class UpdateSelfProfileDto {
   @IsString() @IsOptional() phone?: string;
   @IsString() @IsOptional() emergencyContactName?: string;
   @IsString() @IsOptional() emergencyContactPhone?: string;
+}
+
+class AcknowledgePerformanceDto {
+  @IsString() @IsOptional() employeeComments?: string;
 }
 
 @ApiTags('HR - Self Service')
@@ -33,6 +37,14 @@ export class HrSelfServiceController {
 
   @Get('documents')
   documents(@Req() req: any) { return this.service.getDocuments(req); }
+
+  @Get('performance')
+  performance(@Req() req: any) { return this.service.getPerformanceReviews(req); }
+
+  @Post('performance/:id/acknowledge')
+  acknowledgePerformance(@Req() req: any, @Param('id') id: string, @Body() dto: AcknowledgePerformanceDto) {
+    return this.service.acknowledgePerformanceReview(req, id, dto.employeeComments);
+  }
 
   @Get('documents/:id/download')
   async download(@Req() req: any, @Param('id') id: string, @Res({ passthrough: true }) res: Response) {
