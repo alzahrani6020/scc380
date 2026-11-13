@@ -53,3 +53,40 @@ test('Concurrent recruitment hires never exceed a single opening seat', {
     await prisma.$disconnect();
   }
 });
+
+test('Concurrent course enrollment respects a single available seat', {
+  skip: process.env.CRM_DB_E2E !== '1' ? 'CRM_DB_E2E=1 is required' : false,
+}, async () => {
+  const run = `training-race-${process.pid}-${Date.now()}`;
+  const tenant = await prisma.tenant.create({
+    data: { name: run, slug: run },
+  });
+  const req: any = { user: { tenantId: tenant.id, userId: `actor-${run}`, role: 'ADMIN' } };
+  const service = new TrainingService();
+  try {
+    const first = await prisma.employee.create({
+      data: { tenantId: tenant.id, employeeCode: `E1-${run}`,
+        firstName: 'First', lastName: 'Employee', hireDate: new Date('2026-01-01') },
+    });
+    const second = await prisma.employee.create({
+      data: { tenantId: tenant.id, employeeCode: `E2-${run}`,
+        firstName: 'Second', lastName: 'Employee', hireDate: new Date('2026-01-01') },
+    });
+    const course = await service.createCourse(req, {
+      code: `C-${run}`, title: 'One seat course', capacity: 1,
+    });
+    const results = await Promise.allSettled([
+      service.enroll(req, { courseId: course.id, employeeId: first.id }),
+      service.enroll(req, { courseId: course.id, employeeId: second.id }),
+    ]);
+    assert.equal(results.filter(x => x.status === 'fulfilled').length, 1,
+      'Exactly one concurrent enrollment should succeed');
+    assert.equal(results.filter(x => x.status === 'rejected').length, 1);
+    assert.equal(await prisma.trainingEnrollment.count({
+      where: { tenantId: tenant.id, courseId: course.id, status: 'ENROLLED' },
+    }), 1);
+  } finally {
+    await prisma.tenant.delete({ where: { id: tenant.id } });
+    await prisma.$disconnect();
+  }
+});
