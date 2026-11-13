@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { prisma, withTenant } from '@scc/database';
 
 @Injectable()
@@ -49,6 +49,10 @@ export class UnitsService {
   async delete(tenantId: string, id: string) {
     const unit = await prisma.unit.findFirst({ where: withTenant({ id }, tenantId) });
     if (!unit) throw new NotFoundException('Unit not found');
+    const leases = await prisma.leaseContract.count({ where: withTenant({ unitId: id }, tenantId) });
+    if (leases || unit.currentLeaseId) {
+      throw new ConflictException('Unit has lease history or an active lease and cannot be deleted');
+    }
     return prisma.unit.delete({ where: { id } });
   }
 }
