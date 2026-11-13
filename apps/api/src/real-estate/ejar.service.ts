@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { prisma, withTenant } from '@scc/database';
 
 @Injectable()
@@ -6,6 +6,12 @@ export class EjarService {
   private readonly logger = new Logger(EjarService.name);
   private readonly baseUrl = process.env.EJAR_API_URL || 'https://api.ejar.sa/v1';
   private readonly apiKey = process.env.EJAR_API_KEY || '';
+
+  private assertConfigured() {
+    if (!this.apiKey) {
+      throw new ServiceUnavailableException('Ejar integration is not configured; no verification or registration was performed');
+    }
+  }
 
   private getHeaders() {
     return {
@@ -19,7 +25,7 @@ export class EjarService {
       where: withTenant({ id: contractId }, tenantId),
       include: { property: true, unit: true },
     });
-    if (!contract) throw new Error('Contract not found');
+    if (!contract) throw new NotFoundException('Contract not found');
 
     const payload = {
       contractNumber: contract.ejarContractNumber || `SCC-${contract.id.slice(-6)}`,
@@ -49,14 +55,7 @@ export class EjarService {
       paymentFrequency: contract.paymentFrequency,
     };
 
-    if (!this.apiKey) {
-      this.logger.warn(`[EJAR DEMO] registerContract: ${JSON.stringify(payload)}`);
-      await prisma.leaseContract.update({
-        where: { id: contractId },
-        data: { ejarStatus: 'REGISTERED', ejarSyncedAt: new Date() },
-      });
-      return { success: true, ejarContractNumber: payload.contractNumber, demo: true };
-    }
+    this.assertConfigured();
 
     try {
       const res = await fetch(`${this.baseUrl}/contracts`, {
@@ -79,10 +78,7 @@ export class EjarService {
   }
 
   async verifyIdentity(idNumber: string): Promise<any> {
-    if (!this.apiKey) {
-      this.logger.warn(`[EJAR DEMO] verifyIdentity: ${idNumber}`);
-      return { idNumber, verified: true, fullName: 'محمد عبدالله', demo: true };
-    }
+    this.assertConfigured();
     try {
       const res = await fetch(`${this.baseUrl}/identity/verify`, {
         method: 'POST',
@@ -99,17 +95,21 @@ export class EjarService {
   }
 
   async syncPayments(tenantId: string, contractId: string): Promise<any> {
+    this.assertConfigured();
+    const contract = await prisma.leaseContract.findFirst({
+      where: withTenant({ id: contractId }, tenantId),
+      select: { id: true, ejarContractNumber: true },
+    });
+    if (!contract) throw new NotFoundException('Contract not found');
+    if (!contract.ejarContractNumber) throw new ServiceUnavailableException('Contract has no registered Ejar contract number');
     const payments = await prisma.rentPayment.findMany({
       where: withTenant({ contractId, status: 'COMPLETED' }, tenantId),
     });
 
-    if (!this.apiKey) {
-      this.logger.warn(`[EJAR DEMO] syncPayments: ${payments.length} payments`);
-      return { success: true, syncedCount: payments.length, demo: true };
-    }
+    this.assertConfigured();
 
     try {
-      const res = await fetch(`${this.baseUrl}/contracts/${contractId}/payments`, {
+      const res = await fetch(`${this.baseUrl}/contracts/${encodeURIComponent(contract.ejarContractNumber)}/payments`, {
         method: 'POST',
         headers: this.getHeaders(),
         body: JSON.stringify({ payments: payments.map((p) => ({ ref: p.transactionRef, amount: Number(p.amount), date: p.paidDate })) }),
