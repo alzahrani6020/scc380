@@ -3723,6 +3723,7 @@ model HrGovernanceCase {
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
   events             HrGovernanceEvent[]
+  evidence           HrGovernanceEvidence[]
 
   @@index([tenantId, status, createdAt])
   @@index([tenantId, employeeId])
@@ -3742,4 +3743,23 @@ model HrGovernanceEvent {
 
   @@index([tenantId, caseId, createdAt])
   @@map("hr_governance_events")
+}
+
+
+model HrGovernanceEvidence {
+  id                 String @id @default(cuid())
+  tenantId           String
+  caseId             String
+  case               HrGovernanceCase @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  fileName           String
+  mimeType           String
+  sizeBytes          Int
+  checksumSha256     String
+  content            Bytes
+  description        String?
+  uploadedById       String
+  createdAt          DateTime @default(now())
+
+  @@index([tenantId, caseId, createdAt])
+  @@map("hr_governance_evidence")
 }
