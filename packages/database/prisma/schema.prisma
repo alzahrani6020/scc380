@@ -3413,7 +3413,7 @@ model CostCenter {
   tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   name          String
-  code          String?   @unique
+  code          String?
   type          String    @default("DEPARTMENT")
   budget        Decimal?  @db.Decimal(18, 2)
   isActive      Boolean   @default(true)
@@ -3423,6 +3423,7 @@ model CostCenter {
 
   journalEntryLines JournalEntryLine[]
 
+  @@unique([tenantId, code])
   @@index([tenantId])
   @@map("cost_centers")
 }

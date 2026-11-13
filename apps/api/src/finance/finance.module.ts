@@ -18,6 +18,9 @@ import { BankReconciliationController } from './bank-reconciliation.controller';
 import { BankReconciliationService } from './bank-reconciliation.service';
 import { YearEndClosingController } from './year-end-closing.controller';
 import { YearEndClosingService } from './year-end-closing.service';
+import { CostCentersController } from './cost-centers.controller';
+import { CostCentersService } from './cost-centers.service';
+import { AccountingJournalsController } from './accounting-journals.controller';
 
 @Module({
   imports: [AccountingCoreModule],
@@ -31,6 +34,8 @@ import { YearEndClosingService } from './year-end-closing.service';
     FinancialPeriodsController,
     BankReconciliationController,
     YearEndClosingController,
+    CostCentersController,
+    AccountingJournalsController,
   ],
   providers: [
     PaymentsService,
@@ -42,6 +47,7 @@ import { YearEndClosingService } from './year-end-closing.service';
     FinancialPeriodsService,
     BankReconciliationService,
     YearEndClosingService,
+    CostCentersService,
   ],
 })
 export class FinanceModule {}
