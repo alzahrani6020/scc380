@@ -106,7 +106,14 @@ export class LeaseContractsService {
       throw new BadRequestException('Rent amount must be positive');
     }
     const financialFields = ['propertyId', 'unitId', 'startDate', 'endDate', 'rentAmount', 'paymentFrequency'];
-    if (financialFields.some((field) => dto[field] !== undefined)) {
+    const changedTerms = financialFields.some((field) => {
+      if (dto[field] === undefined) return false;
+      const prior = (existing as any)[field];
+      if (field === 'startDate' || field === 'endDate') return new Date(dto[field]).getTime() !== prior.getTime();
+      if (field === 'rentAmount') return Number(dto[field]) !== Number(prior);
+      return dto[field] !== prior;
+    });
+    if (changedTerms) {
       const scheduled = await prisma.rentPayment.count({ where: withTenant({ contractId: id }, tenantId) });
       if (scheduled) throw new ConflictException('Contract financial terms cannot change after instalments are scheduled');
     }
