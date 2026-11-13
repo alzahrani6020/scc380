@@ -101,9 +101,12 @@ export class EmployeesService {
     if (employee.userId) {
       const linkedUser = await prisma.user.findFirst({
         where: { id: employee.userId, tenantId },
-        select: { id: true, status: true },
+        select: { id: true, status: true, role: true },
       });
       if (!linkedUser) throw new ConflictException('Linked employee user is outside tenant or missing');
+      if (linkedUser.role === 'ADMIN' || linkedUser.role === 'SUPER_ADMIN') {
+        throw new ConflictException('Admin accounts cannot be automatically provisioned as employee self-service accounts');
+      }
       if (linkedUser.status === 'ACTIVE') {
         return { userId: linkedUser.id, status: 'ACTIVE', invitationSent: false, linkedExisting: true };
       }
