@@ -5,7 +5,7 @@ import Link from 'next/link';
 import api from '@/lib/api';
 import {
   Briefcase, Users, ClipboardList, CalendarDays, Wallet, Network,
-  Clock3, UserCheck, UserX, TimerReset, Home, AlertTriangle, RefreshCw, FileText, Coins, ReceiptText, Target, GraduationCap
+  Clock3, UserCheck, UserX, TimerReset, Home, AlertTriangle, RefreshCw, FileText, Coins, ReceiptText, Target, GraduationCap, ShieldAlert
 } from 'lucide-react';
 
 export default function HrDashboardPage() {
@@ -90,6 +90,33 @@ export default function HrDashboardPage() {
             <p className="text-slate-400 text-sm mt-1">{card.label}</p>
           </Link>
         ))}
+      </div>
+
+      <div className="scc-card">
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <div>
+            <h2 className="text-white font-semibold flex items-center gap-2">
+              <ShieldAlert className="h-5 w-5 text-amber-400" />
+              استحقاقات الموارد البشرية
+            </h2>
+            <p className="text-slate-500 text-xs mt-1">المنتهية أو التي ستنتهي خلال {data.expiries?.horizonDays || 30} يومًا</p>
+          </div>
+          <span className="text-slate-500 text-xs">تحديث تلقائي يومي</span>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <Link href="/dashboard/hr/documents" className="rounded-xl bg-slate-800/60 p-4 hover:bg-slate-800 transition-colors">
+            <p className="text-slate-500 text-xs">مستندات الموظفين</p>
+            <p className="text-white font-bold text-2xl mt-1">{data.expiries?.documents || 0}</p>
+          </Link>
+          <Link href="/dashboard/hr/contracts" className="rounded-xl bg-slate-800/60 p-4 hover:bg-slate-800 transition-colors">
+            <p className="text-slate-500 text-xs">العقود</p>
+            <p className="text-white font-bold text-2xl mt-1">{data.expiries?.contracts || 0}</p>
+          </Link>
+          <Link href="/dashboard/hr/contracts" className="rounded-xl bg-slate-800/60 p-4 hover:bg-slate-800 transition-colors">
+            <p className="text-slate-500 text-xs">فترات التجربة</p>
+            <p className="text-white font-bold text-2xl mt-1">{data.expiries?.probation || 0}</p>
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
