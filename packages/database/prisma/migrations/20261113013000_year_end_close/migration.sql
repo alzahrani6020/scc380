@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS "year_end_closes" (
   "id" TEXT NOT NULL,
   "tenantId" TEXT NOT NULL,
   "year" INTEGER NOT NULL,
+  "version" INTEGER NOT NULL DEFAULT 1,
   "startDate" TIMESTAMP(3) NOT NULL,
   "endDate" TIMESTAMP(3) NOT NULL,
   "retainedEarningsAccountId" TEXT NOT NULL,
@@ -29,7 +30,9 @@ CREATE TABLE IF NOT EXISTS "year_end_closes" (
   CONSTRAINT "year_end_closes_pkey" PRIMARY KEY ("id")
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS "year_end_closes_tenantId_year_key"
+CREATE UNIQUE INDEX IF NOT EXISTS "year_end_closes_tenantId_year_version_key"
+ON "year_end_closes"("tenantId","year","version");
+CREATE INDEX IF NOT EXISTS "year_end_closes_tenantId_year_idx"
 ON "year_end_closes"("tenantId","year");
 CREATE UNIQUE INDEX IF NOT EXISTS "year_end_closes_closingJournalId_key"
 ON "year_end_closes"("closingJournalId");
