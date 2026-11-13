@@ -1,25 +1,25 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { prisma } from '@scc/database';
-import { randomBytes } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 
 @Injectable()
 export class ApiKeysService {
   async findAll(req: any) {
-    const where: any = { userId: req.user?.userId, revokedAt: null };
+    const where: any = { userId: req.user?.userId, tenantId: req.user?.tenantId ?? null, revokedAt: null };
     const [data, count] = await Promise.all([
       prisma.apiKey.findMany({ where, select: { id: true, name: true, key: true, createdAt: true, lastUsedAt: true, expiresAt: true }, orderBy: { createdAt: 'desc' } }),
       prisma.apiKey.count({ where }),
     ]);
-    return { data: data.map((k: any) => ({ ...k, key: k.key.slice(0, 8) + '...' })), count };
+    return { data: data.map((k: any) => ({ ...k, key: k.key.startsWith('sha256:') ? 'sk_••••••••' : k.key.slice(0, 8) + '...' })), count };
   }
 
   async create(req: any, dto: any) {
     const key = 'sk_' + randomBytes(32).toString('hex');
     const data: any = {
       name: dto.name,
-      key,
+      key: 'sha256:' + createHash('sha256').update(key).digest('hex'),
       userId: req.user?.userId,
-      tenantId: req.tenantId || req.user?.tenantId,
+      tenantId: req.user?.tenantId ?? null,
     };
     if (dto.expiresAt) data.expiresAt = new Date(dto.expiresAt);
     const created = await prisma.apiKey.create({ data });
@@ -27,10 +27,10 @@ export class ApiKeysService {
   }
 
   async revoke(req: any, id: string) {
-    const where: any = { id, userId: req.user?.userId };
+    const where: any = { id, userId: req.user?.userId, tenantId: req.user?.tenantId ?? null };
     const existing = await prisma.apiKey.findFirst({ where });
     if (!existing) throw new NotFoundException('API key not found');
-    await prisma.apiKey.updateMany({ where: { id, userId: req.user?.userId, revokedAt: null }, data: { revokedAt: new Date() } });
-    return { revoked: true };
+    const result = await prisma.apiKey.updateMany({ where: { ...where, revokedAt: null }, data: { revokedAt: new Date() } });
+    return { revoked: result.count === 1 };
   }
 }

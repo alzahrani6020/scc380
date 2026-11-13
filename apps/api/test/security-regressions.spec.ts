@@ -186,8 +186,9 @@ test('security sessions capture metadata and identify only the current authentic
 
 test('API keys do not return database records on revocation or expose unmasked listing keys', () => {
   const keys = src('src/security/api-keys.service.ts');
-  assert.match(keys, /key: k\.key\.slice\(0, 8\)/);
-  assert.match(keys, /return \{ revoked: true \}/);
+  assert.match(keys, /k\.key\.startsWith\('sha256:'\)/);
+  assert.match(keys, /createHash\('sha256'\)\.update\(key\)\.digest\('hex'\)/);
+  assert.match(keys, /return \{ revoked: result\.count === 1 \}/);
   assert.doesNotMatch(keys, /return prisma\.apiKey\.update\(/);
   assert.doesNotMatch(keys, /return \{ \.\.\.created, key \}/);
 });
@@ -200,4 +201,13 @@ test('security dashboard preserves partial responses and readable browser metada
   assert.match(web, /keysResult\.status === 'fulfilled'/);
   assert.match(auth, /deviceInfo: browser && system/);
   assert.match(auth, /lastActiveAt: now/);
+});
+
+test('2FA temp login challenge is Redis-backed and single-use', () => {
+  const auth = src('src/auth/auth.service.ts');
+  assert.match(auth, /await this\.twoFactorChallenge\('issue', challengeId\)/);
+  assert.match(auth, /await this\.twoFactorChallenge\('consume', payload\.jti\)/);
+  assert.match(auth, /redis\.getdel\(key\)/);
+  assert.match(auth, /'EX', 300, 'NX'/);
+  assert.match(auth, /challenge store unavailable/);
 });
