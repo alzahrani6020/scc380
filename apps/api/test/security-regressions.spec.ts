@@ -127,3 +127,28 @@ test('users and tenants enforce RBAC and block privilege escalation', () => {
   assert.match(tenantService, /Protected tenant fields require super admin/);
   assert.match(tenantService, /Super admin only/);
 });
+
+
+test('auth/security reconciliation migration is additive and baseline-gated', () => {
+  const migration = src('../../packages/database/prisma/migrations/20261113050000_reconcile_auth_security_tables/migration.sql');
+  for (const table of [
+    'password_reset_tokens',
+    'oauth_accounts',
+    'sessions',
+    'api_keys',
+    'login_attempts',
+    'notifications',
+    'subscriptions',
+  ]) {
+    assert.match(migration, new RegExp('CREATE TABLE IF NOT EXISTS "' + table + '"'));
+  }
+  assert.match(migration, /ALTER TABLE "audit_logs"/);
+  assert.doesNotMatch(migration, /(^|\n)\s*DROP\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*TRUNCATE\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*DELETE\s+FROM\s+/i);
+
+  const baseline = src('scripts/baseline-and-migrate.cjs');
+  assert.match(baseline, /20261113050000_reconcile_auth_security_tables/);
+  assert.match(baseline, /AUTH_SECURITY_PREFLIGHT_PASS/);
+  assert.match(baseline, /AUTH_SECURITY_BLOCKED incomplete columns/);
+});
