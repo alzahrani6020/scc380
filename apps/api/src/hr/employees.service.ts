@@ -115,12 +115,15 @@ export class EmployeesService {
 
     const existing = await prisma.user.findUnique({
       where: { email },
-      select: { id: true, tenantId: true, status: true },
+      select: { id: true, tenantId: true, status: true, role: true },
     });
 
     if (existing) {
       if (existing.tenantId !== tenantId) {
         throw new ConflictException('Email is already registered in another tenant');
+      }
+      if (existing.role === 'ADMIN' || existing.role === 'SUPER_ADMIN') {
+        throw new ConflictException('Admin accounts cannot be automatically provisioned as employee self-service accounts');
       }
       const linkedElsewhere = await prisma.employee.findFirst({ where: { userId: existing.id } });
       if (linkedElsewhere && linkedElsewhere.id !== employee.id) {
