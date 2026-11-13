@@ -364,7 +364,15 @@ export class VatReturnsService {
     });
   }
 
-  async reverseSettlement(tenantId: string, id: string, userId?: string) {
+  async reverseSettlement(
+    tenantId: string,
+    id: string,
+    userId?: string,
+    role?: string,
+  ) {
+    if (!['ADMIN', 'SUPER_ADMIN'].includes(String(role || ''))) {
+      throw new ConflictException('Only ADMIN or SUPER_ADMIN can reverse a VAT settlement');
+    }
     return prisma.$transaction(async tx => {
       const item = await tx.vatReturn.findFirst({ where: { id, tenantId } });
       if (!item) throw new NotFoundException('VAT return not found');
