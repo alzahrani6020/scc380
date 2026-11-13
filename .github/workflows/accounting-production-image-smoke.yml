@@ -1,0 +1,183 @@
+name: Accounting Production Image Smoke
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Build SCC380 API Image"]
+    types: [completed]
+  push:
+    branches: [main]
+    paths:
+      - "render.yaml"
+      - "scripts/accounting-production-image-smoke.cjs"
+      - ".github/workflows/accounting-production-image-smoke.yml"
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  accounting-smoke:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve immutable production image from render.yaml
+        id: image
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="$(grep -Eo 'ghcr\.io/alzahrani6020/scc380-api-prod:[0-9a-f]{40}' render.yaml | head -n1)"
+          test -n "$image"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "Testing pinned production image tag: ${image##*:}"
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Start ephemeral PostgreSQL and Redis
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --name acct-smoke-postgres             -e POSTGRES_PASSWORD=postgres             -e POSTGRES_DB=scc_accounting_smoke             -p 5432:5432 postgres:17-alpine
+          docker run -d --name acct-smoke-redis -p 6379:6379 redis:7-alpine
+
+          for i in $(seq 1 60); do
+            if docker exec acct-smoke-postgres pg_isready -U postgres -d scc_accounting_smoke >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs acct-smoke-postgres
+          exit 1
+
+      - name: Initialize ephemeral schema from exact production image
+        env:
+          IMAGE: ${{ steps.image.outputs.image }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull "$IMAGE"
+          docker run --rm --network host             -e DATABASE_URL='postgresql://postgres:postgres@127.0.0.1:5432/scc_accounting_smoke?schema=public'             -e DIRECT_URL='postgresql://postgres:postgres@127.0.0.1:5432/scc_accounting_smoke?schema=public'             "$IMAGE"             sh -lc 'pnpm --dir packages/database exec prisma migrate deploy --schema prisma/schema.prisma'
+
+      - name: Start exact production API image
+        env:
+          IMAGE: ${{ steps.image.outputs.image }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --name acct-smoke-api --network host             -e DATABASE_URL='postgresql://postgres:postgres@127.0.0.1:5432/scc_accounting_smoke?schema=public'             -e DIRECT_URL='postgresql://postgres:postgres@127.0.0.1:5432/scc_accounting_smoke?schema=public'             -e REDIS_URL='redis://127.0.0.1:6379'             -e JWT_SECRET='accounting-smoke-ci-only-not-production-secret'             -e JWT_EXPIRES_IN='1h'             -e REFRESH_TOKEN_EXPIRES_IN='1h'             -e CORS_ORIGINS='http://127.0.0.1:3000'             -e NODE_ENV='production'             -e PORT='3101'             "$IMAGE"
+
+          ready=0
+          for i in $(seq 1 120); do
+            if curl -fsS http://127.0.0.1:3101/ >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            if ! docker ps --format '{{.Names}}' | grep -qx acct-smoke-api; then
+              docker logs acct-smoke-api
+              exit 1
+            fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then
+            docker logs acct-smoke-api
+            exit 1
+          fi
+
+      - name: Seed isolated accounting tenants and users
+        shell: bash
+        run: |
+          set -euo pipefail
+          SMOKE_PASSWORD="AccountingSmoke-$(openssl rand -hex 12)-Aa1!"
+          echo "::add-mask::$SMOKE_PASSWORD"
+          echo "SMOKE_PASSWORD=$SMOKE_PASSWORD" >> "$GITHUB_ENV"
+
+          docker exec -e SMOKE_PASSWORD="$SMOKE_PASSWORD" -i acct-smoke-api node <<'NODE'
+          const { PrismaClient } = require('/app/packages/database/node_modules/@prisma/client');
+          const { hashPassword } = require('/app/packages/auth/dist/index.js');
+
+          (async () => {
+            const prisma = new PrismaClient();
+            const passwordHash = await hashPassword(process.env.SMOKE_PASSWORD);
+            try {
+              await prisma.tenant.createMany({
+                data: [
+                  { id: 'acct-smoke-tenant-a', name: 'Accounting Smoke A', slug: 'accounting-prod-smoke-a', status: 'ACTIVE', plan: 'BASIC', baseCurrency: 'SAR' },
+                  { id: 'acct-smoke-tenant-b', name: 'Accounting Smoke B', slug: 'accounting-prod-smoke-b', status: 'ACTIVE', plan: 'BASIC', baseCurrency: 'SAR' },
+                ],
+              });
+              await prisma.user.createMany({
+                data: [
+                  { id: 'acct-smoke-admin-a', email: 'accounting-admin-a@prod-smoke.invalid', passwordHash, firstName: 'Accounting', lastName: 'Admin', role: 'ADMIN', status: 'ACTIVE', tenantId: 'acct-smoke-tenant-a' },
+                  { id: 'acct-smoke-readonly-a', email: 'accounting-readonly-a@prod-smoke.invalid', passwordHash, firstName: 'Accounting', lastName: 'Readonly', role: 'READONLY', status: 'ACTIVE', tenantId: 'acct-smoke-tenant-a' },
+                ],
+              });
+
+              await prisma.costCenter.createMany({
+                data: [
+                  { id: 'acct-smoke-cc-a', tenantId: 'acct-smoke-tenant-a', name: 'Operations A', code: 'OPS' },
+                  { id: 'acct-smoke-cc-b', tenantId: 'acct-smoke-tenant-b', name: 'Operations B', code: 'OPS' },
+                ],
+              });
+
+              await prisma.fixedAssetCategory.createMany({
+                data: [
+                  { id: 'acct-smoke-fa-cat-a', tenantId: 'acct-smoke-tenant-a', name: 'Computers A', code: 'COMP', usefulLifeYears: 5, depreciationMethod: 'STRAIGHT_LINE' },
+                  { id: 'acct-smoke-fa-cat-b', tenantId: 'acct-smoke-tenant-b', name: 'Computers B', code: 'COMP', usefulLifeYears: 5, depreciationMethod: 'STRAIGHT_LINE' },
+                ],
+              });
+              await prisma.fixedAsset.createMany({
+                data: [
+                  { id: 'acct-smoke-fa-a', tenantId: 'acct-smoke-tenant-a', name: 'Server A', code: 'SRV', categoryId: 'acct-smoke-fa-cat-a', acquisitionCost: 12000, salvageValue: 0, usefulLifeYears: 5, depreciationMethod: 'STRAIGHT_LINE', purchaseDate: new Date('2026-01-01T00:00:00Z'), startDate: new Date('2026-01-01T00:00:00Z'), currentValue: 12000 },
+                  { id: 'acct-smoke-fa-b', tenantId: 'acct-smoke-tenant-b', name: 'Server B', code: 'SRV', categoryId: 'acct-smoke-fa-cat-b', acquisitionCost: 12000, salvageValue: 0, usefulLifeYears: 5, depreciationMethod: 'STRAIGHT_LINE', purchaseDate: new Date('2026-01-01T00:00:00Z'), startDate: new Date('2026-01-01T00:00:00Z'), currentValue: 12000 },
+                ],
+              });
+
+              await prisma.budgetPlan.createMany({
+                data: [
+                  { id: 'acct-smoke-budget-a', tenantId: 'acct-smoke-tenant-a', year: 2098, name: 'Budget A' },
+                  { id: 'acct-smoke-budget-b', tenantId: 'acct-smoke-tenant-b', year: 2098, name: 'Budget B' },
+                ],
+              });
+
+              await prisma.exchangeRate.createMany({
+                data: [
+                  { id: 'acct-smoke-fx-a', tenantId: 'acct-smoke-tenant-a', fromCurrency: 'USD', toCurrency: 'SAR', rate: 3.75, effectiveDate: new Date('2026-01-01T00:00:00Z'), source: 'SMOKE' },
+                  { id: 'acct-smoke-fx-b', tenantId: 'acct-smoke-tenant-b', fromCurrency: 'USD', toCurrency: 'SAR', rate: 3.75, effectiveDate: new Date('2026-01-01T00:00:00Z'), source: 'SMOKE' },
+                ],
+              });
+
+              await prisma.product.createMany({
+                data: [
+                  { id: 'acct-smoke-product-a', tenantId: 'acct-smoke-tenant-a', name: 'Product A', sku: 'SKU-SMOKE', costPrice: 5, salePrice: 10, currentStock: 0 },
+                  { id: 'acct-smoke-product-b', tenantId: 'acct-smoke-tenant-b', name: 'Product B', sku: 'SKU-SMOKE', costPrice: 5, salePrice: 10, currentStock: 0 },
+                ],
+              });
+            } finally {
+              await prisma.$disconnect();
+            }
+          })().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
+          NODE
+
+      - name: Run authenticated accounting production-image smoke
+        env:
+          SMOKE_BASE_URL: http://127.0.0.1:3101
+          SMOKE_PASSWORD: ${{ env.SMOKE_PASSWORD }}
+        run: node scripts/accounting-production-image-smoke.cjs
+
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          docker ps -a || true
+          docker logs acct-smoke-api || true
+
+      - name: Destroy ephemeral test environment
+        if: always()
+        run: |
+          docker rm -f acct-smoke-api acct-smoke-postgres acct-smoke-redis >/dev/null 2>&1 || true
