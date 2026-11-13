@@ -36,7 +36,7 @@ export class ReportsService {
       ...this.tenantFilter(tenantId, userRole),
       status: 'POSTED',
       NOT: { entryNumber: { startsWith: 'LEG-' } },
-      ...(excludeClosing ? { type: { notIn: ['CLOSING', 'REVERSING'] } } : {}),
+      ...(excludeClosing ? { type: { not: 'CLOSING' } } : {}),
       ...(date ? { date } : {}),
     } as any;
   }
@@ -45,7 +45,15 @@ export class ReportsService {
     const date = this.buildDateFilter(from, to);
     return {
       status: 'POSTED',
-      ...(excludeClosing ? { type: { notIn: ['CLOSING', 'REVERSING'] } } : {}),
+      ...(excludeClosing
+        ? {
+            type: { not: 'CLOSING' },
+            OR: [
+              { sourceType: null },
+              { sourceType: { not: 'YEAR_END_REVERSAL' } },
+            ],
+          }
+        : {}),
       ...(date ? { date } : {}),
     } as any;
   }
