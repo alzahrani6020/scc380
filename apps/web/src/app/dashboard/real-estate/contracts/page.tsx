@@ -37,6 +37,7 @@ export default function ContractsPage(){
    setOpen(false);await load();
  }finally{setSaving(false)}};
  const remove=async(id:string)=>{if(!confirm('حذف العقد؟'))return;await api.delete('/real-estate/contracts/'+id);await load()};
+ const activate=async(id:string)=>{if(!confirm('تفعيل العقد وإنشاء استحقاقاته؟'))return;try{await api.post('/real-estate/contracts/'+id+'/activate');await load()}catch(err){console.error(err);alert('تعذر تفعيل العقد. تحقق من حالة العقد والوحدة ثم أعد تحميل القائمة.')}};
  const terminate=async(id:string)=>{if(!confirm('إنهاء العقد؟'))return;await api.post('/real-estate/contracts/'+id+'/terminate');await load()};
  const syncEjar=async(id:string)=>{await api.post('/real-estate/contracts/'+id+'/ejar-sync');await load()};
 
@@ -49,7 +50,7 @@ export default function ContractsPage(){
     <div><p className="text-white font-bold">{x.lesseeName}</p><p className="text-slate-400 text-sm">{x.property?.name||'—'} · وحدة {x.unit?.unitNumber||'—'}</p><p className="text-slate-500 text-xs mt-1">{new Date(x.startDate).toLocaleDateString('ar-SA')} — {new Date(x.endDate).toLocaleDateString('ar-SA')}</p></div>
     <div className="flex items-center gap-3 flex-wrap"><span className="text-primary-400 font-bold">{Number(x.rentAmount).toLocaleString()} ر.س</span><span className="text-xs text-slate-400">{statuses.find(s=>s.value===x.status)?.label||x.status}</span><span className="text-xs text-slate-500">{x._count?.payments||0} دفعة</span></div>
    </div>
-   <div className="mt-4 flex gap-3 flex-wrap"><button onClick={()=>edit(x)} className="text-primary-400 text-sm">تعديل</button>{x.status==='ACTIVE'&&<button onClick={()=>terminate(x.id)} className="text-amber-400 text-sm">إنهاء</button>}<button onClick={()=>syncEjar(x.id)} className="text-emerald-400 text-sm">مزامنة إيجار</button><button onClick={()=>remove(x.id)} className="text-red-400"><Trash2 className="h-4 w-4"/></button></div>
+   <div className="mt-4 flex gap-3 flex-wrap"><button onClick={()=>edit(x)} className="text-primary-400 text-sm">تعديل</button>{x.status==='DRAFT'&&<button onClick={()=>activate(x.id)} className="text-emerald-400 text-sm">تفعيل العقد</button>}{x.status==='ACTIVE'&&<button onClick={()=>terminate(x.id)} className="text-amber-400 text-sm">إنهاء</button>}<button onClick={()=>syncEjar(x.id)} className="text-emerald-400 text-sm">مزامنة إيجار</button><button onClick={()=>remove(x.id)} className="text-red-400"><Trash2 className="h-4 w-4"/></button></div>
   </div>)}</div>}
   <Modal isOpen={open} onClose={()=>setOpen(false)} title={editing?'تعديل عقد':'عقد جديد'} size="xl"><form onSubmit={submit} className="space-y-4">
    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
