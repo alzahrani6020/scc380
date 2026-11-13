@@ -87,3 +87,53 @@ test(
     }
   },
 );
+
+
+test(
+  'Draft activation atomically claims unit, issues receivables once, and rejects foreign tenant or repeated activation',
+  { skip: process.env.REAL_ESTATE_DB_E2E !== '1' ? 'Isolated test database required' : false },
+  async () => {
+    const suffix = `${process.pid}-${Date.now()}`;
+    const a = await prisma.tenant.create({ data: { name: `Activation A ${suffix}`, slug: `activation-a-${suffix}` } });
+    const b = await prisma.tenant.create({ data: { name: `Activation B ${suffix}`, slug: `activation-b-${suffix}` } });
+    const properties = new PropertiesService();
+    const units = new UnitsService();
+    const leases = new LeaseContractsService();
+    try {
+      const property = await properties.create(a.id, { name: 'Activation property' });
+      const unit = await units.create(a.id, { propertyId: property.id, unitNumber: 'AT1' });
+      const contract = await leases.create(a.id, {
+        propertyId: property.id, unitId: unit.id,
+        lessorName: 'Lessor', lessorIdNumber: '111',
+        lesseeName: 'Lessee', lesseeIdNumber: '222',
+        startDate: '2026-01-01T00:00:00.000Z',
+        endDate: '2026-04-01T00:00:00.000Z',
+        rentAmount: '1000.00', paymentFrequency: 'MONTHLY',
+      });
+      assert.equal((await leases.findOne(a.id, contract.id)).payments.length, 0);
+      await assert.rejects(() => leases.activate(b.id, contract.id), /Contract not found/);
+      assert.equal((await leases.activate(a.id, contract.id)).status, 'ACTIVE');
+      const active = await leases.findOne(a.id, contract.id);
+      assert.ok(active.payments.length > 0);
+      assert.equal((await units.findOne(a.id, unit.id)).currentLeaseId, contract.id);
+      assert.equal((await units.findOne(a.id, unit.id)).status, 'OCCUPIED');
+      const count = await prisma.rentPayment.count({ where: { tenantId: a.id, contractId: contract.id } });
+      await assert.rejects(() => leases.activate(a.id, contract.id), /Only draft contracts/);
+      assert.equal(await prisma.rentPayment.count({ where: { tenantId: a.id, contractId: contract.id } }), count);
+      const second = await leases.create(a.id, {
+        propertyId: property.id, unitId: unit.id,
+        lessorName: 'Lessor', lessorIdNumber: '111',
+        lesseeName: 'Second', lesseeIdNumber: '333',
+        startDate: '2026-05-01T00:00:00.000Z',
+        endDate: '2026-08-01T00:00:00.000Z',
+        rentAmount: '1000.00', paymentFrequency: 'MONTHLY',
+      });
+      await assert.rejects(() => leases.activate(a.id, second.id), /Unit must be vacant/);
+      assert.equal((await leases.findOne(a.id, second.id)).status, 'DRAFT');
+      assert.equal((await leases.findOne(a.id, second.id)).payments.length, 0);
+    } finally {
+      await prisma.tenant.deleteMany({ where: { id: { in: [a.id, b.id] } } });
+      await prisma.$disconnect();
+    }
+  },
+);
