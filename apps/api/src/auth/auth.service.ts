@@ -401,38 +401,34 @@ export class AuthService {
     return user;
   }
 
-  // ─── Forgot Password ───────────────────────────────────────────────
-  async forgotPassword(email: string) {
-    const genericResponse = { message: 'If this email exists, a reset link has been sent.' };
-    const normalizedEmail = this.normalizeEmail(email);
-    const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
-
-    // Always return the same response to avoid account enumeration.
-    if (!user) return genericResponse;
-
+  // ─── Forgot Password / Account Setup ───────────────────────────────
+  private async sendPasswordLink(
+    user: { id: string; email: string },
+    purpose: 'RESET' | 'INVITE',
+  ) {
     const brevoApiKey = this.config.get<string>('BREVO_API_KEY');
     const senderEmail = this.config.get<string>('EMAIL_FROM');
     const senderName = this.config.get<string>('EMAIL_FROM_NAME') || 'SCC380';
 
-    // Fail closed: never expose a reset token when email delivery is unavailable.
     if (!brevoApiKey || !senderEmail) {
-      this.logger.error('Password reset email delivery is not configured');
-      return genericResponse;
+      this.logger.error(`${purpose} email delivery is not configured`);
+      return false;
     }
 
     const token = randomBytes(32).toString('hex');
     const tokenHash = createHash('sha256').update(token).digest('hex');
-    const expiresAt = new Date(Date.now() + 1000 * 60 * 60); // 1 hour
+    const ttlMs = purpose === 'INVITE' ? 24 * 60 * 60 * 1000 : 60 * 60 * 1000;
+    const expiresAt = new Date(Date.now() + ttlMs);
     const resetUrl = `${this.config.get('WEB_URL', 'http://localhost:3000')}/auth/reset-password?token=${token}`;
 
-    // Keep only the newest reset request usable for this account.
     await prisma.passwordResetToken.deleteMany({
-      where: { email: normalizedEmail, usedAt: null },
+      where: { email: user.email, usedAt: null },
     });
     await prisma.passwordResetToken.create({
-      data: { email: normalizedEmail, token: tokenHash, expiresAt },
+      data: { email: user.email, token: tokenHash, expiresAt, userId: user.id },
     });
 
+    const isInvite = purpose === 'INVITE';
     try {
       const response = await fetch('https://api.brevo.com/v3/smtp/email', {
         method: 'POST',
@@ -443,46 +439,79 @@ export class AuthService {
         },
         body: JSON.stringify({
           sender: { name: senderName, email: senderEmail },
-          to: [{ email: normalizedEmail }],
-          subject: 'إعادة تعيين كلمة المرور - SCC380',
+          to: [{ email: user.email }],
+          subject: isInvite ? 'تفعيل حساب الخدمة الذاتية - SCC380' : 'إعادة تعيين كلمة المرور - SCC380',
           htmlContent:
-            '<p>تم طلب إعادة تعيين كلمة المرور لحسابك.</p>' +
-            '<p><a href="' + resetUrl + '">إعادة تعيين كلمة المرور</a></p>' +
-            '<p>تنتهي صلاحية الرابط خلال ساعة واحدة. إذا لم تطلب ذلك فتجاهل الرسالة.</p>',
+            (isInvite
+              ? '<p>تم إنشاء حساب الخدمة الذاتية الخاص بك في SCC380.</p>'
+              : '<p>تم طلب إعادة تعيين كلمة المرور لحسابك.</p>') +
+            '<p><a href="' + resetUrl + '">' +
+            (isInvite ? 'تعيين كلمة المرور وتفعيل الحساب' : 'إعادة تعيين كلمة المرور') +
+            '</a></p>' +
+            `<p>تنتهي صلاحية الرابط خلال ${isInvite ? '24 ساعة' : 'ساعة واحدة'}.</p>`,
         }),
       });
-
-      if (!response.ok) {
-        throw new Error(`Brevo returned HTTP ${response.status}`);
-      }
+      if (!response.ok) throw new Error(`Brevo returned HTTP ${response.status}`);
+      return true;
     } catch (error) {
-      // The token must not remain usable when delivery failed.
       await prisma.passwordResetToken.deleteMany({ where: { token: tokenHash } });
       this.logger.error(
-        'Password reset email delivery failed',
+        `${purpose} email delivery failed`,
         error instanceof Error ? error.message : undefined,
       );
+      return false;
     }
+  }
 
+  async forgotPassword(email: string) {
+    const genericResponse = { message: 'If this email exists, a reset link has been sent.' };
+    const normalizedEmail = this.normalizeEmail(email);
+    const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+    if (!user) return genericResponse;
+
+    await this.sendPasswordLink({ id: user.id, email: user.email }, 'RESET');
     return genericResponse;
+  }
+
+  async sendAccountSetupEmail(userId: string) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, status: true },
+    });
+    if (!user) throw new BadRequestException('User not found');
+    if (user.status !== 'PENDING_VERIFICATION') {
+      throw new BadRequestException('Only pending users can receive an account setup invitation');
+    }
+    const sent = await this.sendPasswordLink({ id: user.id, email: user.email }, 'INVITE');
+    return { sent };
   }
 
   async resetPassword(token: string, newPassword: string) {
     const tokenHash = createHash('sha256').update(token).digest('hex');
     const record = await prisma.passwordResetToken.findFirst({
-      where: { OR: [{ token: tokenHash }, { token }] }, // raw-token fallback for pre-hardening links
+      where: { OR: [{ token: tokenHash }, { token }] },
     });
     if (!record || record.usedAt || record.expiresAt < new Date()) {
       throw new BadRequestException('Invalid or expired reset token');
     }
 
-    const user = await prisma.user.findUnique({ where: { email: record.email } });
+    const user = record.userId
+      ? await prisma.user.findUnique({ where: { id: record.userId } })
+      : await prisma.user.findUnique({ where: { email: record.email } });
     if (!user) throw new BadRequestException('User not found');
 
     const passwordHash = await hashPassword(newPassword);
     const usedAt = new Date();
     await prisma.$transaction([
-      prisma.user.update({ where: { id: user.id }, data: { passwordHash } }),
+      prisma.user.update({
+        where: { id: user.id },
+        data: {
+          passwordHash,
+          ...(user.status === 'PENDING_VERIFICATION'
+            ? { status: 'ACTIVE', emailVerified: true }
+            : {}),
+        },
+      }),
       prisma.passwordResetToken.updateMany({
         where: { email: record.email, usedAt: null },
         data: { usedAt },
