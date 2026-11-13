@@ -165,7 +165,9 @@ export default function Sidebar({
     try {
       await sessionAuth('logout', { refreshToken: getRefreshToken() || undefined });
     } catch {
-      // A stale session must not prevent local logout.
+      // An unavailable API or already-revoked token must not leave a stale
+      // HttpOnly cookie on this browser. This is local cleanup only.
+      try { await sessionAuth('clear'); } catch {}
     } finally {
       clearAuth();
       window.location.href = '/auth/login';
