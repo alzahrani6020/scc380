@@ -327,6 +327,33 @@ async function verifyBankReconciliationPreconditions(applied) {
   console.log('BANK_RECONCILIATION_PREFLIGHT_PASS');
 }
 
+async function verifyYearEndClosePreconditions(applied) {
+  const migration = '20261113013000_year_end_close';
+  if (applied.has(migration)) return;
+
+  assertEnumCompatibility(
+    'YearEndCloseStatus',
+    await enumValues('YearEndCloseStatus'),
+    ['CLOSED','REVERSED'],
+  );
+
+  const required = {
+    year_end_closes: [
+      'id','tenantId','year','version','startDate','endDate',
+      'retainedEarningsAccountId','netIncome','status',
+      'closedAt','createdAt','updatedAt',
+    ],
+  };
+
+  for (const [table, columns] of Object.entries(required)) {
+    if ((await tableExists(table)) && !(await columnsPresent(table, columns))) {
+      throw new Error(`YEAR_END_CLOSE_BLOCKED incomplete columns: ${table}`);
+    }
+  }
+
+  console.log('YEAR_END_CLOSE_PREFLIGHT_PASS');
+}
+
 async function appliedMigrations() {
   const exists = await tableExists('_prisma_migrations');
   if (!exists) return new Set();
@@ -546,6 +573,7 @@ async function resolveIfNeeded(applied, migration, verify) {
   await verifySupplierApPreconditions(applied);
   await verifyExpenseAccountingPreconditions(applied);
   await verifyBankReconciliationPreconditions(applied);
+  await verifyYearEndClosePreconditions(applied);
 
   console.log('PRISMA_MIGRATE_DEPLOY_START');
   runPrisma(['migrate', 'deploy']);

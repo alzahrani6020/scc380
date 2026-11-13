@@ -12,6 +12,7 @@ import { ReportsService } from '../src/reports/reports.service';
 import { FinancialPeriodsService } from '../src/finance/financial-periods.service';
 import { BankReconciliationService } from '../src/finance/bank-reconciliation.service';
 import { BankAccountsService } from '../src/finance/bank-accounts.service';
+import { YearEndClosingService } from '../src/finance/year-end-closing.service';
 
 test(
   'Accounting DB-backed E2E validates balanced posting, periods, mapping, tenant isolation and dual-write',
@@ -96,6 +97,7 @@ test(
       const periods = new FinancialPeriodsService();
       const bankReconciliation = new BankReconciliationService();
       const bankAccounts = new BankAccountsService();
+      const yearEndClosing = new YearEndClosingService(dualWrite);
       const reqA: any = { user: { tenantId: tenantA.id, role: 'ADMIN' } };
 
       const mapped = await mapping.resolve(tenantA.id, ['CASH', 'SALES_REVENUE']);
@@ -925,6 +927,207 @@ test(
         () => reports.getReceivablesAging(tenantB.id, 'ADMIN', 'not-a-date'),
         /Invalid asOfDate/,
       );
+
+      // Year-end close E2E isolated fiscal year validates close, reporting, reversal, and re-close.
+      const fyCash = await prisma.chartOfAccount.create({
+        data: {
+          tenantId: tenantB.id,
+          code: `FY-CASH-${run}`,
+          name: 'FY Close Cash',
+          type: 'ASSET',
+        },
+      });
+      const fyRevenue = await prisma.chartOfAccount.create({
+        data: {
+          tenantId: tenantB.id,
+          code: `FY-REV-${run}`,
+          name: 'FY Close Revenue',
+          type: 'REVENUE',
+        },
+      });
+      const fyExpense = await prisma.chartOfAccount.create({
+        data: {
+          tenantId: tenantB.id,
+          code: `FY-EXP-${run}`,
+          name: 'FY Close Expense',
+          type: 'EXPENSE',
+        },
+      });
+      const fyRetained = await prisma.chartOfAccount.create({
+        data: {
+          tenantId: tenantB.id,
+          code: `FY-RE-${run}`,
+          name: 'Retained Earnings E2E',
+          type: 'EQUITY',
+        },
+      });
+
+      const fyH1 = await prisma.financialPeriod.create({
+        data: {
+          tenantId: tenantB.id,
+          name: 'FY2028 H1',
+          year: 2028,
+          startDate: new Date('2028-01-01T00:00:00.000Z'),
+          endDate: new Date('2028-06-30T23:59:59.999Z'),
+        },
+      });
+      const fyH2 = await prisma.financialPeriod.create({
+        data: {
+          tenantId: tenantB.id,
+          name: 'FY2028 H2',
+          year: 2028,
+          startDate: new Date('2028-07-01T00:00:00.000Z'),
+          endDate: new Date('2028-12-31T23:59:59.999Z'),
+        },
+      });
+
+      await dualWrite.post({
+        tenantId: tenantB.id,
+        entryNumber: `FY-REV-JV-${run}`,
+        date: new Date('2028-03-15T12:00:00.000Z'),
+        description: 'FY revenue',
+        sourceType: 'FY_E2E',
+        sourceId: `fy-rev-${run}`,
+        lines: [
+          { accountId: fyCash.id, debitAmount: 1000 },
+          { accountId: fyRevenue.id, creditAmount: 1000 },
+        ],
+      });
+      await dualWrite.post({
+        tenantId: tenantB.id,
+        entryNumber: `FY-EXP-JV-${run}`,
+        date: new Date('2028-08-15T12:00:00.000Z'),
+        description: 'FY expense',
+        sourceType: 'FY_E2E',
+        sourceId: `fy-exp-${run}`,
+        lines: [
+          { accountId: fyExpense.id, debitAmount: 300 },
+          { accountId: fyCash.id, creditAmount: 300 },
+        ],
+      });
+      await prisma.financialPeriod.update({
+        where: { id: fyH1.id },
+        data: { isClosed: true, closedAt: new Date() },
+      });
+
+      const reqBAdmin = {
+        user: { tenantId: tenantB.id, role: 'ADMIN', id: `admin-b-${run}` },
+      };
+      const fyPreview = await yearEndClosing.preview(
+        reqBAdmin,
+        2028,
+        fyRetained.id,
+      );
+      assert.equal(fyPreview.revenue, 1000);
+      assert.equal(fyPreview.expenses, 300);
+      assert.equal(fyPreview.netIncome, 700);
+      assert.equal(fyPreview.closingLines.length, 2);
+
+      const fyCloseV1 = await yearEndClosing.close(reqBAdmin, {
+        year: 2028,
+        retainedEarningsAccountId: fyRetained.id,
+      });
+      assert.equal(fyCloseV1.record.version, 1);
+      assert.equal(fyCloseV1.record.status, 'CLOSED');
+      assert.equal(Number(fyCloseV1.record.netIncome), 700);
+      assert.ok(fyCloseV1.closingJournal);
+      assert.equal(fyCloseV1.closingJournal.type, 'CLOSING');
+      assert.equal(fyCloseV1.closingJournal.lines.length, 3);
+
+      const finalAfterClose = await prisma.financialPeriod.findUnique({
+        where: { id: fyH2.id },
+      });
+      assert.equal(finalAfterClose?.isClosed, true);
+
+      const incomeAfterClose = await reports.getIncomeStatement(
+        tenantB.id,
+        'ADMIN',
+        '2028-01-01T00:00:00.000Z',
+        '2028-12-31T23:59:59.999Z',
+      );
+      assert.equal(incomeAfterClose.revenues.total, 1000);
+      assert.equal(incomeAfterClose.expenses.total, 300);
+      assert.equal(incomeAfterClose.netIncome, 700);
+
+      const trialAfterClose = await reports.getTrialBalance(
+        tenantB.id,
+        'ADMIN',
+        '2028-01-01T00:00:00.000Z',
+        '2028-12-31T23:59:59.999Z',
+      );
+      assert.equal(
+        trialAfterClose.accounts.find((a) => a.id === fyRevenue.id)?.balance,
+        0,
+      );
+      assert.equal(
+        trialAfterClose.accounts.find((a) => a.id === fyExpense.id)?.balance,
+        0,
+      );
+      assert.equal(
+        trialAfterClose.accounts.find((a) => a.id === fyRetained.id)?.balance,
+        700,
+      );
+      assert.equal(trialAfterClose.balanced, true);
+
+      await assert.rejects(
+        () =>
+          yearEndClosing.reverse(
+            { user: { tenantId: tenantB.id, role: 'MANAGER' } },
+            2028,
+          ),
+        /Only ADMIN or SUPER_ADMIN/,
+      );
+
+      const fyReverse = await yearEndClosing.reverse(reqBAdmin, 2028);
+      assert.equal(fyReverse.record.status, 'REVERSED');
+      assert.ok(fyReverse.reversalJournal);
+      assert.equal(fyReverse.reversalJournal.type, 'REVERSING');
+
+      const finalAfterReverse = await prisma.financialPeriod.findUnique({
+        where: { id: fyH2.id },
+      });
+      assert.equal(finalAfterReverse?.isClosed, false);
+
+      const incomeAfterReverse = await reports.getIncomeStatement(
+        tenantB.id,
+        'ADMIN',
+        '2028-01-01T00:00:00.000Z',
+        '2028-12-31T23:59:59.999Z',
+      );
+      assert.equal(incomeAfterReverse.netIncome, 700);
+
+      const trialAfterReverse = await reports.getTrialBalance(
+        tenantB.id,
+        'ADMIN',
+        '2028-01-01T00:00:00.000Z',
+        '2028-12-31T23:59:59.999Z',
+      );
+      assert.equal(
+        trialAfterReverse.accounts.find((a) => a.id === fyRevenue.id)?.balance,
+        1000,
+      );
+      assert.equal(
+        trialAfterReverse.accounts.find((a) => a.id === fyExpense.id)?.balance,
+        300,
+      );
+      assert.equal(
+        trialAfterReverse.accounts.find((a) => a.id === fyRetained.id)?.balance,
+        0,
+      );
+
+      const fyCloseV2 = await yearEndClosing.close(reqBAdmin, {
+        year: 2028,
+        retainedEarningsAccountId: fyRetained.id,
+      });
+      assert.equal(fyCloseV2.record.version, 2);
+      assert.equal(fyCloseV2.record.status, 'CLOSED');
+      assert.equal(Number(fyCloseV2.record.netIncome), 700);
+
+      const closeHistory = await yearEndClosing.list(reqBAdmin, 2028);
+      assert.equal(closeHistory.length, 2);
+      assert.equal(closeHistory[0].version, 2);
+      assert.equal(closeHistory[1].version, 1);
+      assert.equal(closeHistory[1].status, 'REVERSED');
 
       const jan2027 = await periods.create(reqA, {
         name: 'January 2027',
