@@ -1,0 +1,51 @@
+name: Real Estate DB Acceptance
+
+on:
+  pull_request:
+    paths:
+      - 'apps/api/src/real-estate/**'
+      - 'apps/api/test/real-estate-db-acceptance.e2e.spec.ts'
+      - 'apps/web/src/app/dashboard/real-estate/**'
+      - 'packages/database/**'
+      - '.github/workflows/real-estate-db-acceptance.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  real-estate-db-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: scc
+          POSTGRES_PASSWORD: scc
+          POSTGRES_DB: scc_real_estate_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U scc -d scc_real_estate_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://scc:scc@127.0.0.1:5432/scc_real_estate_test
+      DIRECT_URL: postgresql://scc:scc@127.0.0.1:5432/scc_real_estate_test
+      REAL_ESTATE_DB_E2E: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: corepack enable && corepack prepare pnpm@8.15.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @scc/database db:generate
+      - run: pnpm --filter @scc/database build
+      - name: Apply existing migrations to disposable DB only
+        run: pnpm --filter @scc/database exec prisma migrate deploy --schema prisma/schema.prisma
+      - name: Reconcile Prisma models on disposable database only
+        run: pnpm --filter @scc/database exec prisma db push --schema prisma/schema.prisma --skip-generate
+      - name: Exercise property and unit lifecycle in isolated database
+        run: pnpm --filter @scc/api exec tsx --test test/real-estate-db-acceptance.e2e.spec.ts
