@@ -7,6 +7,7 @@ import * as speakeasy from 'speakeasy';
 import * as QRCode from 'qrcode';
 import { createHash, randomBytes } from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
+import Redis from 'ioredis';
 
 @Injectable()
 export class AuthService {
@@ -41,6 +42,26 @@ export class AuthService {
       : /Macintosh|Mac OS X/i.test(agent) ? 'macOS'
       : /Linux/i.test(agent) ? 'Linux' : 'نظام غير معروف';
     return { userAgent: agent, ipAddress: ip, deviceInfo: browser && system ? `${browser} · ${system}` : null };
+  }
+
+  private async twoFactorChallenge(action: 'issue' | 'consume', nonce: string): Promise<boolean> {
+    const redisUrl = this.config.get<string>('REDIS_URL') || process.env.REDIS_URL;
+    // Never issue a 2FA session when the shared challenge store is unavailable.
+    if (!redisUrl) throw new UnauthorizedException('2FA challenge store unavailable');
+    const redis = new Redis(redisUrl, {
+      maxRetriesPerRequest: 1,
+      connectTimeout: 2000,
+      enableOfflineQueue: false,
+    });
+    try {
+      const key = 'auth:2fa:challenge:' + this.hashToken(nonce);
+      if (action === 'issue') return (await redis.set(key, 'pending', 'EX', 300, 'NX')) === 'OK';
+      return (await redis.getdel(key)) === 'pending';
+    } catch {
+      throw new UnauthorizedException('2FA challenge store unavailable');
+    } finally {
+      redis.disconnect();
+    }
   }
 
   private hashToken(token: string) {
@@ -153,10 +174,14 @@ export class AuthService {
 
     if (user?.twoFactorEnabled) {
       // Issue a temporary token for 2FA verification
+      const challengeId = randomBytes(24).toString('hex');
       const tempToken = this.jwt.sign(
-        { sub: userId, email, role, tenantId, tenantSlug, type: '2fa_pending' },
+        { sub: userId, email, role, tenantId, tenantSlug, type: '2fa_pending', jti: challengeId },
         { expiresIn: '5m' },
       );
+      if (!(await this.twoFactorChallenge('issue', challengeId))) {
+        throw new UnauthorizedException('Could not issue 2FA challenge');
+      }
       return {
         requires2FA: true,
         tempToken,
@@ -198,13 +223,16 @@ export class AuthService {
       throw new UnauthorizedException('Invalid or expired temporary token');
     }
 
-    if (payload.type !== '2fa_pending') {
+    if (payload.type !== '2fa_pending' || typeof payload.jti !== 'string' || !payload.jti) {
       throw new UnauthorizedException('Invalid token type');
     }
 
     const verifyResult = await this.verify2FALogin(payload.sub, code);
     if (!verifyResult.verified) {
       throw new UnauthorizedException('Invalid 2FA code');
+    }
+    if (!(await this.twoFactorChallenge('consume', payload.jti))) {
+      throw new UnauthorizedException('2FA challenge already used or expired');
     }
 
     const { sub: userId, email, role, tenantId, tenantSlug } = payload;
