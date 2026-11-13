@@ -118,6 +118,9 @@ export class HrLifecycleService {
       include: { tasks: true },
     });
     if (!lifecycle) throw new NotFoundException('HR lifecycle case not found');
+    if (['COMPLETED', 'CANCELLED'].includes(lifecycle.status)) {
+      throw new ConflictException('Lifecycle case is closed');
+    }
     const incomplete = lifecycle.tasks.filter((task) => !['DONE','SKIPPED'].includes(task.status));
     if (incomplete.length) throw new ConflictException('All lifecycle tasks must be done or skipped');
 
@@ -135,17 +138,27 @@ export class HrLifecycleService {
       }
     }
 
-    return prisma.hrLifecycleCase.update({
-      where: { id },
-      data: { status: 'COMPLETED', completedAt: lifecycle.completedAt || new Date() },
+    const scope = { ...tenantWhere(tenantId), id };
+    const updated = await prisma.hrLifecycleCase.updateMany({
+      where: { ...scope, status: { in: ['OPEN', 'IN_PROGRESS'] } },
+      data: { status: 'COMPLETED', completedAt: new Date() },
     });
+    if (updated.count !== 1) throw new ConflictException('Lifecycle case is closed');
+    return prisma.hrLifecycleCase.findFirstOrThrow({ where: scope });
   }
 
   async cancel(req: any, id: string) {
-    const item = await prisma.hrLifecycleCase.findFirst({ where: { ...tenantWhere(req.user?.tenantId), id } });
-    if (!item) throw new NotFoundException('HR lifecycle case not found');
-    if (item.status === 'COMPLETED') throw new ConflictException('Completed lifecycle case cannot be cancelled');
-    return prisma.hrLifecycleCase.update({ where: { id }, data: { status: 'CANCELLED' } });
+    const scope = { ...tenantWhere(req.user?.tenantId), id };
+    const updated = await prisma.hrLifecycleCase.updateMany({
+      where: { ...scope, status: { in: ['OPEN', 'IN_PROGRESS'] } },
+      data: { status: 'CANCELLED', completedAt: null },
+    });
+    if (updated.count !== 1) {
+      const item = await prisma.hrLifecycleCase.findFirst({ where: scope, select: { id: true } });
+      if (!item) throw new NotFoundException('HR lifecycle case not found');
+      throw new ConflictException('Lifecycle case is closed');
+    }
+    return prisma.hrLifecycleCase.findFirstOrThrow({ where: scope });
   }
 
   private async recomputeCase(caseId: string, tenantId: string) {
