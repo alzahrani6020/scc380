@@ -51,27 +51,30 @@ export class HrRequestsService {
 
   async cancelSelf(req: any, id: string) {
     const employee = await this.resolveEmployee(req);
-    const item = await prisma.hrRequest.findFirst({
-      where: { ...tenantWhere(req.user.tenantId), id, employeeId: employee.id },
-    });
-    if (!item) throw new NotFoundException('HR request not found');
-    if (item.status !== 'PENDING') throw new ConflictException('Only pending requests can be cancelled');
-    return prisma.hrRequest.update({
-      where: { id },
+    const scope = { ...tenantWhere(req.user.tenantId), id, employeeId: employee.id };
+    const result = await prisma.hrRequest.updateMany({
+      where: { ...scope, status: 'PENDING' },
       data: { status: 'CANCELLED', cancelledAt: new Date() },
     });
+    if (result.count === 0) {
+      const existing = await prisma.hrRequest.findFirst({ where: scope, select: { id: true } });
+      if (!existing) throw new NotFoundException('HR request not found');
+      throw new ConflictException('Only pending requests can be cancelled');
+    }
+    return prisma.hrRequest.findFirstOrThrow({ where: scope });
   }
 
   async review(req: any, id: string, decision: 'APPROVED' | 'REJECTED', resolution?: string) {
     const tenantId = req.user?.tenantId;
-    const item = await prisma.hrRequest.findFirst({ where: { ...tenantWhere(tenantId), id } });
-    if (!item) throw new NotFoundException('HR request not found');
-    if (item.status !== 'PENDING') throw new ConflictException('Only pending requests can be reviewed');
+    if (decision !== 'APPROVED' && decision !== 'REJECTED') {
+      throw new BadRequestException('Unsupported HR request decision');
+    }
     if (decision === 'REJECTED' && !resolution?.trim()) {
       throw new BadRequestException('Rejection reason is required');
     }
-    return prisma.hrRequest.update({
-      where: { id },
+    const scope = { ...tenantWhere(tenantId), id };
+    const result = await prisma.hrRequest.updateMany({
+      where: { ...scope, status: 'PENDING' },
       data: {
         status: decision,
         resolution: resolution?.trim() || null,
@@ -79,6 +82,12 @@ export class HrRequestsService {
         reviewedAt: new Date(),
       },
     });
+    if (result.count === 0) {
+      const existing = await prisma.hrRequest.findFirst({ where: scope, select: { id: true } });
+      if (!existing) throw new NotFoundException('HR request not found');
+      throw new ConflictException('Only pending requests can be reviewed');
+    }
+    return prisma.hrRequest.findFirstOrThrow({ where: scope });
   }
 
   private async resolveEmployee(req: any) {
