@@ -45,6 +45,47 @@ export class TrainingService{
   });
  }
 
- async complete(req:any,id:string,dto:any){const e=await prisma.trainingEnrollment.findFirst({where:{...tenantWhere(req.user?.tenantId),id}});if(!e)throw new NotFoundException('Training enrollment not found');if(e.status==='COMPLETED')throw new ConflictException('Training enrollment already completed');if(dto.score!==undefined&&(Number(dto.score)<0||Number(dto.score)>100))throw new BadRequestException('Training score must be between 0 and 100');return prisma.trainingEnrollment.update({where:{id},data:{status:'COMPLETED',score:dto.score??null,certificateNumber:dto.certificateNumber||null,notes:dto.notes??e.notes,completedAt:new Date()}})}
- async status(req:any,id:string,status:string){const c=await prisma.trainingCourse.findFirst({where:{...tenantWhere(req.user?.tenantId),id}});if(!c)throw new NotFoundException('Training course not found');return prisma.trainingCourse.update({where:{id},data:{status}})}
+ async complete(req:any,id:string,dto:any){
+  const tenantId=req.user?.tenantId;
+  const enrollment=await prisma.trainingEnrollment.findFirst({
+   where:{...tenantWhere(tenantId),id},
+   include:{course:{select:{status:true}}},
+  });
+  if(!enrollment)throw new NotFoundException('Training enrollment not found');
+  if(enrollment.status!=='ENROLLED')throw new ConflictException('Only enrolled participants can be completed');
+  if(enrollment.course.status==='CANCELLED'||enrollment.course.status==='PLANNED'){
+   throw new ConflictException('Training course must be open or completed');
+  }
+  if(dto.score!==undefined&&(!Number.isFinite(Number(dto.score))||Number(dto.score)<0||Number(dto.score)>100)){
+   throw new BadRequestException('Training score must be between 0 and 100');
+  }
+  const changed=await prisma.trainingEnrollment.updateMany({
+   where:{id,tenantId,status:'ENROLLED'},
+   data:{status:'COMPLETED',score:dto.score??null,certificateNumber:dto.certificateNumber||null,
+    notes:dto.notes??enrollment.notes,completedAt:new Date()},
+  });
+  if(changed.count!==1)throw new ConflictException('Training enrollment already processed');
+  return prisma.trainingEnrollment.findFirstOrThrow({where:{tenantId,id}});
+ }
+
+ async status(req:any,id:string,status:string){
+  const tenantId=req.user?.tenantId;
+  const course=await prisma.trainingCourse.findFirst({where:{...tenantWhere(tenantId),id}});
+  if(!course)throw new NotFoundException('Training course not found');
+  const allowed:Record<string,string[]>={
+   PLANNED:['OPEN','CANCELLED'],
+   OPEN:['COMPLETED','CANCELLED'],
+   COMPLETED:[],
+   CANCELLED:[],
+  };
+  if(!allowed[course.status]?.includes(status)){
+   throw new ConflictException('Invalid training course status transition');
+  }
+  const changed=await prisma.trainingCourse.updateMany({
+   where:{id,tenantId,status:course.status},
+   data:{status},
+  });
+  if(changed.count!==1)throw new ConflictException('Training course status changed concurrently');
+  return prisma.trainingCourse.findFirstOrThrow({where:{id,tenantId}});
+ }
 }
