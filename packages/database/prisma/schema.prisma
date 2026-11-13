@@ -113,6 +113,8 @@ model Tenant {
   depreciationEntries DepreciationEntry[]
   costCenters   CostCenter[]
   financialPeriods FinancialPeriod[]
+  budgetPlans BudgetPlan[]
+  budgetLines BudgetLine[]
   yearEndCloses YearEndClose[]
   zatcaCredential ZatcaCredential?
   dataSubjectConsents DataSubjectConsent[]
@@ -636,6 +638,7 @@ model ChartOfAccount {
   expenseCredits Expense[] @relation("ExpenseCreditAccount")
   bankAccounts BankAccount[] @relation("BankAccountLedgerAccount")
   yearEndRetainedEarnings YearEndClose[] @relation("YearEndRetainedEarnings")
+  budgetLines BudgetLine[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -3424,10 +3427,65 @@ model CostCenter {
   updatedAt     DateTime  @updatedAt
 
   journalEntryLines JournalEntryLine[]
+  budgetLines BudgetLine[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
   @@map("cost_centers")
+}
+
+// ============================================================
+// BUDGETS / الموازنات
+// ============================================================
+
+model BudgetPlan {
+  id          String       @id @default(cuid())
+  tenantId    String
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  year        Int
+  name        String
+  notes       String?
+  status      BudgetStatus @default(DRAFT)
+  approvedAt  DateTime?
+  approvedBy  String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  lines       BudgetLine[]
+
+  @@unique([tenantId, year])
+  @@index([tenantId])
+  @@index([status])
+  @@map("budget_plans")
+}
+
+model BudgetLine {
+  id            String         @id @default(cuid())
+  tenantId      String
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  planId        String
+  plan          BudgetPlan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  month         Int
+  accountId     String
+  account       ChartOfAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  costCenterId  String?
+  costCenter    CostCenter?    @relation(fields: [costCenterId], references: [id], onDelete: Restrict)
+  amount        Decimal        @db.Decimal(18,2)
+  notes         String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([tenantId])
+  @@index([planId])
+  @@index([accountId])
+  @@index([costCenterId])
+  @@index([month])
+  @@map("budget_lines")
+}
+
+enum BudgetStatus {
+  DRAFT
+  APPROVED
 }
 
 // ============================================================
