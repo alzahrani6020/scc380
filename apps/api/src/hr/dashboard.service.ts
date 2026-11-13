@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { prisma, tenantWhere } from '@scc/database';
 
 function riyadhDayRange(now = new Date()) {
@@ -18,28 +18,7 @@ export class HrDashboardService {
     const tenant = tenantWhere(tenantId);
     const { start, end, year, month } = riyadhDayRange();
 
-    const [
-      totalEmployees,
-      activeEmployees,
-      onLeaveEmployees,
-      suspendedEmployees,
-      terminatedEmployees,
-      presentToday,
-      absentToday,
-      lateToday,
-      remoteToday,
-      pendingLeaves,
-      departments,
-      shifts,
-      payrollAggregate,
-      draftPayrolls,
-      approvedPayrolls,
-      paidPayrolls,
-      currentPayrollRun,
-      expiringDocuments,
-      expiringContracts,
-      expiringProbations,
-    ] = await Promise.all([
+    const settled = await Promise.allSettled([
       prisma.employee.count({ where: tenant }),
       prisma.employee.count({ where: { ...tenant, status: 'ACTIVE' } }),
       prisma.employee.count({ where: { ...tenant, status: 'ON_LEAVE' } }),
@@ -82,10 +61,41 @@ export class HrDashboardService {
         },
       }),
     ]);
+    const metricNames = ["totalEmployees","activeEmployees","onLeaveEmployees","suspendedEmployees","terminatedEmployees","presentToday","absentToday","lateToday","remoteToday","pendingLeaves","departments","shifts","payrollAggregate","draftPayrolls","approvedPayrolls","paidPayrolls","currentPayrollRun","expiringDocuments","expiringContracts","expiringProbations"];
+    const unavailableMetrics = settled.flatMap((result, index) =>
+      result.status === 'rejected' ? [metricNames[index]] : [],
+    );
+    if (unavailableMetrics.length > 0) {
+      Logger.warn('HR dashboard query failures: ' + unavailableMetrics.join(', '), HrDashboardService.name);
+    }
+    const [
+
+      totalEmployees,
+      activeEmployees,
+      onLeaveEmployees,
+      suspendedEmployees,
+      terminatedEmployees,
+      presentToday,
+      absentToday,
+      lateToday,
+      remoteToday,
+      pendingLeaves,
+      departments,
+      shifts,
+      payrollAggregate,
+      draftPayrolls,
+      approvedPayrolls,
+      paidPayrolls,
+      currentPayrollRun,
+      expiringDocuments,
+      expiringContracts,
+      expiringProbations,
+    ] = settled.map((result) => result.status === 'fulfilled' ? result.value : null) as any[];
 
     return {
       generatedAt: new Date().toISOString(),
       timezone: 'Asia/Riyadh',
+      unavailableMetrics,
       workforce: {
         total: totalEmployees,
         active: activeEmployees,
@@ -111,8 +121,8 @@ export class HrDashboardService {
       payroll: {
         month,
         year,
-        records: payrollAggregate._count._all,
-        netTotal: Number(payrollAggregate._sum.netSalary || 0),
+        records: payrollAggregate?._count?._all ?? null,
+        netTotal: payrollAggregate ? Number(payrollAggregate._sum.netSalary || 0) : null,
         draft: draftPayrolls,
         approved: approvedPayrolls,
         paid: paidPayrolls,

@@ -49,14 +49,14 @@ export default function HrDashboardPage() {
   }
 
   const cards = [
-    { label: 'إجمالي الموظفين', value: data.workforce.total, icon: Users, href: '/dashboard/hr/employees' },
-    { label: 'نشطون', value: data.workforce.active, icon: UserCheck, href: '/dashboard/hr/employees' },
-    { label: 'في إجازة', value: data.workforce.onLeave, icon: CalendarDays, href: '/dashboard/hr/leaves' },
-    { label: 'طلبات إجازة معلقة', value: data.pendingLeaves, icon: AlertTriangle, href: '/dashboard/hr/leaves' },
-    { label: 'حاضرون اليوم', value: data.attendanceToday.present, icon: ClipboardList, href: '/dashboard/hr/attendance' },
-    { label: 'متأخرون اليوم', value: data.attendanceToday.late, icon: TimerReset, href: '/dashboard/hr/attendance' },
-    { label: 'غائبون اليوم', value: data.attendanceToday.absent, icon: UserX, href: '/dashboard/hr/attendance' },
-    { label: 'عن بعد اليوم', value: data.attendanceToday.remote, icon: Home, href: '/dashboard/hr/attendance' },
+    { label: 'إجمالي الموظفين', value: data.workforce.total ?? '—', icon: Users, href: '/dashboard/hr/employees' },
+    { label: 'نشطون', value: data.workforce.active ?? '—', icon: UserCheck, href: '/dashboard/hr/employees' },
+    { label: 'في إجازة', value: data.workforce.onLeave ?? '—', icon: CalendarDays, href: '/dashboard/hr/leaves' },
+    { label: 'طلبات إجازة معلقة', value: data.pendingLeaves ?? '—', icon: AlertTriangle, href: '/dashboard/hr/leaves' },
+    { label: 'حاضرون اليوم', value: data.attendanceToday.present ?? '—', icon: ClipboardList, href: '/dashboard/hr/attendance' },
+    { label: 'متأخرون اليوم', value: data.attendanceToday.late ?? '—', icon: TimerReset, href: '/dashboard/hr/attendance' },
+    { label: 'غائبون اليوم', value: data.attendanceToday.absent ?? '—', icon: UserX, href: '/dashboard/hr/attendance' },
+    { label: 'عن بعد اليوم', value: data.attendanceToday.remote ?? '—', icon: Home, href: '/dashboard/hr/attendance' },
   ];
 
   const quickLinks = [
@@ -90,6 +90,13 @@ export default function HrDashboardPage() {
         </button>
       </div>
 
+      {data.unavailableMetrics?.length > 0 && (
+        <div role="status" className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-amber-200 text-sm">
+          بعض مؤشرات مكين غير متاحة مؤقتًا ({data.unavailableMetrics.length} من 20 استعلامًا). تظهر القيم غير المتاحة بعلامة — بدل عرض صفر غير مؤكد.
+          <button onClick={load} className="mr-2 underline">إعادة التحميل</button>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {cards.map((card) => (
           <Link key={card.label} href={card.href} className="scc-card-hover">
@@ -114,15 +121,15 @@ export default function HrDashboardPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <Link href="/dashboard/hr/documents" className="rounded-xl bg-slate-800/60 p-4 hover:bg-slate-800 transition-colors">
             <p className="text-slate-500 text-xs">مستندات الموظفين</p>
-            <p className="text-white font-bold text-2xl mt-1">{data.expiries?.documents || 0}</p>
+            <p className="text-white font-bold text-2xl mt-1">{data.expiries?.documents ?? '—'}</p>
           </Link>
           <Link href="/dashboard/hr/contracts" className="rounded-xl bg-slate-800/60 p-4 hover:bg-slate-800 transition-colors">
             <p className="text-slate-500 text-xs">العقود</p>
-            <p className="text-white font-bold text-2xl mt-1">{data.expiries?.contracts || 0}</p>
+            <p className="text-white font-bold text-2xl mt-1">{data.expiries?.contracts ?? '—'}</p>
           </Link>
           <Link href="/dashboard/hr/contracts" className="rounded-xl bg-slate-800/60 p-4 hover:bg-slate-800 transition-colors">
             <p className="text-slate-500 text-xs">فترات التجربة</p>
-            <p className="text-white font-bold text-2xl mt-1">{data.expiries?.probation || 0}</p>
+            <p className="text-white font-bold text-2xl mt-1">{data.expiries?.probation ?? '—'}</p>
           </Link>
         </div>
       </div>
@@ -132,13 +139,13 @@ export default function HrDashboardPage() {
           <div className="flex items-center justify-between gap-3 mb-4">
             <h2 className="text-white font-semibold">الرواتب — {data.payroll.month}/{data.payroll.year}</h2>
             <Link href="/dashboard/hr/payroll-runs" className="text-primary-400 text-sm hover:text-primary-300">
-              {data.payroll.run ? `مسير الشهر: ${data.payroll.run.status}` : 'إنشاء مسير الشهر'}
+              {data.unavailableMetrics?.includes('currentPayrollRun') ? 'حالة المسير غير متاحة' : data.payroll.run ? `مسير الشهر: ${data.payroll.run.status}` : 'إنشاء مسير الشهر'}
             </Link>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <div className="rounded-xl bg-slate-800/60 p-4">
               <p className="text-slate-500 text-xs">إجمالي الصافي</p>
-              <p className="text-white font-bold mt-1">{Number(data.payroll.netTotal).toLocaleString('ar-SA')} ر.س</p>
+              <p className="text-white font-bold mt-1">{data.payroll.netTotal == null ? '—' : Number(data.payroll.netTotal).toLocaleString('ar-SA')} ر.س</p>
             </div>
             <div className="rounded-xl bg-slate-800/60 p-4">
               <p className="text-slate-500 text-xs">السجلات</p>
@@ -162,10 +169,10 @@ export default function HrDashboardPage() {
         <div className="scc-card">
           <h2 className="text-white font-semibold mb-4">الهيكل والتشغيل</h2>
           <div className="space-y-3">
-            <div className="flex items-center justify-between"><span className="text-slate-400">الإدارات</span><span className="text-white font-bold">{data.departments}</span></div>
-            <div className="flex items-center justify-between"><span className="text-slate-400">الورديات</span><span className="text-white font-bold">{data.shifts}</span></div>
-            <div className="flex items-center justify-between"><span className="text-slate-400">موقوفون</span><span className="text-white font-bold">{data.workforce.suspended}</span></div>
-            <div className="flex items-center justify-between"><span className="text-slate-400">منتهية خدمتهم</span><span className="text-white font-bold">{data.workforce.terminated}</span></div>
+            <div className="flex items-center justify-between"><span className="text-slate-400">الإدارات</span><span className="text-white font-bold">{data.departments ?? '—'}</span></div>
+            <div className="flex items-center justify-between"><span className="text-slate-400">الورديات</span><span className="text-white font-bold">{data.shifts ?? '—'}</span></div>
+            <div className="flex items-center justify-between"><span className="text-slate-400">موقوفون</span><span className="text-white font-bold">{data.workforce.suspended ?? '—'}</span></div>
+            <div className="flex items-center justify-between"><span className="text-slate-400">منتهية خدمتهم</span><span className="text-white font-bold">{data.workforce.terminated ?? '—'}</span></div>
           </div>
         </div>
       </div>
