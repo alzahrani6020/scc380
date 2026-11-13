@@ -5,6 +5,7 @@ import { EmployeesService } from '../src/hr/employees.service';
 import { HrSelfService } from '../src/hr/self-service.service';
 import { HrRequestsService } from '../src/hr/hr-requests.service';
 import { HrLifecycleService } from '../src/hr/hr-lifecycle.service';
+import { ContractsService } from '../src/hr/contracts.service';
 
 test(
   'HR self-service lifecycle: explicit user link -> self profile -> request -> onboarding tasks',
@@ -24,6 +25,7 @@ test(
     const selfService = new HrSelfService();
     const requests = new HrRequestsService();
     const lifecycle = new HrLifecycleService();
+    const contracts = new ContractsService();
     const adminReq: any = { user: { tenantId: tenantA.id, userId: `admin-${run}`, role: 'ADMIN' } };
     const selfReq: any = { user: { tenantId: tenantA.id, userId: userA.id, role: 'USER' } };
 
@@ -78,10 +80,27 @@ test(
       assert.equal(reviewed.status, 'APPROVED');
       assert.equal(reviewed.reviewedById, adminReq.user.userId);
 
-      const firstTask = onboarding.tasks.sort((a, b) => a.order - b.order)[0];
-      const updatedCase = await lifecycle.updateTask(adminReq, onboarding.id, firstTask.id, { status: 'DONE' });
-      assert.equal(updatedCase.tasks.find((t: any) => t.id === firstTask.id)?.status, 'DONE');
+      const orderedTasks = onboarding.tasks.sort((a, b) => a.order - b.order);
+      let updatedCase: any = onboarding;
+      for (const task of orderedTasks) {
+        updatedCase = await lifecycle.updateTask(adminReq, onboarding.id, task.id, { status: 'DONE' });
+      }
       assert.equal(updatedCase.status, 'IN_PROGRESS');
+      await assert.rejects(
+        () => lifecycle.complete(adminReq, onboarding.id),
+        /Active signed employment contract is required/,
+      );
+
+      const contract = await contracts.create(adminReq, {
+        employeeId: employee.id,
+        contractNumber: `SELF-CONTRACT-${run}`,
+        startDate: '2026-11-01T00:00:00.000Z',
+        basicSalary: 9000,
+      });
+      await contracts.activate(adminReq, contract.id, '2026-11-01T00:00:00.000Z');
+
+      const completed = await lifecycle.complete(adminReq, onboarding.id);
+      assert.equal(completed.status, 'COMPLETED');
 
       const selfRequests = await requests.listSelf(selfReq);
       assert.equal(selfRequests.length, 1);

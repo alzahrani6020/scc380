@@ -121,6 +121,13 @@ export class HrLifecycleService {
     const incomplete = lifecycle.tasks.filter((task) => !['DONE','SKIPPED'].includes(task.status));
     if (incomplete.length) throw new ConflictException('All lifecycle tasks must be done or skipped');
 
+    if (lifecycle.type === 'ONBOARDING') {
+      const readiness = await this.getOnboardingReadiness(tenantId, lifecycle.employeeId);
+      if (!readiness.ready) {
+        throw new ConflictException(readiness.reason);
+      }
+    }
+
     if (lifecycle.type === 'OFFBOARDING') {
       const readiness = await this.getOffboardingReadiness(tenantId, lifecycle.employeeId);
       if (!readiness.ready) {
@@ -152,6 +159,10 @@ export class HrLifecycleService {
         where: { ...tenantWhere(tenantId), id: caseId },
         select: { type: true, employeeId: true },
       });
+      if (lifecycle?.type === 'ONBOARDING') {
+        const readiness = await this.getOnboardingReadiness(tenantId, lifecycle.employeeId);
+        canComplete = readiness.ready;
+      }
       if (lifecycle?.type === 'OFFBOARDING') {
         const readiness = await this.getOffboardingReadiness(tenantId, lifecycle.employeeId);
         canComplete = readiness.ready;
@@ -164,6 +175,38 @@ export class HrLifecycleService {
         ? { status: 'COMPLETED', completedAt: new Date() }
         : { status: anyStarted ? 'IN_PROGRESS' : 'OPEN', completedAt: null },
     });
+  }
+
+  private async getOnboardingReadiness(tenantId: string, employeeId: string) {
+    const employee = await prisma.employee.findFirst({
+      where: { ...tenantWhere(tenantId), id: employeeId },
+      select: { status: true, terminationDate: true, userId: true },
+    });
+    if (!employee || employee.status !== 'ACTIVE' || employee.terminationDate) {
+      return { ready: false, reason: 'Employee must be active before onboarding completion' };
+    }
+
+    const contract = await prisma.employeeContract.findFirst({
+      where: { tenantId, employeeId, status: 'ACTIVE' },
+      orderBy: { startDate: 'desc' },
+      select: { id: true, signedAt: true },
+    });
+    if (!contract || !contract.signedAt) {
+      return { ready: false, reason: 'Active signed employment contract is required before onboarding completion' };
+    }
+
+    if (!employee.userId) {
+      return { ready: false, reason: 'Employee must be linked to an active tenant user before onboarding completion' };
+    }
+    const user = await prisma.user.findFirst({
+      where: { id: employee.userId, tenantId, status: 'ACTIVE' },
+      select: { id: true },
+    });
+    if (!user) {
+      return { ready: false, reason: 'Linked employee user must be active in the same tenant' };
+    }
+
+    return { ready: true, reason: '' };
   }
 
   private async getOffboardingReadiness(tenantId: string, employeeId: string) {
