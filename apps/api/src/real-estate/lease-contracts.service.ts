@@ -229,7 +229,7 @@ export class LeaseContractsService {
     return contract;
   }
 
-  private async generatePaymentSchedule(contract: any, db: typeof prisma = prisma) {
+  private async generatePaymentSchedule(contract: any, db: Pick<typeof prisma, 'rentPayment'> = prisma) {
     const start = new Date(contract.startDate);
     const end = new Date(contract.endDate);
     const payments = [];
