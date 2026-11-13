@@ -92,9 +92,6 @@ export class AccountingSchedulesService {
     lines: ScheduleLineInput[],
   ) {
     const accountIds = [...new Set(lines.map(line => line.accountId).filter(Boolean))];
-    if (accountIds.length !== new Set(lines.map(line => line.accountId)).size) {
-      // Duplicate accounts are allowed in accounting, so this is intentionally a no-op.
-    }
     const accounts = await tx.chartOfAccount.findMany({
       where: { tenantId, id: { in: accountIds }, isActive: true },
       select: { id: true },
@@ -227,6 +224,8 @@ export class AccountingSchedulesService {
     }
 
     const prefix = this.normalizePrefix(input.entryPrefix);
+    if (!String(input.name || '').trim()) throw new BadRequestException('Schedule name is required');
+    if (!String(input.description || '').trim()) throw new BadRequestException('Schedule description is required');
     return prisma.$transaction(async tx => {
       await this.validateReferences(tx, tenantId, input.lines);
       return tx.accountingSchedule.create({
@@ -275,6 +274,9 @@ export class AccountingSchedulesService {
     }));
     this.validateAmounts(lines);
 
+    if (input.startDate && current.runs.length > 0) {
+      throw new ConflictException('Start date cannot be changed after the schedule has posting history');
+    }
     const startDate = input.startDate ? this.asDate(input.startDate, 'startDate') : current.startDate;
     const endDate =
       input.endDate === null
@@ -307,6 +309,7 @@ export class AccountingSchedulesService {
           frequency,
           startDate,
           endDate,
+          nextRunDate: input.startDate ? startDate : undefined,
           anchorDay: input.startDate ? startDate.getUTCDate() : undefined,
           autoReverse: this.effectiveAutoReverse(kind, input.autoReverse ?? current.autoReverse),
           reverseAfterDays,
