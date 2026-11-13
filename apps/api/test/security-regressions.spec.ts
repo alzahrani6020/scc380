@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tenantWhere, withTenant } from '@scc/database';
+import { sanitizeBody } from '../src/common/interceptors/audit-log.interceptor';
 
 const src = (relative: string) => readFileSync(join(process.cwd(), relative), 'utf8');
 
@@ -257,4 +258,15 @@ test('logout and refresh failure locally clear HttpOnly cookies without claiming
   assert.match(client, /navigator\.locks\?\.request/);
   assert.match(side, /sessionAuth\('clear'\)/);
   assert.match(security, /sessionAuth\('clear'\)/);
+});
+
+test('audit logging redacts raw case evidence and employee document uploads', () => {
+  const protectedBody = sanitizeBody({
+    employeeId: 'employee-1',
+    contentBase64: 'JVBERi0xLjQ=',
+    nested: { contentBase64: 'PRIVATE_FILE_BYTES' },
+  });
+  assert.equal(protectedBody.employeeId, 'employee-1');
+  assert.equal(protectedBody.contentBase64, '***REDACTED***');
+  assert.equal(protectedBody.nested.contentBase64, '***REDACTED***');
 });
