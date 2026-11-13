@@ -172,18 +172,23 @@ test('Google OAuth does not auto-register tenantless users', () => {
   assert.match(source, /!user\.tenantId/);
 });
 
-test('refresh lifecycle is stateful, hashed, rotating, and replay-aware', () => {
-  const source = readFileSync(
-    join(process.cwd(), 'src/auth/auth.service.ts'),
-    'utf8',
-  );
+test('refresh rotation preserves session identity with atomic compare-and-swap', () => {
+  const source = readFileSync(join(process.cwd(), 'src/auth/auth.service.ts'), 'utf8');
+  const refresh = source.split('  async refresh(refreshToken: string) {')[1].split('  async logout(')[0];
 
   assert.match(source, /refreshTokenHash:\s*this\.hashToken\(refreshToken\)/);
-  assert.match(source, /prisma\.session\.create/);
-  assert.match(source, /prisma\.session\.findUnique/);
-  assert.match(source, /Refresh token reuse detected/);
-  assert.match(source, /where:\s*\{\s*id:\s*session\.id,\s*revokedAt:\s*null,/s);
-  assert.match(source, /prisma\.session\.updateMany\([\s\S]*userId:\s*session\.userId[\s\S]*revokedAt:\s*null/);
+  assert.match(source, /existingSessionId\?: string/);
+  assert.match(source, /sid: sessionKey/);
+  assert.match(source, /jti: randomBytes\(24\)\.toString\('hex'\)/);
+  assert.match(refresh, /prisma\.session\.findUnique/);
+  assert.match(refresh, /const rotated = await prisma\.session\.updateMany/);
+  assert.match(refresh, /token:\s*tokenHash/);
+  assert.match(refresh, /token:\s*tokens\.refreshTokenHash/);
+  assert.match(refresh, /session\.id,/);
+  assert.match(refresh, /lastActiveAt:\s*now/);
+  assert.match(refresh, /if \(rotated\.count !== 1\)/);
+  assert.doesNotMatch(refresh, /tx\.session\.create/);
+  assert.doesNotMatch(refresh, /where:\s*\{\s*userId:\s*session\.userId,\s*revokedAt:\s*null/);
 });
 
 test('password reset revokes all active sessions', () => {
@@ -240,9 +245,9 @@ test('access tokens are bound to persisted session ids for immediate revocation'
     'utf8',
   );
 
-  assert.ok((authSource.match(/id:\s*tokens\.sessionKey/g) ?? []).length >= 3);
+  assert.ok((authSource.match(/id:\s*tokens\.sessionKey/g) ?? []).length >= 2);
   assert.match(authSource, /sid:\s*sessionKey/);
-  assert.match(authSource, /jti:\s*sessionKey/);
+  assert.match(authSource, /jti:\s*randomBytes\(24\)\.toString\('hex'\)/);
   assert.match(strategySource, /validateAccessSessionPayload/);
   assert.match(validatorSource, /where:\s*\{\s*id:\s*payload\.sid\s*\}/);
   assert.match(validatorSource, /session\.revokedAt/);

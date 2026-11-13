@@ -58,7 +58,7 @@ test(
       });
       assert.equal(Number(snapshot.amount), 1500);
 
-      await payrollRuns.approve(reqA, payrollRun.id);
+      await payrollRuns.approve(reqA, payrollRun.id, true);
       await payrollRuns.pay(reqA, payrollRun.id);
 
       const afterPayroll = await prisma.employeeLoan.findUniqueOrThrow({ where: { id: draftLoan.id } });

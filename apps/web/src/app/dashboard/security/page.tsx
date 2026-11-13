@@ -27,12 +27,19 @@ export default function SecurityPage() {
     setLoading(true);
     setError('');
     try {
-      const [sessionResult, keysResult] = await Promise.all([
+      const [sessionResult, keysResult] = await Promise.allSettled([
         api.get('/security/sessions/me'),
         api.get('/security/api-keys'),
       ]);
-      setSessions(sessionResult.data.data || []);
-      setApiKeys(keysResult.data.data || []);
+      if (sessionResult.status === 'fulfilled') {
+        setSessions(sessionResult.value.data.data || []);
+      }
+      if (keysResult.status === 'fulfilled') {
+        setApiKeys(keysResult.value.data.data || []);
+      }
+      if (sessionResult.status === 'rejected' || keysResult.status === 'rejected') {
+        setError('تعذر تحميل بعض بيانات الأمان. قد تكون البيانات المعروضة قديمة؛ أعد المحاولة.');
+      }
     } catch {
       setError('تعذر تحميل بيانات الأمان. تحقق من الاتصال والصلاحيات ثم أعد المحاولة.');
     } finally {

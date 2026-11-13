@@ -225,8 +225,11 @@ export class PayrollRunsService {
     });
   }
 
-  async approve(req: any, id: string) {
+  async approve(req: any, id: string, deductionsReviewed = false) {
     const tenantId = req.user?.tenantId;
+    if (deductionsReviewed !== true) {
+      throw new BadRequestException('Payroll deductions must be explicitly reviewed before approval');
+    }
     const run = await prisma.payrollRun.findFirst({
       where: { ...tenantWhere(tenantId), id },
       include: { items: true },
@@ -234,8 +237,37 @@ export class PayrollRunsService {
     if (!run) throw new NotFoundException('Payroll run not found');
     if (run.status !== 'DRAFT') throw new ConflictException('Only draft payroll runs can be approved');
     if (run.items.length === 0) throw new BadRequestException('Payroll run has no items');
-    if (run.items.some((item) => money(item.netSalary) < 0)) {
-      throw new BadRequestException('Payroll run contains invalid negative net salary');
+    // Avoid silently approving provisional zero deductions or inconsistent salary snapshots.
+    for (const item of run.items) {
+      const values = [
+        item.basicSalary, item.housingAllowance, item.transportAllowance, item.otherAllowances,
+        item.gosiDeduction, item.taxDeduction, item.otherDeductions, item.loanDeductionsTotal,
+        item.grossSalary, item.totalDeductions, item.netSalary,
+      ].map(money);
+      if (values.some(value => !Number.isFinite(value) || value < 0)) {
+        throw new BadRequestException('Payroll run contains invalid payroll amounts');
+      }
+      const [basic, housing, transport, other, gosi, tax, deductions, loans, gross, total, net] = values;
+      const toCents = (value: number) => Math.round(value * 100);
+      if (toCents(gross) !== toCents(basic) + toCents(housing) + toCents(transport) + toCents(other)
+        || toCents(total) !== toCents(gosi) + toCents(tax) + toCents(deductions) + toCents(loans)
+        || toCents(net) !== toCents(gross) - toCents(total)) {
+        throw new BadRequestException('Payroll run item totals are inconsistent');
+      }
+    }
+    const aggregate = run.items.reduce(
+      (sum, item) => ({
+        gross: sum.gross + Math.round(money(item.grossSalary) * 100),
+        deductions: sum.deductions + Math.round(money(item.totalDeductions) * 100),
+        net: sum.net + Math.round(money(item.netSalary) * 100),
+      }),
+      { gross: 0, deductions: 0, net: 0 },
+    );
+    if (run.employeeCount !== run.items.length
+      || Math.round(money(run.grossTotal) * 100) !== aggregate.gross
+      || Math.round(money(run.deductionTotal) * 100) !== aggregate.deductions
+      || Math.round(money(run.netTotal) * 100) !== aggregate.net) {
+      throw new BadRequestException('Payroll run totals do not match payroll items');
     }
 
     const existingPayroll = await prisma.payroll.findFirst({
@@ -244,14 +276,16 @@ export class PayrollRunsService {
     });
     if (existingPayroll) throw new ConflictException('Individual payroll records already exist for this period');
 
-    return prisma.payrollRun.update({
-      where: { id },
+    const changed = await prisma.payrollRun.updateMany({
+      where: { ...tenantWhere(tenantId), id, status: 'DRAFT' },
       data: {
         status: 'APPROVED',
         approvedAt: new Date(),
         approvedById: req.user?.userId || req.user?.sub || req.user?.id || null,
       },
     });
+    if (changed.count !== 1) throw new ConflictException('Payroll run status changed concurrently');
+    return prisma.payrollRun.findFirstOrThrow({ where: { ...tenantWhere(tenantId), id } });
   }
 
   async pay(req: any, id: string) {

@@ -98,9 +98,9 @@ export default function PayrollRunsPage() {
   };
 
   const approve = async () => {
-    if (!confirm('اعتماد المسير سيقفل جميع بنوده. متابعة؟')) return;
+    if (!confirm('أؤكد أنني راجعت خصومات التأمينات والضرائب والخصومات الأخرى لجميع الموظفين، بما فيها القيم الصفرية. سيتم قفل المسير بعد الاعتماد. متابعة؟')) return;
     try {
-      await api.post(`/hr/payroll-runs/${selected.id}/approve`, {});
+      await api.post(`/hr/payroll-runs/${selected.id}/approve`, { deductionsReviewed: true });
       await openRun(selected.id);
       await refresh();
     } catch (err: any) {
