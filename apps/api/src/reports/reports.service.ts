@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { prisma, tenantWhere } from '@scc/database';
+import { VatLedgerService } from '../accounting-core/vat-ledger.service';
 
 type UnifiedLedgerRow = {
   id: string;
@@ -13,6 +14,7 @@ type UnifiedLedgerRow = {
 
 @Injectable()
 export class ReportsService {
+  constructor(private readonly vatLedger: VatLedgerService) {}
   private buildDateFilter(from?: string, to?: string) {
     const date: any = {};
     if (from) date.gte = new Date(from);
@@ -291,44 +293,94 @@ export class ReportsService {
   }
 
   async getVatReport(tenantId: string | undefined, userRole: string, from?: string, to?: string) {
-    const tw = this.tenantFilter(tenantId, userRole);
-    const date = this.buildDateFilter(from, to);
+    if (!tenantId && userRole !== 'SUPER_ADMIN') {
+      throw new BadRequestException('Tenant is required');
+    }
+    if (!tenantId) {
+      throw new BadRequestException('VAT report requires a tenant scope');
+    }
 
-    const [outputVat, inputVat] = await Promise.all([
-      prisma.invoice.aggregate({
-        _sum: { taxAmount: true, total: true },
-        where: {
-          ...tw,
-          status: { in: ['SENT', 'VIEWED', 'PAID', 'PARTIAL', 'OVERDUE'] },
-          ...(date ? { issueDate: date } : {}),
-        },
+    const periodStart = from ? new Date(from) : new Date('1970-01-01T00:00:00.000Z');
+    const periodEnd = to ? new Date(to) : new Date('9999-12-31T23:59:59.999Z');
+    if (Number.isNaN(periodStart.getTime()) || Number.isNaN(periodEnd.getTime())) {
+      throw new BadRequestException('Invalid VAT report date range');
+    }
+    periodStart.setUTCHours(0, 0, 0, 0);
+    periodEnd.setUTCHours(23, 59, 59, 999);
+    if (periodEnd < periodStart) {
+      throw new BadRequestException('VAT report end date must be on or after start date');
+    }
+
+    const [snapshot, tenant, salesDocs, purchaseDocs] = await Promise.all([
+      prisma.$transaction(tx =>
+        this.vatLedger.snapshot(tx, tenantId, periodStart, periodEnd),
+      ),
+      prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { baseCurrency: true },
       }),
-      prisma.supplierInvoice.aggregate({
-        _sum: { taxAmount: true, total: true },
+      prisma.invoice.findMany({
         where: {
-          ...tw,
-          status: { not: 'CANCELLED' },
-          ...(date ? { issueDate: date } : {}),
+          tenantId,
+          status: { in: ['SENT', 'VIEWED', 'PAID', 'PARTIAL', 'OVERDUE'] },
+          issueDate: { gte: periodStart, lte: periodEnd },
         },
+        select: { total: true, baseTotal: true, currency: true },
+      }),
+      prisma.supplierInvoice.findMany({
+        where: {
+          tenantId,
+          status: { not: 'CANCELLED' },
+          issueDate: { gte: periodStart, lte: periodEnd },
+        },
+        select: { total: true, baseTotal: true, currency: true },
       }),
     ]);
 
-    const outputVatAmount = Number(outputVat._sum.taxAmount || 0);
-    const inputVatAmount = Number(inputVat._sum.taxAmount || 0);
-    const netVat = outputVatAmount - inputVatAmount;
+    if (!tenant) throw new BadRequestException('Tenant not found');
+    const baseCurrency = String(tenant.baseCurrency || 'SAR').toUpperCase();
+
+    const sumBaseDocuments = (rows: Array<any>) => {
+      let total = 0;
+      let unconvertedDocumentCount = 0;
+      for (const row of rows) {
+        if (row.baseTotal !== null && row.baseTotal !== undefined) {
+          total += Number(row.baseTotal);
+          continue;
+        }
+        const currency = String(row.currency || baseCurrency).toUpperCase();
+        if (currency === baseCurrency) {
+          total += Number(row.total || 0);
+        } else {
+          unconvertedDocumentCount += 1;
+        }
+      }
+      return { total, unconvertedDocumentCount };
+    };
+
+    const sales = sumBaseDocuments(salesDocs);
+    const purchases = sumBaseDocuments(purchaseDocs);
+    const netVat = Number(snapshot.netVat);
 
     return {
-      period: { from: from || 'all', to: to || 'all' },
+      period: {
+        from: from || 'all',
+        to: to || 'all',
+        baseCurrency,
+      },
       outputVat: {
-        totalSales: Number(outputVat._sum.total || 0),
-        vatAmount: outputVatAmount,
+        totalSales: sales.total,
+        vatAmount: Number(snapshot.outputVat),
+        unconvertedDocumentCount: sales.unconvertedDocumentCount,
       },
       inputVat: {
-        totalPurchases: Number(inputVat._sum.total || 0),
-        vatAmount: inputVatAmount,
+        totalPurchases: purchases.total,
+        vatAmount: Number(snapshot.inputVat),
+        unconvertedDocumentCount: purchases.unconvertedDocumentCount,
       },
       netVatPayable: netVat > 0 ? netVat : 0,
       netVatReceivable: netVat < 0 ? Math.abs(netVat) : 0,
+      source: 'POSTED_LEDGER_BASE_CURRENCY',
     };
   }
 

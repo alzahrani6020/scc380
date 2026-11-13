@@ -80,6 +80,63 @@ export class AccountingPostingService {
     if (closed) throw new ConflictException(`Financial period "${closed.name}" is closed`);
   }
 
+  private async assertVatPeriodOpen(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    date: Date,
+    lines: PostingLine[],
+    sourceType?: string,
+  ) {
+    if (sourceType === 'VAT_SETTLEMENT' || sourceType === 'VAT_SETTLEMENT_REVERSAL') return;
+
+    const locked = await tx.vatReturn.findFirst({
+      where: {
+        tenantId,
+        status: { in: ['FILED', 'SETTLED'] },
+        periodStart: { lte: date },
+        periodEnd: { gte: date },
+      },
+      select: { id: true, periodStart: true, periodEnd: true, status: true },
+    });
+    if (!locked) return;
+
+    const tenant = await tx.tenant.findUnique({
+      where: { id: tenantId },
+      select: { settings: true },
+    });
+    const settings =
+      tenant?.settings && typeof tenant.settings === 'object' && !Array.isArray(tenant.settings)
+        ? (tenant.settings as any)
+        : {};
+    const mapping =
+      settings?.accounting?.accountMapping &&
+      typeof settings.accounting.accountMapping === 'object'
+        ? settings.accounting.accountMapping
+        : {};
+
+    const vatCodes = [
+      String(mapping.VAT_PAYABLE || '2110'),
+      String(mapping.VAT_RECEIVABLE || '1140'),
+    ];
+    const accountIds = [...new Set(lines.map(line => line.accountId))];
+    const vatAccount = await tx.chartOfAccount.findFirst({
+      where: {
+        tenantId,
+        id: { in: accountIds },
+        code: { in: vatCodes },
+      },
+      select: { id: true, code: true },
+    });
+
+    if (vatAccount) {
+      throw new ConflictException(
+        `VAT period ${locked.periodStart.toISOString().slice(0, 10)} to ${locked.periodEnd
+          .toISOString()
+          .slice(0, 10)} is ${locked.status}; VAT-impacting backdated posting is blocked`,
+      );
+    }
+  }
+
   private async assertDimensions(
     tx: Prisma.TransactionClient,
     tenantId: string,
@@ -126,6 +183,7 @@ export class AccountingPostingService {
 
     this.validateBalancedLines(input.lines);
     await this.assertPeriodOpen(tx, input.tenantId, date);
+    await this.assertVatPeriodOpen(tx, input.tenantId, date, input.lines, input.sourceType);
     await this.assertDimensions(tx, input.tenantId, input.lines);
 
     const duplicate = await tx.journalEntryHeader.findFirst({
