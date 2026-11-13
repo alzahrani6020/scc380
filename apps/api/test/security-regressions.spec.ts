@@ -220,6 +220,7 @@ test('Next auth session proxy protects refresh cookie and enforces same-origin C
   const login = src('../web/src/app/auth/login/page.tsx');
   const twoFactor = src('../web/src/app/auth/verify-2fa/page.tsx');
   const sidebar = src('../web/src/components/layout/Sidebar.tsx');
+  const middleware = src('../web/src/middleware.ts');
   assert.match(route, /httpOnly: true/);
   assert.match(route, /sameSite: 'strict'/);
   assert.match(route, /'__Host-scc_refresh'/);
@@ -236,4 +237,6 @@ test('Next auth session proxy protects refresh cookie and enforces same-origin C
   assert.match(login, /sessionAuth\('google'/);
   assert.match(twoFactor, /sessionAuth\('verify-2fa-login'/);
   assert.match(sidebar, /sessionAuth\('logout'/);
+  assert.match(middleware, /const mayRefresh = !!request\.cookies\.get\(refreshCookieName\)/);
+  assert.match(middleware, /if \(!sessionValid && !mayRefresh\)/);
 });
