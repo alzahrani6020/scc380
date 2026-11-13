@@ -64,12 +64,13 @@ export class PropertiesService {
   }
 
   async summary(tenantId: string) {
-    const [total, active, totalUnits, occupiedUnits] = await Promise.all([
+    const [total, active, totalUnits, occupiedUnits, vacantUnits] = await Promise.all([
       prisma.property.count({ where: withTenant({}, tenantId) }),
       prisma.property.count({ where: withTenant({ status: 'ACTIVE' }, tenantId) }),
       prisma.unit.count({ where: withTenant({}, tenantId) }),
       prisma.unit.count({ where: withTenant({ status: 'OCCUPIED' }, tenantId) }),
+      prisma.unit.count({ where: withTenant({ status: 'VACANT' }, tenantId) }),
     ]);
-    return { total, active, totalUnits, occupiedUnits, vacantUnits: totalUnits - occupiedUnits };
+    return { total, active, totalUnits, occupiedUnits, vacantUnits };
   }
 }
