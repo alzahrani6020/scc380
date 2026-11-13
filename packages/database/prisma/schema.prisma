@@ -30,6 +30,8 @@ model Tenant {
   baseCurrency  String    @default("SAR")
   fxGainAccountId String?
   fxLossAccountId String?
+  vatSettlementPayableAccountId String?
+  vatSettlementReceivableAccountId String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   deletedAt     DateTime?
@@ -119,6 +121,7 @@ model Tenant {
   budgetPlans BudgetPlan[]
   budgetLines BudgetLine[]
   exchangeRates ExchangeRate[]
+  vatReturns VatReturn[]
   yearEndCloses YearEndClose[]
   zatcaCredential ZatcaCredential?
   dataSubjectConsents DataSubjectConsent[]
@@ -3536,6 +3539,44 @@ model ExchangeRate {
 // ============================================================
 // FINANCIAL PERIODS / الفترات المالية
 // ============================================================
+
+enum VatReturnStatus {
+  DRAFT
+  FILED
+  SETTLED
+}
+
+model VatReturn {
+  id                  String          @id @default(cuid())
+  tenantId            String
+  tenant              Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  periodStart         DateTime
+  periodEnd           DateTime
+  status              VatReturnStatus @default(DRAFT)
+
+  outputVat           Decimal?        @db.Decimal(18,2)
+  inputVat            Decimal?        @db.Decimal(18,2)
+  netVat              Decimal?        @db.Decimal(18,2)
+
+  filedAt             DateTime?
+  filedBy             String?
+  settlementVersion   Int             @default(0)
+  settlementJournalId String?
+  reversalJournalId   String?
+  settledAt           DateTime?
+  settledBy           String?
+  reversedAt          DateTime?
+  reversedBy          String?
+
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  @@unique([tenantId, periodStart, periodEnd])
+  @@index([tenantId, status])
+  @@index([tenantId, periodStart, periodEnd])
+  @@map("vat_returns")
+}
 
 model FinancialPeriod {
   id            String    @id @default(cuid())
