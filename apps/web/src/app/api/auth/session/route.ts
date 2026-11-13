@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
-const COOKIE = '__Host-scc_refresh';
+const COOKIE = process.env.NODE_ENV === 'production' ? '__Host-scc_refresh' : 'scc_refresh';
 const ALLOWED = ['login', 'google', 'verify-2fa-login', 'refresh', 'logout', 'migrate'] as const;
 type Action = typeof ALLOWED[number];
 
