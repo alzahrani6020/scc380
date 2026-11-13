@@ -101,7 +101,7 @@ export default function HrDashboardPage() {
             </h2>
             <p className="text-slate-500 text-xs mt-1">المنتهية أو التي ستنتهي خلال {data.expiries?.horizonDays || 30} يومًا</p>
           </div>
-          <Link href="/dashboard/alerts" className="text-primary-400 text-sm hover:text-primary-300">عرض التنبيهات</Link>
+          <span className="text-slate-500 text-xs">تحديث تلقائي يومي</span>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <Link href="/dashboard/hr/documents" className="rounded-xl bg-slate-800/60 p-4 hover:bg-slate-800 transition-colors">
