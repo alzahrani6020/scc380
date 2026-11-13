@@ -189,7 +189,7 @@ export default function Sidebar({
     prev.includes(section) ? prev.filter(s => s !== section) : [...prev, section]
   );
 
-  const menu = (
+  const renderMenu = (scope: 'desktop' | 'mobile') => (
     <>
       <div className="flex h-20 shrink-0 items-center justify-between border-b border-slate-700/70 px-5">
         <div className="flex items-center gap-3">
@@ -206,11 +206,11 @@ export default function Sidebar({
         </button>
       </div>
       <div className="shrink-0 px-3 pt-3">
-        <label htmlFor={mobileOpen ? 'scc-nav-search-mobile' : 'scc-nav-search-desktop'} className="sr-only">البحث في قائمة النظام</label>
+        <label htmlFor={`scc-nav-search-${scope}`} className="sr-only">البحث في قائمة النظام</label>
         <div className="relative">
           <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
-            id={mobileOpen ? 'scc-nav-search-mobile' : 'scc-nav-search-desktop'}
+            id={`scc-nav-search-${scope}`}
             value={query}
             onChange={e => setQuery(e.target.value)}
             type="search"
@@ -272,13 +272,13 @@ export default function Sidebar({
   return (
     <>
       <aside className="fixed inset-y-0 right-0 z-50 hidden w-72 flex-col border-l border-slate-800 bg-slate-900 lg:flex">
-        {menu}
+        {renderMenu('desktop')}
       </aside>
       {mobileOpen && (
         <div className="fixed inset-0 z-[70] lg:hidden">
           <button type="button" aria-label="إغلاق قائمة التنقل" onClick={onClose} className="absolute inset-0 bg-slate-950/75" />
           <aside dir="rtl" role="dialog" aria-modal="true" aria-label="قائمة التنقل" className="absolute inset-y-0 right-0 flex w-[min(19rem,90vw)] flex-col border-l border-slate-700 bg-slate-900 shadow-2xl">
-            {menu}
+            {renderMenu('mobile')}
           </aside>
         </div>
       )}
