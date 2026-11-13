@@ -59,3 +59,12 @@ test('employee self-service exposes only approved or paid payroll, never drafts'
   assert.match(payroll, /status:\s*\{\s*in:\s*\['APPROVED',\s*'PAID'\]\s*\}/);
   assert.doesNotMatch(payroll, /DRAFT/);
 });
+
+test('employee self-service exposes only submitted or acknowledged performance reviews, never drafts', () => {
+  const service = src('src/hr/self-service.service.ts');
+  const reviews = service.slice(service.indexOf('async getPerformanceReviews'), service.indexOf('async acknowledgePerformanceReview'));
+  assert.match(reviews, /tenantWhere\(req\.user\.tenantId\)/);
+  assert.match(reviews, /employeeId:\s*employee\.id/);
+  assert.match(reviews, /status:\s*\{\s*in:\s*\['SUBMITTED',\s*'ACKNOWLEDGED'\]\s*\}/);
+  assert.doesNotMatch(reviews, /DRAFT/);
+});
