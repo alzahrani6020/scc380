@@ -46,7 +46,11 @@ export class HrSelfService {
     const employee = await this.resolveEmployee(req);
     const limit = Math.min(Math.max(Number(limitRaw || 12) || 12, 1), 24);
     const rows = await prisma.payroll.findMany({
-      where: { ...tenantWhere(req.user.tenantId), employeeId: employee.id },
+      where: {
+        ...tenantWhere(req.user.tenantId),
+        employeeId: employee.id,
+        status: { in: ['APPROVED', 'PAID'] },
+      },
       orderBy: [{ year: 'desc' }, { month: 'desc' }],
       take: limit,
       select: {

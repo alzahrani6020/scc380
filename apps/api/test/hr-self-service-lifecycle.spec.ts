@@ -50,3 +50,12 @@ test('self-service profile update whitelists only contact and emergency fields',
   assert.doesNotMatch(method, /data\.status\s*=/);
   assert.doesNotMatch(method, /data\.terminationDate\s*=/);
 });
+
+test('employee self-service exposes only approved or paid payroll, never drafts', () => {
+  const service = src('src/hr/self-service.service.ts');
+  const payroll = service.slice(service.indexOf('async getPayroll'), service.indexOf('async getDocuments'));
+  assert.match(payroll, /tenantWhere\(req\.user\.tenantId\)/);
+  assert.match(payroll, /employeeId:\s*employee\.id/);
+  assert.match(payroll, /status:\s*\{\s*in:\s*\['APPROVED',\s*'PAID'\]\s*\}/);
+  assert.doesNotMatch(payroll, /DRAFT/);
+});
