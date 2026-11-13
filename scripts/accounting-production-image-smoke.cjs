@@ -89,6 +89,11 @@ async function main() {
   const products = await expectStatus('ADMIN', admin, '/inventory/products', 200);
   assert.deepEqual(ids(products.payload), ['acct-smoke-product-a']);
 
+  const vatReturns = await expectStatus('ADMIN', admin, '/finance/vat-returns', 200);
+  assert.deepEqual(ids(vatReturns.payload), []);
+  const vatConfig = await expectStatus('ADMIN', admin, '/finance/vat-returns/config', 200);
+  assert.equal(vatConfig.payload?.baseCurrency, 'SAR');
+
   for (const path of [
     '/finance/cost-centers',
     '/finance/fixed-assets/categories',
@@ -97,6 +102,8 @@ async function main() {
     '/finance/fx/config',
     '/finance/fx/rates',
     '/inventory/products',
+    '/finance/vat-returns',
+    '/finance/vat-returns/config',
   ]) {
     await expectStatus('READONLY', readonly, path, 200);
   }
@@ -116,6 +123,13 @@ async function main() {
       toCurrency: 'SAR',
       rate: 3.75,
       effectiveDate: '2099-01-01',
+    },
+  });
+  await expectStatus('READONLY', readonly, '/finance/vat-returns', 403, {
+    method: 'POST',
+    body: {
+      periodStart: '2099-01-01',
+      periodEnd: '2099-03-31',
     },
   });
 
