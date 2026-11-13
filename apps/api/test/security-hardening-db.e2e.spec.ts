@@ -7,6 +7,7 @@ import { prisma } from '@scc/database';
 import * as speakeasy from 'speakeasy';
 import { AuthService } from '../src/auth/auth.service';
 import { ApiKeysService } from '../src/security/api-keys.service';
+import { SessionsService } from '../src/security/sessions.service';
 
 test('DB-backed new API keys are hashed, legacy keys untouched, tenant isolation enforced', {
   skip: process.env.CRM_DB_E2E !== '1',
@@ -37,6 +38,18 @@ test('DB-backed new API keys are hashed, legacy keys untouched, tenant isolation
       assert.equal((await svc.findAll(mismatched)).count, 0);
       await assert.rejects(() => svc.revoke(mismatched, created.id));
       assert.equal((await svc.revoke(req, created.id)).revoked, true);
+    assert.equal((await svc.revoke(req, created.id)).revoked, false);
+    const events = await prisma.auditLog.findMany({
+      where: { userId: user.id, entityType: 'ApiKey' },
+      orderBy: { createdAt: 'asc' },
+    });
+    assert.deepEqual(events.map((e) => e.action).sort(), ['API_KEY_CREATED', 'API_KEY_REVOKED']);
+    for (const e of events) {
+      assert.equal(JSON.stringify(e.newValues).includes(created.key), false);
+      assert.equal(JSON.stringify(e.newValues).includes(stored.key), false);
+      assert.equal(e.entityId, created.id);
+      assert.equal(e.tenantId, tenant.id);
+    }
     } finally {
       await prisma.tenant.delete({ where: { id: otherTenant.id } });
     }
@@ -82,6 +95,58 @@ test('Redis-backed 2FA challenge can issue only one session', {
     assert.equal(attempts.filter((x) => x.status === 'fulfilled').length, 1);
     assert.equal(attempts.filter((x) => x.status === 'rejected').length, 1);
     assert.deepEqual((await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).twoFactorBackupCodes, []);
+  } finally {
+    await prisma.tenant.delete({ where: { id: tenant.id } });
+    await prisma.$disconnect();
+  }
+});
+
+test('DB-backed session revoke audit is tenant-safe and records only successful changes', {
+  skip: process.env.CRM_DB_E2E !== '1',
+}, async () => {
+  const run = `${process.pid}-${Date.now()}`;
+  const tenant = await prisma.tenant.create({
+    data: { name: 'Session audit test ' + run, slug: 'session-audit-' + run },
+  });
+  try {
+    const user = await prisma.user.create({
+      data: {
+        tenantId: tenant.id, email: 'session-audit-' + run + '@example.test',
+        firstName: 'Audit', lastName: 'Test', role: 'ADMIN', status: 'ACTIVE',
+      },
+    });
+    const otherUser = await prisma.user.create({
+      data: {
+        tenantId: tenant.id, email: 'other-session-' + run + '@example.test',
+        firstName: 'Other', lastName: 'Test', role: 'USER', status: 'ACTIVE',
+      },
+    });
+    const now = Date.now();
+    const addSession = (userId: string, key: string) => prisma.session.create({
+      data: {
+        userId, tenantId: tenant.id, token: 'audit-session-test-' + run + '-' + key,
+        expiresAt: new Date(now + 60_000),
+      },
+    });
+    const a = await addSession(user.id, 'a');
+    const b = await addSession(user.id, 'b');
+    const foreign = await addSession(otherUser.id, 'foreign');
+    const req = { user: { userId: user.id, tenantId: tenant.id, sessionId: a.id } };
+    const service = new SessionsService();
+    await assert.rejects(() => service.revoke(req, foreign.id));
+    assert.deepEqual(await service.revoke(req, a.id), { revoked: 1 });
+    assert.deepEqual(await service.revoke(req, a.id), { revoked: 0 });
+    assert.deepEqual(await service.revokeAll(req), { revoked: 1 });
+    assert.deepEqual(await service.revokeAll(req), { revoked: 0 });
+    assert.equal((await prisma.session.findUniqueOrThrow({ where: { id: foreign.id } })).revokedAt, null);
+    assert.notEqual((await prisma.session.findUniqueOrThrow({ where: { id: b.id } })).revokedAt, null);
+    const audit = await prisma.auditLog.findMany({ where: { userId: user.id, entityType: 'Session' } });
+    assert.equal(audit.length, 2, 'retries and foreign revokes must not generate extra audit rows');
+    assert.deepEqual(audit.map((event) => event.action).sort(), ['SESSIONS_REVOKED_ALL', 'SESSION_REVOKED']);
+    for (const event of audit) {
+      assert.equal(event.tenantId, tenant.id);
+      assert.equal(JSON.stringify(event.newValues).includes('audit-session-test-'), false);
+    }
   } finally {
     await prisma.tenant.delete({ where: { id: tenant.id } });
     await prisma.$disconnect();
