@@ -170,13 +170,20 @@ export class PayrollRunsService {
 
   async updateItem(req: any, runId: string, itemId: string, dto: any) {
     const tenantId = req.user?.tenantId;
-    const run = await prisma.payrollRun.findFirst({
-      where: { ...tenantWhere(tenantId), id: runId },
-    });
+    return prisma.$transaction(async (tx) => {
+      // Serialize all item changes with approval on the same payroll-run row.
+      const locked = await tx.payrollRun.updateMany({
+        where: { ...tenantWhere(tenantId), id: runId, status: 'DRAFT' },
+        data: { status: 'DRAFT' },
+      });
+      if (locked.count !== 1) throw new ConflictException('Only draft payroll runs can be edited');
+      const run = await tx.payrollRun.findFirst({
+        where: { ...tenantWhere(tenantId), id: runId },
+      });
     if (!run) throw new NotFoundException('Payroll run not found');
     if (run.status !== 'DRAFT') throw new ConflictException('Only draft payroll runs can be edited');
 
-    const item = await prisma.payrollRunItem.findFirst({
+    const item = await tx.payrollRunItem.findFirst({
       where: { ...tenantWhere(tenantId), id: itemId, payrollRunId: runId },
     });
     if (!item) throw new NotFoundException('Payroll run item not found');
@@ -203,8 +210,7 @@ export class PayrollRunsService {
     const netSalary = grossSalary - totalDeductions;
     if (netSalary < 0) throw new BadRequestException('Payroll net salary cannot be negative');
 
-    return prisma.$transaction(async (tx) => {
-      const updated = await tx.payrollRunItem.update({
+    const updated = await tx.payrollRunItem.update({
         where: { id: itemId },
         data: {
           basicSalary,
@@ -222,7 +228,7 @@ export class PayrollRunsService {
       });
       await this.recalculateTotals(tx, runId);
       return updated;
-    });
+    }, { isolationLevel: 'Serializable' });
   }
 
   async approve(req: any, id: string, deductionsReviewed = false) {
@@ -230,10 +236,17 @@ export class PayrollRunsService {
     if (deductionsReviewed !== true) {
       throw new BadRequestException('Payroll deductions must be explicitly reviewed before approval');
     }
-    const run = await prisma.payrollRun.findFirst({
-      where: { ...tenantWhere(tenantId), id },
-      include: { items: true },
-    });
+    return prisma.$transaction(async (tx) => {
+      // Lock the same parent row as updateItem before reading any salary values.
+      const locked = await tx.payrollRun.updateMany({
+        where: { ...tenantWhere(tenantId), id, status: 'DRAFT' },
+        data: { status: 'DRAFT' },
+      });
+      if (locked.count !== 1) throw new ConflictException('Only draft payroll runs can be approved');
+      const run = await tx.payrollRun.findFirst({
+        where: { ...tenantWhere(tenantId), id },
+        include: { items: true },
+      });
     if (!run) throw new NotFoundException('Payroll run not found');
     if (run.status !== 'DRAFT') throw new ConflictException('Only draft payroll runs can be approved');
     if (run.items.length === 0) throw new BadRequestException('Payroll run has no items');
@@ -270,13 +283,13 @@ export class PayrollRunsService {
       throw new BadRequestException('Payroll run totals do not match payroll items');
     }
 
-    const existingPayroll = await prisma.payroll.findFirst({
+    const existingPayroll = await tx.payroll.findFirst({
       where: { ...tenantWhere(tenantId), year: run.year, month: run.month },
       select: { id: true },
     });
     if (existingPayroll) throw new ConflictException('Individual payroll records already exist for this period');
 
-    const changed = await prisma.payrollRun.updateMany({
+    const changed = await tx.payrollRun.updateMany({
       where: { ...tenantWhere(tenantId), id, status: 'DRAFT' },
       data: {
         status: 'APPROVED',
@@ -285,7 +298,8 @@ export class PayrollRunsService {
       },
     });
     if (changed.count !== 1) throw new ConflictException('Payroll run status changed concurrently');
-    return prisma.payrollRun.findFirstOrThrow({ where: { ...tenantWhere(tenantId), id } });
+    return tx.payrollRun.findFirstOrThrow({ where: { ...tenantWhere(tenantId), id } });
+    }, { isolationLevel: 'Serializable' });
   }
 
   async pay(req: any, id: string) {

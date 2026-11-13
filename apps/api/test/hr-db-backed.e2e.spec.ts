@@ -268,6 +268,19 @@ test(
       assert.equal(approvedRun.status, 'APPROVED');
       assert.ok(approvedRun.approvedAt);
 
+      // A finalized run must never accept a late deduction edit or a second approval.
+      await assert.rejects(
+        () => payrollRuns.updateItem(reqA, payrollRun.id, payrollRun.items[0].id, { gosiDeduction: 1200 }),
+        /Only draft payroll runs can be edited/,
+      );
+      await assert.rejects(
+        () => payrollRuns.approve(reqA, payrollRun.id, true),
+        /Only draft payroll runs can be approved/,
+      );
+      const approvedSnapshot = await payrollRuns.findOne(reqA, payrollRun.id);
+      assert.equal(Number(approvedSnapshot.items[0].gosiDeduction), 1000);
+      assert.equal(Number(approvedSnapshot.netTotal), 15200);
+
       const paidRun = await payrollRuns.pay(reqA, payrollRun.id);
       assert.equal(paidRun.status, 'PAID');
       assert.ok(paidRun.paidAt);
