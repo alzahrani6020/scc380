@@ -43,10 +43,14 @@ async function refreshAccessToken(): Promise<string | null> {
   if (typeof window === 'undefined') return null;
   if (refreshPromise) return refreshPromise;
 
-  const legacyToken = getRefreshToken();
   refreshPromise = (async () => {
     try {
-      let res: any;
+      // Serialize refreshes across same-origin tabs where Web Locks is
+      // available. API rotation remains atomic when Web Locks is unsupported.
+      const rotate = async (): Promise<string | null> => {
+        // Read browser storage after obtaining the cross-tab lock.
+        const legacyToken = getRefreshToken();
+        let res: any;
       // One-time migration for existing signed-in users. Rotate the old
       // credential server-side, then remove it from browser storage.
       if (legacyToken) {
@@ -63,6 +67,11 @@ async function refreshAccessToken(): Promise<string | null> {
         user: { email: res.user.email },
       }, remember);
       return res.accessToken as string;
+      };
+      if (typeof navigator !== 'undefined' && navigator.locks?.request) {
+        return await navigator.locks.request('scc380-refresh-token', { mode: 'exclusive' }, rotate);
+      }
+      return await rotate();
     } catch {
       return null;
     } finally {
@@ -102,6 +111,12 @@ api.interceptors.response.use(
         return api(original);
       }
 
+      // A revoked session can leave an HttpOnly cookie in the browser.
+      // Clear it on the same origin before redirecting so middleware will
+      // not treat the stale cookie as a resumable session.
+      try { await sessionAuth('clear'); } catch {
+        // Network failure cannot be mistaken for successful server revocation.
+      }
       clearAuth();
       window.location.href = '/auth/login';
     }
