@@ -42,13 +42,12 @@ export default function UnitsPage(){
  const remove=async(id:string)=>{if(!confirm('حذف الوحدة؟'))return;setActionError(false);try{await api.delete('/real-estate/units/'+id);await load()}catch(err){console.error(err);setActionError(true)}};
  return <div className="space-y-6 animate-fade-in-up">
   <div className="flex items-center justify-between"><div><h1 className="text-2xl font-bold text-white flex items-center gap-2"><DoorOpen className="h-6 w-6 text-primary-400"/>الوحدات</h1><p className="text-slate-400 text-sm mt-1">{items.length} وحدة</p></div><Button onClick={create}><Plus className="h-5 w-5"/>وحدة جديدة</Button></div>
-  {loading?<div className="h-64 flex items-center justify-center text-slate-400">جاري التحميل...</div>:<div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">{items.map(x=><div key={x.id} className="scc-card-hover">
+  {loading?<div className="h-64 flex items-center justify-center text-slate-400">جاري التحميل...</div>:loadError?<div role="alert" className="rounded-lg border border-red-800 p-4 text-red-200">تعذر تحميل الوحدات والعقارات. تحقق من الاتصال والصلاحيات وأعد تحميل الصفحة.</div>:<div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">{items.map(x=><div key={x.id} className="scc-card-hover">
     <div className="flex justify-between"><div><p className="text-white font-bold">وحدة {x.unitNumber}</p><p className="text-slate-400 text-sm">{x.property?.name||'—'}</p></div><span className="text-xs text-primary-300">{statuses.find(s=>s.value===x.status)?.label||x.status}</span></div>
     <div className="mt-4 text-sm text-slate-400 space-y-1"><p>النوع: {unitTypes.find(t=>t.value===x.unitType)?.label||x.unitType}</p><p>المساحة: {x.areaSqm||'—'} م²</p><p>الإيجار الشهري: {Number(x.rentAmountMonthly||0).toLocaleString()} ر.س</p></div>
     <div className="mt-4 flex gap-3"><button onClick={()=>edit(x)} className="text-primary-400"><Pencil className="h-4 w-4"/></button><button onClick={()=>remove(x.id)} className="text-red-400"><Trash2 className="h-4 w-4"/></button></div>
   </div>)}</div>}
-  {actionError&&<div role="alert" className="rounded-lg border border-red-800 p-4 text-red-200">فشلت العملية ولم يتم تأكيد حفظ التغييرات. تحقق من المدخلات والصلاحيات وحاول مجددًا.</div>}
-  <Modal isOpen={open} onClose={()=>setOpen(false)} title={editing?'تعديل وحدة':'وحدة جديدة'} size="lg"><form onSubmit={submit} className="space-y-4">
+  <Modal isOpen={open} onClose={()=>setOpen(false)} title={editing?'تعديل وحدة':'وحدة جديدة'} size="lg"><form onSubmit={submit} className="space-y-4">{actionError&&<div role="alert" className="rounded-lg border border-red-800 p-4 text-red-200">تعذر تأكيد العملية. تحقق من المدخلات والصلاحيات وحاول مجددًا.</div>}
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       <Select label="العقار" required options={properties.map(p=>({value:p.id,label:p.name}))} value={form.propertyId||''} onChange={e=>setForm({...form,propertyId:e.target.value})}/>
       <Input label="رقم الوحدة" required value={form.unitNumber||''} onChange={e=>setForm({...form,unitNumber:e.target.value})}/>
