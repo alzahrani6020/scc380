@@ -38,6 +38,10 @@ class CloseCustodyDto {
   @IsIn(['RETURNED','LOST','DAMAGED']) status: string;
   @IsString() @IsOptional() conditionIn?: string;
   @IsString() @IsOptional() notes?: string;
+  @IsString() @IsOptional() assetAccountId?: string;
+  @IsString() @IsOptional() accumulatedDepreciationAccountId?: string;
+  @IsString() @IsOptional() lossAccountId?: string;
+  @Type(() => Number) @IsNumber() @Min(0.01) @IsOptional() impairmentAmount?: number;
 }
 
 @ApiTags('HR - Asset Custody')
@@ -80,7 +84,7 @@ export class HrAssetCustodyController {
   }
 
   @Post('custody/:id/close')
-  @RequirePermissions('hr:assets:write')
+  @RequirePermissions('hr:assets:write', 'erp:write')
   close(@Req() req: any, @Param('id') id: string, @Body() dto: CloseCustodyDto) {
     return this.service.closeAssignment(req, id, dto);
   }
