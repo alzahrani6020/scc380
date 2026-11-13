@@ -59,7 +59,7 @@ export class RentPaymentsService {
   async delete(tenantId: string, id: string) {
     const existing = await prisma.rentPayment.findFirst({ where: withTenant({ id }, tenantId) });
     if (!existing) throw new NotFoundException('Payment not found');
-    return prisma.rentPayment.delete({ where: { id } });
+    throw new ConflictException('Rent receivables cannot be deleted without an auditable reversal workflow');
   }
 
   async recordPayment(tenantId: string, id: string, dto: { paidDate: string; amount: string; paymentMethod?: string; transactionRef?: string; bankReference?: string }) {
