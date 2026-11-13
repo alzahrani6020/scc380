@@ -242,3 +242,19 @@ test('Next auth session proxy protects refresh cookie and enforces same-origin C
   assert.match(middleware, /const mayRefresh = !!request\.cookies\.get\(refreshCookieName\)/);
   assert.match(middleware, /if \(!sessionValid && !mayRefresh\)/);
 });
+
+test('logout and refresh failure locally clear HttpOnly cookies without claiming revocation', () => {
+  const route = src('../web/src/app/api/auth/session/route.ts');
+  const client = src('../web/src/lib/api.ts');
+  const side = src('../web/src/components/layout/Sidebar.tsx');
+  const security = src('../web/src/app/dashboard/security/page.tsx');
+  assert.match(route, /ALLOWED = \['refresh', 'logout', 'migrate', 'clear'\]/);
+  assert.match(route, /name === 'clear'/);
+  assert.match(route, /revoked: false/);
+  assert.match(route, /name === 'logout' \? clearRefreshCookie\(failure\) : failure/);
+  assert.match(route, /scc380-api\.onrender\.com/);
+  assert.match(client, /sessionAuth\('clear'\)/);
+  assert.match(client, /navigator\.locks\?\.request/);
+  assert.match(side, /sessionAuth\('clear'\)/);
+  assert.match(security, /sessionAuth\('clear'\)/);
+});
