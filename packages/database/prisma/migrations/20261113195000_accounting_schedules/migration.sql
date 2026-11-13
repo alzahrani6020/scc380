@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS "accounting_schedules" (
   "startDate" TIMESTAMP(3) NOT NULL,
   "endDate" TIMESTAMP(3),
   "nextRunDate" TIMESTAMP(3) NOT NULL,
+  "anchorDay" INTEGER NOT NULL,
   "autoReverse" BOOLEAN NOT NULL DEFAULT false,
   "reverseAfterDays" INTEGER NOT NULL DEFAULT 1,
   "entryPrefix" TEXT NOT NULL,
