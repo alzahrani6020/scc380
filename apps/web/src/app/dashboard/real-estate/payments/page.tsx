@@ -33,7 +33,7 @@ export default function RentPaymentsPage(){
   </div>
   {loading?<div className="h-64 flex items-center justify-center"><RefreshCw className="h-8 w-8 animate-spin text-primary-400"/></div>:<div className="space-y-3">{items.map(x=><div key={x.id} className="scc-card-hover flex flex-col md:flex-row md:items-center md:justify-between gap-3">
    <div><p className="text-white font-medium">{x.contract?.lesseeName||'—'}</p><p className="text-slate-500 text-xs">استحقاق {new Date(x.dueDate).toLocaleDateString('ar-SA')} · {x.status}</p></div>
-   <div className="flex items-center gap-3"><p className="text-primary-400 font-bold">{Number(x.amount).toLocaleString()} ر.س</p>{x.status!=='COMPLETED'&&<button onClick={()=>openRecord(x)} className="inline-flex items-center gap-1 text-emerald-400 text-sm"><CheckCircle2 className="h-4 w-4"/>تسجيل سداد</button>}</div>
+   <div className="flex items-center gap-3"><p className="text-primary-400 font-bold">{Number(x.amount).toLocaleString()} ر.س</p>{x.status==='PENDING'&&<button onClick={()=>openRecord(x)} className="inline-flex items-center gap-1 text-emerald-400 text-sm"><CheckCircle2 className="h-4 w-4"/>تسجيل سداد</button>}</div>
   </div>)}</div>}
   <Modal isOpen={!!recording} onClose={()=>setRecording(null)} title="تسجيل سداد"><form onSubmit={submit} className="space-y-4">
    <Input label="المبلغ المدفوع" type="number" required value={form.amount||''} onChange={e=>setForm({...form,amount:e.target.value})}/>
