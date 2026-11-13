@@ -44,8 +44,9 @@ export class AuthService {
     role: string,
     tenantId?: string,
     tenantSlug?: string,
+    existingSessionId?: string,
   ) {
-    const sessionKey = randomBytes(24).toString('hex');
+    const sessionKey = existingSessionId || randomBytes(24).toString('hex');
     const accessPayload = {
       sub: userId,
       email,
@@ -62,7 +63,8 @@ export class AuthService {
       tenantId,
       tenantSlug,
       type: 'refresh',
-      jti: sessionKey,
+      jti: randomBytes(24).toString('hex'),
+      sid: sessionKey,
     };
 
     const accessToken = this.jwt.sign(accessPayload);
@@ -249,24 +251,24 @@ export class AuthService {
       },
     });
 
+    // A rotated or otherwise unknown token must never revoke unrelated devices.
+    // The atomic token-hash comparison below prevents concurrent double refresh.
     if (!session) {
-      throw new UnauthorizedException('Refresh session not found');
+      throw new UnauthorizedException('Refresh session not found or token already rotated');
     }
-
     if (session.revokedAt) {
-      await prisma.session.updateMany({
-        where: { userId: session.userId, revokedAt: null },
-        data: { revokedAt: new Date() },
-      });
       throw new UnauthorizedException('Refresh token reuse detected');
     }
-
     if (session.expiresAt <= new Date()) {
-      await prisma.session.update({
-        where: { id: session.id },
-        data: { revokedAt: new Date() },
-      });
       throw new UnauthorizedException('Refresh session expired');
+    }
+    if (
+      session.userId !== payload.sub ||
+      (payload.sid && payload.sid !== session.id) ||
+      (!payload.sid && payload.jti !== session.id) ||
+      (payload.tenantId || null) !== (session.tenantId || null)
+    ) {
+      throw new UnauthorizedException('Refresh session mismatch');
     }
 
     const user = session.user;
@@ -274,12 +276,8 @@ export class AuthService {
       !user ||
       user.status !== 'ACTIVE' ||
       (user.tenant && user.tenant.status !== 'ACTIVE') ||
-      (payload.tenantId || null) !== (session.tenantId || null)
+      (user.tenantId || null) !== (session.tenantId || null)
     ) {
-      await prisma.session.updateMany({
-        where: { userId: session.userId, revokedAt: null },
-        data: { revokedAt: new Date() },
-      });
       throw new UnauthorizedException('Account is not active');
     }
 
@@ -290,36 +288,30 @@ export class AuthService {
       user.role,
       user.tenantId || undefined,
       tenantSlug,
+      session.id,
     );
-    const revokedAt = new Date();
+    const now = new Date();
 
-    await prisma.$transaction(async (tx) => {
-      const revoked = await tx.session.updateMany({
-        where: {
-          id: session.id,
-          revokedAt: null,
-          expiresAt: { gt: revokedAt },
-        },
-        data: { revokedAt },
-      });
-
-      if (revoked.count !== 1) {
-        throw new UnauthorizedException('Refresh token already used');
-      }
-
-      await tx.session.create({
-        data: {
-          id: tokens.sessionKey,
-          userId: user.id,
-          tenantId: user.tenantId || null,
-          token: tokens.refreshTokenHash,
-          expiresAt: tokens.expiresAt,
-          userAgent: session.userAgent,
-          ipAddress: session.ipAddress,
-          deviceInfo: session.deviceInfo,
-        },
-      });
+    // Rotate within the SAME device session. Compare-and-swap ensures at
+    // most one caller can consume a refresh token, without extra DB rows.
+    const rotated = await prisma.session.updateMany({
+      where: {
+        id: session.id,
+        token: tokenHash,
+        userId: user.id,
+        tenantId: user.tenantId || null,
+        revokedAt: null,
+        expiresAt: { gt: now },
+      },
+      data: {
+        token: tokens.refreshTokenHash,
+        expiresAt: tokens.expiresAt,
+        lastActiveAt: now,
+      },
     });
+    if (rotated.count !== 1) {
+      throw new UnauthorizedException('Refresh token already used');
+    }
 
     return {
       accessToken: tokens.accessToken,
