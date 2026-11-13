@@ -27,7 +27,8 @@ export default function UnitsPage(){
  const create=()=>{setEditing(null);setForm({unitType:'APARTMENT',status:'VACANT'});setOpen(true)};
  const edit=(x:any)=>{setEditing(x);setForm({...x});setOpen(true)};
  const submit=async(e:React.FormEvent)=>{e.preventDefault();setSaving(true);try{
-   const p={...form};
+   const fields=['propertyId','unitNumber','floor','unitType','status','areaSqm','bedrooms','bathrooms','rentAmountMonthly'];
+   const p:any=Object.fromEntries(fields.filter(k=>form[k]!==undefined&&form[k]!==null&&form[k]!=='').map(k=>[k,form[k]]));
    if(p.floor!=='') p.floor=p.floor===undefined?undefined:Number(p.floor);
    if(p.bedrooms!=='') p.bedrooms=p.bedrooms===undefined?undefined:Number(p.bedrooms);
    if(p.bathrooms!=='') p.bathrooms=p.bathrooms===undefined?undefined:Number(p.bathrooms);
