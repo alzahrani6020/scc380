@@ -11,6 +11,8 @@ export default function SecurityPage() {
   const [sessions, setSessions] = useState<any[]>([]);
   const [apiKeys, setApiKeys] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
   const [isKeyModalOpen, setIsKeyModalOpen] = useState(false);
   const [newKeyName, setNewKeyName] = useState('');
   const [formLoading, setFormLoading] = useState(false);
@@ -22,20 +24,41 @@ export default function SecurityPage() {
   }, []);
 
   const fetchData = () => {
+    setLoading(true);
+    setError('');
     Promise.all([
-      api.get('/security/sessions/me').then(r => setSessions(r.data.data || [])),
-      api.get('/security/api-keys').then(r => setApiKeys(r.data.data || [])),
-    ]).catch(console.error).finally(() => setLoading(false));
+      api.get('/security/sessions/me'),
+      api.get('/security/api-keys'),
+    ]).then(([sessionResult, keysResult]) => {
+      setSessions(sessionResult.data.data || []);
+      setApiKeys(keysResult.data.data || []);
+    }).catch(() => setError('تعذر تحميل بيانات الأمان. تحقق من الاتصال والصلاحيات ثم أعد المحاولة.'))
+      .finally(() => setLoading(false));
   };
 
   const revokeSession = async (id: string) => {
-    await api.delete(`/security/sessions/${id}`);
-    setSessions(sessions.filter((s) => s.id !== id));
+    if (!window.confirm('هل تريد إنهاء هذه الجلسة؟ قد يتطلب الجهاز تسجيل الدخول مجددًا.')) return;
+    setBusy(true);
+    setError('');
+    try {
+      await api.delete(`/security/sessions/${id}`);
+      await fetchData();
+    } catch {
+      setError('تعذر إنهاء الجلسة. لم يتم تأكيد أي تغيير.');
+    } finally { setBusy(false); }
   };
 
   const revokeAll = async () => {
-    await api.post('/security/sessions/revoke-all');
-    setSessions([]);
+    if (!window.confirm('إنهاء جميع جلسات حسابك بما فيها الجلسة الحالية؟ سيُطلب تسجيل الدخول مجددًا.')) return;
+    setBusy(true);
+    setError('');
+    try {
+      await api.post('/security/sessions/revoke-all');
+      window.location.href = '/auth/login';
+    } catch {
+      setError('تعذر إنهاء الجلسات. لم يتم تأكيد أي تغيير.');
+      setBusy(false);
+    }
   };
 
   const createKey = async (e: React.FormEvent) => {
@@ -54,8 +77,15 @@ export default function SecurityPage() {
   };
 
   const revokeKey = async (id: string) => {
-    await api.delete(`/security/api-keys/${id}`);
-    setApiKeys(apiKeys.filter((k) => k.id !== id));
+    if (!window.confirm('إلغاء هذا المفتاح نهائيًا؟ قد تتوقف الخدمات التي تستخدمه.')) return;
+    setBusy(true);
+    setError('');
+    try {
+      await api.delete(`/security/api-keys/${id}`);
+      await fetchData();
+    } catch {
+      setError('تعذر إلغاء المفتاح. لم يتم تأكيد أي تغيير.');
+    } finally { setBusy(false); }
   };
 
   const copyToClipboard = (text: string) => {
@@ -76,10 +106,11 @@ export default function SecurityPage() {
         </div>
       </div>
 
+      {error && <div role="alert" className="rounded-lg border border-red-700 bg-red-950/50 p-3 text-sm text-red-200">{error} <button type="button" className="mr-3 underline" onClick={fetchData}>إعادة المحاولة</button></div>}
       <div className="scc-card">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold text-white flex items-center gap-2"><Globe className="h-5 w-5 text-primary-400" /> الجلسات النشطة</h3>
-          <Button variant="danger" size="sm" onClick={revokeAll}><LogOut className="h-4 w-4" /> إنهاء الكل</Button>
+          <Button variant="danger" size="sm" onClick={revokeAll} disabled={busy || loading || sessions.length === 0}><LogOut className="h-4 w-4" /> إنهاء الكل</Button>
         </div>
         {loading ? (
           <div className="flex items-center justify-center h-32"><div className="w-8 h-8 border-4 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" /></div>
@@ -92,13 +123,14 @@ export default function SecurityPage() {
                     <Globe className="h-4 w-4 text-slate-400" />
                   </div>
                   <div>
-                    <p className="text-white text-sm">{s.deviceInfo || s.userAgent?.slice(0, 40) || 'Unknown'}</p>
-                    <p className="text-slate-500 text-xs flex items-center gap-1"><Clock className="h-3 w-3" /> {s.ipAddress} • آخر نشاط: {new Date(s.lastActiveAt).toLocaleDateString('ar-SA')}</p>
+                    <p className="text-white text-sm">{s.deviceInfo || s.userAgent?.slice(0, 60) || 'جهاز غير مسجل'}</p>
+                    <p className="text-slate-500 text-xs flex items-center gap-1"><Clock className="h-3 w-3" /> {s.ipAddress || 'عنوان IP غير متوفر'} • آخر نشاط: {s.lastActiveAt ? new Date(s.lastActiveAt).toLocaleString('ar-SA') : 'غير معروف'}</p>
                   </div>
                 </div>
-                <Button variant="danger" size="sm" onClick={() => revokeSession(s.id)}>إنهاء</Button>
+                <Button variant="danger" size="sm" onClick={() => revokeSession(s.id)} disabled={busy}>إنهاء</Button>
               </div>
             ))}
+            {sessions.length === 0 && <p className="py-3 text-sm text-slate-300">لا توجد جلسات نشطة أخرى ظاهرة.</p>}
           </div>
         )}
       </div>
@@ -123,7 +155,7 @@ export default function SecurityPage() {
                     <p className="text-slate-500 text-xs font-mono">{k.key} • آخر استخدام: {k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleDateString('ar-SA') : '—'}</p>
                   </div>
                 </div>
-                <Button variant="danger" size="sm" onClick={() => revokeKey(k.id)}>إلغاء</Button>
+                <Button variant="danger" size="sm" onClick={() => revokeKey(k.id)} disabled={busy}>إلغاء</Button>
               </div>
             ))}
           </div>
