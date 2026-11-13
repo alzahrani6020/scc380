@@ -174,7 +174,7 @@ test('security sessions capture metadata and identify only the current authentic
 
   assert.match(auth, /private sessionMetadata\(req\?: any\)/);
   assert.match(auth, /\.\.\.this\.sessionMetadata\(req\)/);
-  assert.match(auth, /userAgent: session\.userAgent/);
+  assert.match(auth, /\.\.\.this\.sessionMetadata\(req\)/);
   assert.match(controller, /verify2FALoginAndIssueToken\(tempToken, code, req\)/);
   assert.match(controller, /googleAuth\(credential, req\)/);
   assert.match(access, /sessionId: payload\.sid/);
@@ -190,4 +190,14 @@ test('API keys do not return database records on revocation or expose unmasked l
   assert.match(keys, /return \{ revoked: true \}/);
   assert.doesNotMatch(keys, /return prisma\.apiKey\.update\(/);
   assert.doesNotMatch(keys, /return \{ \.\.\.created, key \}/);
+});
+
+test('security dashboard preserves partial responses and readable browser metadata', () => {
+  const web = src('../web/src/app/dashboard/security/page.tsx');
+  const auth = src('src/auth/auth.service.ts');
+  assert.match(web, /Promise\.allSettled/);
+  assert.match(web, /sessionResult\.status === 'fulfilled'/);
+  assert.match(web, /keysResult\.status === 'fulfilled'/);
+  assert.match(auth, /deviceInfo: browser && system/);
+  assert.match(auth, /lastActiveAt: now/);
 });
