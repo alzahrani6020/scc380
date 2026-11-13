@@ -260,7 +260,11 @@ test(
       assert.equal(Number(editedRunItem.gosiDeduction), 1000);
       assert.equal(Number(editedRunItem.netSalary), 15200);
 
-      const approvedRun = await payrollRuns.approve(reqA, payrollRun.id);
+      await assert.rejects(
+        () => payrollRuns.approve(reqA, payrollRun.id),
+        /Payroll deductions must be explicitly reviewed/,
+      );
+      const approvedRun = await payrollRuns.approve(reqA, payrollRun.id, true);
       assert.equal(approvedRun.status, 'APPROVED');
       assert.ok(approvedRun.approvedAt);
 

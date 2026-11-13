@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsBoolean, IsInt, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard, RequirePermissions } from '../auth/guards/permissions.guard';
 import { PayrollRunsService } from './payroll-runs.service';
@@ -23,6 +23,10 @@ class UpdatePayrollRunItemDto {
   @IsString() @IsOptional() notes?: string;
 }
 
+
+class ApprovePayrollRunDto {
+  @IsBoolean() deductionsReviewed: boolean;
+}
 
 class PostPayrollAccountingDto {
   @IsString() expenseAccountId: string;
@@ -64,7 +68,7 @@ export class PayrollRunsController {
 
   @Post(':id/approve')
   @RequirePermissions('hr:payroll:write')
-  approve(@Req() req: any, @Param('id') id: string) { return this.service.approve(req, id); }
+  approve(@Req() req: any, @Param('id') id: string, @Body() dto: ApprovePayrollRunDto) { return this.service.approve(req, id, dto.deductionsReviewed); }
 
   @Post(':id/pay')
   @RequirePermissions('hr:payroll:write')
