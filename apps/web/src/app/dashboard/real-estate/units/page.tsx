@@ -15,6 +15,8 @@ export default function UnitsPage(){
  const [items,setItems]=useState<any[]>([]);
  const [properties,setProperties]=useState<any[]>([]);
  const [loading,setLoading]=useState(true);
+ const [loadError,setLoadError]=useState(false);
+ const [actionError,setActionError]=useState(false);
  const [open,setOpen]=useState(false);
  const [editing,setEditing]=useState<any>(null);
  const [saving,setSaving]=useState(false);
@@ -22,11 +24,11 @@ export default function UnitsPage(){
  const load=()=>Promise.all([
    api.get('/real-estate/units').then(r=>setItems(r.data.data||[])),
    api.get('/real-estate/properties').then(r=>setProperties(r.data.data||[])),
- ]).finally(()=>setLoading(false));
+ ]).then(()=>setLoadError(false)).catch(err=>{setLoadError(true);throw err}).finally(()=>setLoading(false));
  useEffect(()=>{load().catch(console.error)},[]);
  const create=()=>{setEditing(null);setForm({unitType:'APARTMENT',status:'VACANT'});setOpen(true)};
  const edit=(x:any)=>{setEditing(x);setForm({...x});setOpen(true)};
- const submit=async(e:React.FormEvent)=>{e.preventDefault();setSaving(true);try{
+ const submit=async(e:React.FormEvent)=>{e.preventDefault();setSaving(true);setActionError(false);try{
    const fields=['propertyId','unitNumber','floor','unitType','status','areaSqm','bedrooms','bathrooms','rentAmountMonthly'];
    const p:any=Object.fromEntries(fields.filter(k=>form[k]!==undefined&&form[k]!==null&&form[k]!=='').map(k=>[k,form[k]]));
    if(p.floor!=='') p.floor=p.floor===undefined?undefined:Number(p.floor);
@@ -36,8 +38,8 @@ export default function UnitsPage(){
    if(p.rentAmountMonthly!==undefined&&p.rentAmountMonthly!=='') p.rentAmountMonthly=String(p.rentAmountMonthly);
    if(editing) await api.patch('/real-estate/units/'+editing.id,p); else await api.post('/real-estate/units',p);
    setOpen(false);await load();
- }finally{setSaving(false)}};
- const remove=async(id:string)=>{if(!confirm('حذف الوحدة؟'))return;await api.delete('/real-estate/units/'+id);await load()};
+ }catch(err){console.error(err);setActionError(true)}finally{setSaving(false)}};
+ const remove=async(id:string)=>{if(!confirm('حذف الوحدة؟'))return;setActionError(false);try{await api.delete('/real-estate/units/'+id);await load()}catch(err){console.error(err);setActionError(true)}};
  return <div className="space-y-6 animate-fade-in-up">
   <div className="flex items-center justify-between"><div><h1 className="text-2xl font-bold text-white flex items-center gap-2"><DoorOpen className="h-6 w-6 text-primary-400"/>الوحدات</h1><p className="text-slate-400 text-sm mt-1">{items.length} وحدة</p></div><Button onClick={create}><Plus className="h-5 w-5"/>وحدة جديدة</Button></div>
   {loading?<div className="h-64 flex items-center justify-center text-slate-400">جاري التحميل...</div>:<div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">{items.map(x=><div key={x.id} className="scc-card-hover">
@@ -45,6 +47,7 @@ export default function UnitsPage(){
     <div className="mt-4 text-sm text-slate-400 space-y-1"><p>النوع: {unitTypes.find(t=>t.value===x.unitType)?.label||x.unitType}</p><p>المساحة: {x.areaSqm||'—'} م²</p><p>الإيجار الشهري: {Number(x.rentAmountMonthly||0).toLocaleString()} ر.س</p></div>
     <div className="mt-4 flex gap-3"><button onClick={()=>edit(x)} className="text-primary-400"><Pencil className="h-4 w-4"/></button><button onClick={()=>remove(x.id)} className="text-red-400"><Trash2 className="h-4 w-4"/></button></div>
   </div>)}</div>}
+  {actionError&&<div role="alert" className="rounded-lg border border-red-800 p-4 text-red-200">فشلت العملية ولم يتم تأكيد حفظ التغييرات. تحقق من المدخلات والصلاحيات وحاول مجددًا.</div>}
   <Modal isOpen={open} onClose={()=>setOpen(false)} title={editing?'تعديل وحدة':'وحدة جديدة'} size="lg"><form onSubmit={submit} className="space-y-4">
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       <Select label="العقار" required options={properties.map(p=>({value:p.id,label:p.name}))} value={form.propertyId||''} onChange={e=>setForm({...form,propertyId:e.target.value})}/>
