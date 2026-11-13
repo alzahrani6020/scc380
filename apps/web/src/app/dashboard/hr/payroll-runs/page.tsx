@@ -21,6 +21,8 @@ export default function PayrollRunsPage() {
   const [accounts, setAccounts] = useState<any[]>([]);
   const [accountingLoading, setAccountingLoading] = useState(false);
   const [accountingData, setAccountingData] = useState<any>({});
+  const [paymentAccountingOpen, setPaymentAccountingOpen] = useState(false);
+  const [paymentAccountingData, setPaymentAccountingData] = useState<any>({});
 
   useEffect(() => { refresh(); }, []);
 
@@ -171,6 +173,41 @@ export default function PayrollRunsPage() {
     }
   };
 
+  const openPaymentAccounting = async () => {
+    if (!selected) return;
+    setAccountingLoading(true);
+    try {
+      const r = await api.get('/finance/chart-of-accounts');
+      const activeAccounts = (r.data?.data || []).filter((account: any) => account.isActive !== false);
+      setAccounts(activeAccounts);
+      setPaymentAccountingData({});
+      setPaymentAccountingOpen(true);
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'تعذر تحميل دليل الحسابات');
+    } finally {
+      setAccountingLoading(false);
+    }
+  };
+
+  const postPaymentAccounting = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selected) return;
+
+    setAccountingLoading(true);
+    try {
+      await api.post(`/hr/payroll-runs/${selected.id}/post-payment-accounting`, {
+        netPayableAccountId: paymentAccountingData.netPayableAccountId,
+        cashAccountId: paymentAccountingData.cashAccountId,
+      });
+      setPaymentAccountingOpen(false);
+      alert('تم ترحيل قيد سداد الرواتب إلى المحاسبة بنجاح');
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'تعذر ترحيل قيد سداد الرواتب');
+    } finally {
+      setAccountingLoading(false);
+    }
+  };
+
   const money = (v: any) => Number(v || 0).toLocaleString('ar-SA');
 
   const accountOptions = (type: string) => accounts
@@ -226,6 +263,11 @@ export default function PayrollRunsPage() {
                   {['APPROVED', 'PAID'].includes(selected.status) && (
                     <Button onClick={openAccounting} isLoading={accountingLoading}>
                       <Landmark className="h-4 w-4" /> ترحيل محاسبي
+                    </Button>
+                  )}
+                  {selected.status === 'PAID' && (
+                    <Button onClick={openPaymentAccounting} isLoading={accountingLoading}>
+                      <CreditCard className="h-4 w-4" /> ترحيل السداد
                     </Button>
                   )}
                 </div>
@@ -352,6 +394,35 @@ export default function PayrollRunsPage() {
           </div>
         </form>
       </Modal>
+
+      <Modal isOpen={paymentAccountingOpen} onClose={() => setPaymentAccountingOpen(false)} title="ترحيل سداد الرواتب إلى المحاسبة" size="lg">
+        <form onSubmit={postPaymentAccounting} className="space-y-4">
+          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 text-sm text-slate-300">
+            هذا القيد يصفّي صافي الرواتب المستحقة مقابل البنك أو الصندوق. يشترط النظام وجود قيد الاستحقاق أولًا ويمنع تكرار قيد السداد.
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Select
+              label="حساب صافي الرواتب المستحقة"
+              required
+              options={accountOptions('LIABILITY')}
+              value={paymentAccountingData.netPayableAccountId || ''}
+              onChange={e => setPaymentAccountingData({ ...paymentAccountingData, netPayableAccountId: e.target.value })}
+            />
+            <Select
+              label="حساب البنك / الصندوق"
+              required
+              options={accountOptions('ASSET')}
+              value={paymentAccountingData.cashAccountId || ''}
+              onChange={e => setPaymentAccountingData({ ...paymentAccountingData, cashAccountId: e.target.value })}
+            />
+          </div>
+          <div className="flex justify-end gap-3">
+            <Button type="button" variant="ghost" onClick={() => setPaymentAccountingOpen(false)}><X className="h-4 w-4" /> إلغاء</Button>
+            <Button type="submit" isLoading={accountingLoading}><CreditCard className="h-4 w-4" /> ترحيل السداد</Button>
+          </div>
+        </form>
+      </Modal>
+
     </div>
   );
 }
