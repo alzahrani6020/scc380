@@ -35,19 +35,48 @@ export class SessionsService {
       select: { id: true },
     });
     if (!session) throw new NotFoundException('Session not found');
-    const result = await prisma.session.updateMany({
-      where: { id, userId: req.user?.userId, tenantId: req.user?.tenantId ?? null, revokedAt: null },
-      data: { revokedAt: new Date() },
+    const revoked = await prisma.$transaction(async (tx) => {
+      const result = await tx.session.updateMany({
+        where: { id, userId: req.user?.userId, tenantId: req.user?.tenantId ?? null, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      if (result.count === 1) {
+        await tx.auditLog.create({
+          data: {
+            tenantId: req.user?.tenantId ?? null,
+            userId: req.user?.userId,
+            action: 'SESSION_REVOKED',
+            entityType: 'Session',
+            entityId: id,
+            newValues: { sessionId: id },
+          },
+        });
+      }
+      return result.count;
     });
-    return { revoked: result.count };
+    return { revoked };
   }
 
   async revokeAll(req: any) {
     const userId = req.user?.userId;
-    const result = await prisma.session.updateMany({
-      where: { userId, tenantId: req.user?.tenantId ?? null, revokedAt: null },
-      data: { revokedAt: new Date() },
+    const revoked = await prisma.$transaction(async (tx) => {
+      const result = await tx.session.updateMany({
+        where: { userId, tenantId: req.user?.tenantId ?? null, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      if (result.count > 0) {
+        await tx.auditLog.create({
+          data: {
+            tenantId: req.user?.tenantId ?? null,
+            userId,
+            action: 'SESSIONS_REVOKED_ALL',
+            entityType: 'Session',
+            newValues: { count: result.count },
+          },
+        });
+      }
+      return result.count;
     });
-    return { revoked: result.count };
+    return { revoked };
   }
 }
