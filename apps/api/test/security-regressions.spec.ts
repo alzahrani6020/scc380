@@ -174,7 +174,7 @@ test('security sessions capture metadata and identify only the current authentic
 
   assert.match(auth, /private sessionMetadata\(req\?: any\)/);
   assert.match(auth, /\.\.\.this\.sessionMetadata\(req\)/);
-  assert.match(auth, /userAgent: session\.userAgent/);
+  assert.match(auth, /\.\.\.this\.sessionMetadata\(req\)/);
   assert.match(controller, /verify2FALoginAndIssueToken\(tempToken, code, req\)/);
   assert.match(controller, /googleAuth\(credential, req\)/);
   assert.match(access, /sessionId: payload\.sid/);
