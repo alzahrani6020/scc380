@@ -31,7 +31,16 @@ export class AuthService {
     const userAgent = req?.headers?.['user-agent'];
     const agent = typeof userAgent === 'string' ? userAgent.slice(0, 512) : null;
     const ip = typeof req?.ip === 'string' ? req.ip.slice(0, 128) : null;
-    return { userAgent: agent, ipAddress: ip, deviceInfo: agent ? agent.slice(0, 160) : null };
+    const browser = !agent ? null : /Edg\//.test(agent) ? 'Edge'
+      : /Firefox\//.test(agent) ? 'Firefox'
+      : /Chrome\//.test(agent) ? 'Chrome'
+      : /Safari\//.test(agent) ? 'Safari' : 'متصفح غير معروف';
+    const system = !agent ? null : /Android/i.test(agent) ? 'Android'
+      : /iPhone|iPad|iPod/i.test(agent) ? 'iOS'
+      : /Windows/i.test(agent) ? 'Windows'
+      : /Macintosh|Mac OS X/i.test(agent) ? 'macOS'
+      : /Linux/i.test(agent) ? 'Linux' : 'نظام غير معروف';
+    return { userAgent: agent, ipAddress: ip, deviceInfo: browser && system ? `${browser} · ${system}` : null };
   }
 
   private hashToken(token: string) {
