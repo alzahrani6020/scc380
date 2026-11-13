@@ -142,6 +142,35 @@ export class PaymentsService {
       },
     });
 
+    const invoiceFx = await this.currencyAccounting.resolveRateInTransaction(
+      tx,
+      tenantId,
+      invoiceCurrency,
+      invoice.issueDate,
+      invoice.exchangeRate ?? undefined,
+    );
+    const paymentFx = await this.currencyAccounting.resolveRateInTransaction(
+      tx,
+      tenantId,
+      paymentCurrency,
+      payment.paidAt,
+      payment.exchangeRate ?? undefined,
+    );
+
+    const baseReceivable = this.currencyAccounting.convert(payment.amount, invoiceFx.exchangeRate);
+    const baseSettlement = this.currencyAccounting.convert(payment.amount, paymentFx.exchangeRate);
+    const realizedDifference = baseSettlement.sub(baseReceivable);
+
+    await tx.payment.update({
+      where: { id: payment.id },
+      data: {
+        currency: paymentFx.transactionCurrency,
+        exchangeRate: paymentFx.exchangeRate,
+        baseAmount: baseSettlement,
+        realizedFxDifference: realizedDifference,
+      },
+    });
+
     if (!autoPosting) return;
 
     const invoiceJournal = await tx.journalEntryHeader.findFirst({
@@ -165,24 +194,6 @@ export class PaymentsService {
       payment.method,
     );
 
-    const invoiceFx = await this.currencyAccounting.resolveRateInTransaction(
-      tx,
-      tenantId,
-      invoiceCurrency,
-      invoice.issueDate,
-      invoice.exchangeRate ?? undefined,
-    );
-    const paymentFx = await this.currencyAccounting.resolveRateInTransaction(
-      tx,
-      tenantId,
-      paymentCurrency,
-      payment.paidAt,
-      payment.exchangeRate ?? undefined,
-    );
-
-    const baseReceivable = this.currencyAccounting.convert(payment.amount, invoiceFx.exchangeRate);
-    const baseSettlement = this.currencyAccounting.convert(payment.amount, paymentFx.exchangeRate);
-    const realizedDifference = baseSettlement.sub(baseReceivable);
     const fxAccounts = realizedDifference.isZero()
       ? null
       : await this.currencyAccounting.resolveFxAccountsInTransaction(tx, tenantId);
@@ -229,15 +240,6 @@ export class PaymentsService {
       lines,
     });
 
-    await tx.payment.update({
-      where: { id: payment.id },
-      data: {
-        currency: paymentFx.transactionCurrency,
-        exchangeRate: paymentFx.exchangeRate,
-        baseAmount: baseSettlement,
-        realizedFxDifference: realizedDifference,
-      },
-    });
   }
 
   async create(req: any, dto: any) {
@@ -260,7 +262,7 @@ export class PaymentsService {
       }
       const payment = await tx.payment.create({ data });
       await this.applyCompletedPayment(tx, tenantId, payment);
-      return payment;
+      return tx.payment.findUniqueOrThrow({ where: { id: payment.id } });
     });
   }
 
@@ -315,6 +317,7 @@ export class PaymentsService {
       const updated = await tx.payment.update({ where: { id }, data });
       if (becomesCompleted) {
         await this.applyCompletedPayment(tx, tenantId, updated);
+        return tx.payment.findUniqueOrThrow({ where: { id: updated.id } });
       }
       return updated;
     });
