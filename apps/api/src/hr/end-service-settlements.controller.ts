@@ -34,6 +34,10 @@ class PostSettlementAccountingDto {
   @IsString() @IsOptional() otherDeductionAccountId?: string;
 }
 
+class PostSettlementPaymentAccountingDto {
+  @IsString() cashAccountId: string;
+}
+
 @ApiTags('HR - End Service Settlements')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -65,6 +69,12 @@ export class EndServiceSettlementsController {
   @RequirePermissions('hr:settlements:write', 'erp:write')
   postAccounting(@Req() req: any, @Param('id') id: string, @Body() dto: PostSettlementAccountingDto) {
     return this.service.postAccounting(req, id, dto);
+  }
+
+  @Post(':id/post-payment-accounting')
+  @RequirePermissions('hr:settlements:write', 'erp:write')
+  postPaymentAccounting(@Req() req: any, @Param('id') id: string, @Body() dto: PostSettlementPaymentAccountingDto) {
+    return this.service.postPaymentAccounting(req, id, dto);
   }
 
   @Post(':id/pay')
