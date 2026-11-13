@@ -30,9 +30,26 @@ export class RecruitmentService {
         include:{jobOpening:true},
       });
       if(!c)throw new NotFoundException('Candidate not found');
-      if(c.stage==='HIRED'||c.hiredEmployeeId)throw new ConflictException('Candidate already hired');
-      if(c.stage!=='OFFER')throw new ConflictException('Candidate must be in OFFER stage before hiring');
-      if(c.jobOpening.status!=='OPEN')throw new ConflictException('Job opening is closed');
+
+      // Serialize hires for the same opening before checking candidate state/capacity.
+      // The lock is held until this transaction commits or rolls back.
+      const lockedOpening=await tx.$queryRaw<Array<{id:string}>>`
+        SELECT "id" FROM "job_openings"
+        WHERE "id" = ${c.jobOpeningId} AND "tenantId" = ${tenantId}
+        FOR UPDATE
+      `;
+      if(lockedOpening.length!==1)throw new NotFoundException('Job opening not found');
+
+      // Re-read after waiting for the lock: another hire may have filled the
+      // opening or already hired this candidate while this transaction waited.
+      const currentCandidate=await tx.candidate.findFirst({
+        where:{...tenantWhere(tenantId),id},
+        include:{jobOpening:true},
+      });
+      if(!currentCandidate)throw new NotFoundException('Candidate not found');
+      if(currentCandidate.stage==='HIRED'||currentCandidate.hiredEmployeeId)throw new ConflictException('Candidate already hired');
+      if(currentCandidate.stage!=='OFFER')throw new ConflictException('Candidate must be in OFFER stage before hiring');
+      if(currentCandidate.jobOpening.status!=='OPEN')throw new ConflictException('Job opening is closed');
 
       if(await tx.employee.findFirst({where:{...tenantWhere(tenantId),employeeCode:dto.employeeCode}})){
         throw new ConflictException('Employee code already exists');
