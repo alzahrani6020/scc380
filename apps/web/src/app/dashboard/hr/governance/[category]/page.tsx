@@ -27,6 +27,9 @@ export default function GovernanceWorkspace() {
   const [selected,setSelected] = useState<any>(null);
   const [form,setForm] = useState({ employeeId:'',contractId:'',title:'',description:'',priority:'NORMAL' });
   const [note,setNote] = useState('');
+  const [evidence,setEvidence] = useState<any[]>([]);
+  const [file,setFile] = useState<File|null>(null);
+  const [evidenceDescription,setEvidenceDescription] = useState('');
   const [resolution,setResolution] = useState('');
   const [saving,setSaving] = useState(false);
   const [error,setError] = useState('');
@@ -64,8 +67,41 @@ export default function GovernanceWorkspace() {
     finally{setSaving(false);}
   };
   const openCase=async(id:string)=>{
-    try{const r=await api.get('/hr/governance/'+id);setSelected(r.data);setResolution('');setNote('');}
+    try{
+      const [r,files]=await Promise.all([api.get('/hr/governance/'+id),api.get('/hr/governance/'+id+'/evidence')]);
+      setSelected(r.data);setEvidence(files.data||[]);setResolution('');setNote('');setFile(null);
+    }
     catch(e:any){setError(e.response?.data?.message||'تعذر فتح القضية');}
+  };
+  const uploadEvidence = async () => {
+    if(!selected||!file)return;
+    if(file.size > 5*1024*1024) { setError('الحد الأقصى للمرفق 5 ميجابايت');return; }
+    setSaving(true);setError('');
+    try {
+      const contentBase64=await new Promise<string>((resolve,reject)=>{
+        const reader=new FileReader();reader.onerror=reject;
+        reader.onload=()=>resolve(String(reader.result).split(',')[1]||'');
+        reader.readAsDataURL(file);
+      });
+      await api.post('/hr/governance/'+selected.id+'/evidence',{
+        fileName:file.name,mimeType:file.type,contentBase64,description:evidenceDescription||undefined,
+      });
+      const [r,files]=await Promise.all([
+        api.get('/hr/governance/'+selected.id),
+        api.get('/hr/governance/'+selected.id+'/evidence'),
+      ]);
+      setSelected(r.data);setEvidence(files.data||[]);
+      setFile(null);setEvidenceDescription('');
+    }catch(e:any){setError(e.response?.data?.message||'تعذر رفع الدليل');}
+    finally{setSaving(false);}
+  };
+  const downloadEvidence=async(id:string,name:string)=>{
+    try{
+      const r=await api.get('/hr/governance/'+selected.id+'/evidence/'+id+'/download',{responseType:'blob'});
+      const url=URL.createObjectURL(r.data);
+      const a=document.createElement('a');a.href=url;a.download=name;a.click();
+      URL.revokeObjectURL(url);
+    }catch(e:any){setError(e.response?.data?.message||'تعذر تنزيل الدليل');}
   };
   const addNote=async()=>{
     if(!selected||!note.trim())return;
@@ -145,6 +181,25 @@ export default function GovernanceWorkspace() {
           <div className="text-xs text-slate-500">{new Date(event.createdAt).toLocaleString('ar-SA')} · {event.actorUserId}</div>
         </div>)}
       </div>
+      <section className="rounded-lg border border-slate-700 p-3 space-y-3">
+        <h3 className="font-semibold text-white">المرفقات الأصلية والأدلة</h3>
+        {evidence.length===0&&<p className="text-sm text-slate-400">لا توجد مرفقات.</p>}
+        {evidence.map(item=><div key={item.id} className="border-t border-slate-700 pt-2 text-sm">
+          <button type="button" className="text-primary-400 underline" onClick={()=>downloadEvidence(item.id,item.fileName)}>{item.fileName}</button>
+          <p className="text-xs text-slate-500">SHA-256: {item.checksumSha256}</p>
+          <p className="text-xs text-slate-500">{item.sizeBytes} بايت · {new Date(item.createdAt).toLocaleString('ar-SA')}</p>
+        </div>)}
+        {selected.status!=='CLOSED'&&<>
+          <label className="block text-sm text-slate-300">إضافة ملف أصلي (PDF/JPG/PNG حتى 5 ميجابايت)
+            <input type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+              onChange={e=>setFile(e.target.files?.[0]||null)} className={input}/>
+          </label>
+          <label className="block text-sm text-slate-300">وصف الدليل
+            <input className={input} maxLength={1000} value={evidenceDescription} onChange={e=>setEvidenceDescription(e.target.value)}/>
+          </label>
+          <button type="button" onClick={uploadEvidence} disabled={saving||!file} className="rounded-lg border border-slate-600 px-3 py-2 text-white disabled:opacity-50">رفع وحفظ الدليل</button>
+        </>}
+      </section>
       {selected.status!=='CLOSED'&&<>
         <label className="block text-slate-300 text-sm">إضافة إفادة أو إجراء
           <textarea className={input} rows={3} value={note} onChange={e=>setNote(e.target.value)}/>
