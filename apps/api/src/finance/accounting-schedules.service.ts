@@ -48,7 +48,7 @@ export class AccountingSchedulesService {
   private asDate(value: string | Date, label: string) {
     const date = value instanceof Date ? new Date(value) : new Date(value);
     if (Number.isNaN(date.getTime())) throw new BadRequestException(`Invalid ${label}`);
-    date.setUTCHours(12, 0, 0, 0);
+    date.setUTCHours(0, 0, 0, 0);
     return date;
   }
 
@@ -146,14 +146,14 @@ export class AccountingSchedulesService {
     }
   }
 
-  private advance(date: Date, frequency: AccountingScheduleFrequency) {
+  private advance(date: Date, frequency: AccountingScheduleFrequency, anchorDay: number) {
     const months =
       frequency === AccountingScheduleFrequency.MONTHLY
         ? 1
         : frequency === AccountingScheduleFrequency.QUARTERLY
           ? 3
           : 12;
-    const originalDay = date.getUTCDate();
+    const originalDay = anchorDay;
     const targetIndex = date.getUTCFullYear() * 12 + date.getUTCMonth() + months;
     const targetYear = Math.floor(targetIndex / 12);
     const targetMonth = targetIndex % 12;
@@ -238,6 +238,7 @@ export class AccountingSchedulesService {
           startDate,
           endDate,
           nextRunDate: startDate,
+          anchorDay: startDate.getUTCDate(),
           autoReverse: this.effectiveAutoReverse(input.kind, input.autoReverse),
           reverseAfterDays,
           entryPrefix: prefix,
@@ -306,6 +307,7 @@ export class AccountingSchedulesService {
           frequency,
           startDate,
           endDate,
+          anchorDay: input.startDate ? startDate.getUTCDate() : undefined,
           autoReverse: this.effectiveAutoReverse(kind, input.autoReverse ?? current.autoReverse),
           reverseAfterDays,
           entryPrefix:
@@ -455,7 +457,7 @@ export class AccountingSchedulesService {
           },
         });
 
-        const nextRunDate = this.advance(scheduledDate, schedule.frequency);
+        const nextRunDate = this.advance(scheduledDate, schedule.frequency, schedule.anchorDay);
         await tx.accountingSchedule.update({
           where: { id: schedule.id },
           data: {
