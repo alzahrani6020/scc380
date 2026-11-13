@@ -7,12 +7,14 @@ import {
 import { PaymentMethod, Prisma, prisma, tenantWhere } from '@scc/database';
 import { AccountMappingService } from '../accounting-core/account-mapping.service';
 import { AccountingDualWriteService } from '../accounting-core/accounting-dual-write.service';
+import { CurrencyAccountingService } from '../accounting-core/currency-accounting.service';
 
 @Injectable()
 export class SupplierInvoiceService {
   constructor(
     private readonly accountMapping: AccountMappingService,
     private readonly dualWrite: AccountingDualWriteService,
+    private readonly currencyAccounting: CurrencyAccountingService,
   ) {}
 
   async findAll(tenantId: string, userRole: string) {
@@ -76,6 +78,8 @@ export class SupplierInvoiceService {
       taxAmount: Prisma.Decimal;
       total: Prisma.Decimal;
       status: string;
+      currency: string;
+      exchangeRate: Prisma.Decimal | null;
       items: Array<{
         accountId: string | null;
         total: Prisma.Decimal;
@@ -93,25 +97,53 @@ export class SupplierInvoiceService {
       ...(invoice.taxAmount.gt(0) ? ['VAT_RECEIVABLE' as const] : []),
     ];
     const accounts = await this.accountMapping.resolveInTransaction(tx, tenantId, roles);
+    const fx = await this.currencyAccounting.resolveRateInTransaction(
+      tx,
+      tenantId,
+      invoice.currency,
+      invoice.issueDate,
+      invoice.exchangeRate ?? undefined,
+    );
+    const baseTotal = this.currencyAccounting.convert(invoice.total, fx.exchangeRate);
 
     const lines: Array<{
       accountId: string;
       debitAmount?: Prisma.Decimal;
       creditAmount?: Prisma.Decimal;
+      foreignDebitAmount?: Prisma.Decimal;
+      foreignCreditAmount?: Prisma.Decimal;
       description: string;
-    }> = debitLines;
+    }> = debitLines.map((line) => ({
+      accountId: line.accountId,
+      debitAmount: this.currencyAccounting.convert(line.debitAmount, fx.exchangeRate),
+      foreignDebitAmount: line.debitAmount,
+      description: line.description,
+    }));
 
     if (invoice.taxAmount.gt(0)) {
       lines.push({
         accountId: accounts.VAT_RECEIVABLE.id,
-        debitAmount: invoice.taxAmount,
+        debitAmount: this.currencyAccounting.convert(invoice.taxAmount, fx.exchangeRate),
+        foreignDebitAmount: invoice.taxAmount,
         description: `Input VAT - ${invoice.invoiceNumber}`,
       });
     }
 
+    const baseDebit = lines.reduce(
+      (sum, line) => sum.add(line.debitAmount ?? 0),
+      new Prisma.Decimal(0),
+    );
+    const roundingDifference = baseTotal.sub(baseDebit);
+    if (!roundingDifference.isZero()) {
+      const target = [...lines].reverse().find((line) => (line.debitAmount ?? new Prisma.Decimal(0)).gt(0));
+      if (!target) throw new BadRequestException('Unable to balance supplier invoice FX rounding');
+      target.debitAmount = (target.debitAmount ?? new Prisma.Decimal(0)).add(roundingDifference);
+    }
+
     lines.push({
       accountId: accounts.ACCOUNTS_PAYABLE.id,
-      creditAmount: invoice.total,
+      creditAmount: baseTotal,
+      foreignCreditAmount: invoice.total,
       description: `Accounts payable - ${invoice.invoiceNumber}`,
     });
 
@@ -123,6 +155,8 @@ export class SupplierInvoiceService {
       reference: invoice.invoiceNumber,
       sourceType: 'SUPPLIER_INVOICE',
       sourceId: invoice.id,
+      transactionCurrency: fx.transactionCurrency,
+      exchangeRate: fx.exchangeRate,
       lines,
     });
   }
@@ -144,6 +178,16 @@ export class SupplierInvoiceService {
 
     return prisma.$transaction(async tx => {
       await this.validateSupplier(tx, tenantId, invoiceData.supplierId);
+      const issueDate = invoiceData.issueDate ? new Date(invoiceData.issueDate) : new Date();
+      if (Number.isNaN(issueDate.getTime())) throw new BadRequestException('Invalid supplier invoice date');
+      const fx = await this.currencyAccounting.resolveRateInTransaction(
+        tx,
+        tenantId,
+        invoiceData.currency || 'SAR',
+        issueDate,
+        invoiceData.exchangeRate,
+      );
+      const baseTotal = this.currencyAccounting.convert(total, fx.exchangeRate);
 
       const autoPosting = await this.accountMapping.isAutoPostingEnabledInTransaction(tx, tenantId);
       if (autoPosting) {
@@ -160,9 +204,13 @@ export class SupplierInvoiceService {
         data: {
           ...invoiceData,
           tenantId,
+          issueDate,
           subtotal,
           taxAmount,
           total,
+          currency: fx.transactionCurrency,
+          exchangeRate: fx.exchangeRate,
+          baseTotal,
           items: {
             create: items.map((item: any) => ({
               tenantId,
@@ -211,15 +259,50 @@ export class SupplierInvoiceService {
         throw new BadRequestException('طريقة دفع المورد غير مدعومة');
       }
 
+      const paymentDate = data.paymentDate ? new Date(data.paymentDate) : new Date();
+      if (Number.isNaN(paymentDate.getTime())) throw new BadRequestException('Invalid supplier payment date');
+
+      const paymentCurrency = this.currencyAccounting.normalizeCurrency(
+        data.currency || inv.currency || 'SAR',
+      );
+      const invoiceCurrency = this.currencyAccounting.normalizeCurrency(inv.currency || 'SAR');
+      if (paymentCurrency !== invoiceCurrency) {
+        throw new BadRequestException(
+          `Supplier payment currency ${paymentCurrency} does not match invoice currency ${invoiceCurrency}`,
+        );
+      }
+
+      const invoiceFx = await this.currencyAccounting.resolveRateInTransaction(
+        tx,
+        tenantId,
+        invoiceCurrency,
+        inv.issueDate,
+        inv.exchangeRate ?? undefined,
+      );
+      const paymentFx = await this.currencyAccounting.resolveRateInTransaction(
+        tx,
+        tenantId,
+        paymentCurrency,
+        paymentDate,
+        data.exchangeRate,
+      );
+      const basePayable = this.currencyAccounting.convert(amount, invoiceFx.exchangeRate);
+      const baseSettlement = this.currencyAccounting.convert(amount, paymentFx.exchangeRate);
+      const realizedDifference = baseSettlement.sub(basePayable);
+
       const payment = await tx.supplierPayment.create({
         data: {
           tenantId,
           supplierId: inv.supplierId,
           supplierInvoiceId: id,
           amount,
+          currency: paymentFx.transactionCurrency,
+          exchangeRate: paymentFx.exchangeRate,
+          baseAmount: baseSettlement,
+          realizedFxDifference: realizedDifference,
           method,
           reference: data.reference,
-          paymentDate: data.paymentDate ? new Date(data.paymentDate) : new Date(),
+          paymentDate,
           notes: data.notes,
         },
       });
@@ -253,6 +336,38 @@ export class SupplierInvoiceService {
           tenantId,
           method,
         );
+        const fxAccounts = realizedDifference.isZero()
+          ? null
+          : await this.currencyAccounting.resolveFxAccountsInTransaction(tx, tenantId);
+
+        const lines: any[] = [
+          {
+            accountId: accounts.ACCOUNTS_PAYABLE.id,
+            debitAmount: basePayable,
+            foreignDebitAmount: amount,
+            description: `Accounts payable settlement - ${inv.invoiceNumber}`,
+          },
+          {
+            accountId: settlement.id,
+            creditAmount: baseSettlement,
+            foreignCreditAmount: amount,
+            description: `Supplier settlement - ${inv.invoiceNumber}`,
+          },
+        ];
+
+        if (realizedDifference.gt(0)) {
+          lines.push({
+            accountId: fxAccounts!.loss.id,
+            debitAmount: realizedDifference,
+            description: `Realized FX loss - ${inv.invoiceNumber}`,
+          });
+        } else if (realizedDifference.lt(0)) {
+          lines.push({
+            accountId: fxAccounts!.gain.id,
+            creditAmount: realizedDifference.abs(),
+            description: `Realized FX gain - ${inv.invoiceNumber}`,
+          });
+        }
 
         await this.dualWrite.postInTransaction(tx, {
           tenantId,
@@ -262,18 +377,9 @@ export class SupplierInvoiceService {
           reference: payment.reference || payment.id,
           sourceType: 'SUPPLIER_PAYMENT',
           sourceId: payment.id,
-          lines: [
-            {
-              accountId: accounts.ACCOUNTS_PAYABLE.id,
-              debitAmount: amount,
-              description: `Accounts payable settlement - ${inv.invoiceNumber}`,
-            },
-            {
-              accountId: settlement.id,
-              creditAmount: amount,
-              description: `Supplier settlement - ${inv.invoiceNumber}`,
-            },
-          ],
+          transactionCurrency: paymentFx.transactionCurrency,
+          exchangeRate: paymentFx.exchangeRate,
+          lines,
         });
       }
 
