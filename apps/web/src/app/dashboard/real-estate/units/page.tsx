@@ -8,8 +8,8 @@ import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
 import Button from '@/components/ui/Button';
 
-const unitTypes=[{value:'APARTMENT',label:'شقة'},{value:'VILLA',label:'فيلا'},{value:'OFFICE',label:'مكتب'},{value:'SHOP',label:'محل'},{value:'WAREHOUSE',label:'مستودع'},{value:'LAND',label:'أرض'}];
-const statuses=[{value:'VACANT',label:'شاغرة'},{value:'OCCUPIED',label:'مؤجرة'},{value:'MAINTENANCE',label:'صيانة'},{value:'INACTIVE',label:'غير نشطة'}];
+const unitTypes=[{value:'APARTMENT',label:'شقة'},{value:'VILLA',label:'فيلا'},{value:'OFFICE',label:'مكتب'},{value:'SHOP',label:'محل'},{value:'WAREHOUSE',label:'مستودع'},{value:'LAND_PLOT',label:'أرض'},{value:'STUDIO',label:'استوديو'},{value:'DUPLEX',label:'دوبلكس'},{value:'PENTHOUSE',label:'بنتهاوس'}];
+const statuses=[{value:'VACANT',label:'شاغرة'},{value:'OCCUPIED',label:'مشغولة'},{value:'RESERVED',label:'محجوزة'},{value:'UNDER_MAINTENANCE',label:'تحت الصيانة'},{value:'SOLD',label:'مباعة'}];
 
 export default function UnitsPage(){
  const [items,setItems]=useState<any[]>([]);
