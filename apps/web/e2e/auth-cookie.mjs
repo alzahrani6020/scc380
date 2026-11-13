@@ -39,6 +39,10 @@ const server = createServer(async (req, res) => {
     }));
     return;
   }
+  if (route === 'logout' && body.refreshToken === 'revoked-token') {
+    res.writeHead(401).end(JSON.stringify({ message: 'Session revoked' }));
+    return;
+  }
   if (route === 'logout') {
     lastLogout = body.refreshToken;
     res.end(JSON.stringify({ message: 'Logged out successfully' }));
@@ -109,6 +113,16 @@ try {
   assert.equal(logout.status, 200);
   assert.equal(lastLogout, 'refresh-3', 'logout must revoke the cookie-backed session');
   assert.match(logout.headers.get('set-cookie') || '', /max-age=0/i);
+
+  const revokedLogout = await exchange({ action: 'logout' }, { cookie: '__Host-scc_refresh=revoked-token' });
+  assert.equal(revokedLogout.status, 401, 'cannot claim server-side revocation on revoked session');
+  assert.match(revokedLogout.headers.get('set-cookie') || '', /max-age=0/i);
+
+  const clear = await exchange({ action: 'clear' }, { cookie: '__Host-scc_refresh=revoked-token' });
+  assert.equal(clear.status, 200);
+  assert.deepEqual(await clear.json(), { cleared: true, revoked: false });
+  assert.match(clear.headers.get('set-cookie') || '', /max-age=0/i);
+  assert.match(clear.headers.get('cache-control') || '', /no-store/);
 
   process.stdout.write('AUTH_COOKIE_HTTP_E2E_PASS\n');
 } finally {
