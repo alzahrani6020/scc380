@@ -152,3 +152,14 @@ test('auth/security reconciliation migration is additive and baseline-gated', ()
   assert.match(baseline, /AUTH_SECURITY_PREFLIGHT_PASS/);
   assert.match(baseline, /AUTH_SECURITY_BLOCKED incomplete columns/);
 });
+
+test('session APIs only expose current active sessions without token material', () => {
+  const service = src('src/security/sessions.service.ts');
+  assert.match(service, /userId && userId !== req\.user\?\.userId/);
+  assert.match(service, /tenantId:\s*req\.user\?\.tenantId/);
+  assert.match(service, /revokedAt:\s*null/);
+  assert.match(service, /expiresAt:\s*\{\s*gt:\s*new Date\(\)\s*\}/);
+  assert.match(service, /select:\s*\{\s*id:\s*true/);
+  assert.doesNotMatch(service, /token:\s*true/);
+  assert.match(service, /prisma\.session\.updateMany/);
+});
