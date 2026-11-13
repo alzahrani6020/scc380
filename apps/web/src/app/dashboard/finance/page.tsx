@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import api from '@/lib/api';
-import { Receipt, ArrowUpRight, ArrowDownRight, Wallet, TrendingUp, CreditCard, Landmark, Plus, Pencil, Trash2, X, BookOpen, BookText, TreePine, CalendarRange, Clock3, CalendarCheck2, Target, Boxes, WalletCards, Coins, FileCheck2, CalendarSync } from 'lucide-react';
+import { Receipt, ArrowUpRight, ArrowDownRight, Wallet, TrendingUp, CreditCard, Landmark, Plus, Pencil, Trash2, X, BookOpen, BookText, TreePine, CalendarRange, Clock3, CalendarCheck2, Target, Boxes, WalletCards, Coins, FileCheck2 } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
 import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
@@ -237,7 +237,7 @@ export default function FinancePage() {
         </a>
         <a href="/dashboard/finance/accounting-schedules" className="scc-card-hover flex items-center gap-4 group">
           <div className="w-12 h-12 rounded-xl bg-violet-500/10 flex items-center justify-center group-hover:bg-violet-500/20 transition-colors">
-            <CalendarSync className="h-6 w-6 text-violet-400" />
+            <CalendarRange className="h-6 w-6 text-violet-400" />
           </div>
           <div>
             <h3 className="font-bold text-white">القيود الدورية والاستحقاقات</h3>
