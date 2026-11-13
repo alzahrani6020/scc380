@@ -7,7 +7,7 @@ export class ApiKeysService {
   async findAll(req: any) {
     const where: any = { userId: req.user?.userId, revokedAt: null };
     const [data, count] = await Promise.all([
-      prisma.apiKey.findMany({ where, orderBy: { createdAt: 'desc' } }),
+      prisma.apiKey.findMany({ where, select: { id: true, name: true, key: true, createdAt: true, lastUsedAt: true, expiresAt: true }, orderBy: { createdAt: 'desc' } }),
       prisma.apiKey.count({ where }),
     ]);
     return { data: data.map((k: any) => ({ ...k, key: k.key.slice(0, 8) + '...' })), count };
@@ -23,13 +23,14 @@ export class ApiKeysService {
     };
     if (dto.expiresAt) data.expiresAt = new Date(dto.expiresAt);
     const created = await prisma.apiKey.create({ data });
-    return { ...created, key }; // return full key only once
+    return { id: created.id, name: created.name, key }; // full key returned only on creation
   }
 
   async revoke(req: any, id: string) {
     const where: any = { id, userId: req.user?.userId };
     const existing = await prisma.apiKey.findFirst({ where });
     if (!existing) throw new NotFoundException('API key not found');
-    return prisma.apiKey.update({ where: { id }, data: { revokedAt: new Date() } });
+    await prisma.apiKey.updateMany({ where: { id, userId: req.user?.userId, revokedAt: null }, data: { revokedAt: new Date() } });
+    return { revoked: true };
   }
 }

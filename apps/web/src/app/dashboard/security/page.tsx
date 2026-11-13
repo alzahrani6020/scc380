@@ -23,17 +23,21 @@ export default function SecurityPage() {
     fetchData();
   }, []);
 
-  const fetchData = () => {
+  const fetchData = async () => {
     setLoading(true);
     setError('');
-    Promise.all([
-      api.get('/security/sessions/me'),
-      api.get('/security/api-keys'),
-    ]).then(([sessionResult, keysResult]) => {
+    try {
+      const [sessionResult, keysResult] = await Promise.all([
+        api.get('/security/sessions/me'),
+        api.get('/security/api-keys'),
+      ]);
       setSessions(sessionResult.data.data || []);
       setApiKeys(keysResult.data.data || []);
-    }).catch(() => setError('تعذر تحميل بيانات الأمان. تحقق من الاتصال والصلاحيات ثم أعد المحاولة.'))
-      .finally(() => setLoading(false));
+    } catch {
+      setError('تعذر تحميل بيانات الأمان. تحقق من الاتصال والصلاحيات ثم أعد المحاولة.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const revokeSession = async (id: string) => {
@@ -123,14 +127,14 @@ export default function SecurityPage() {
                     <Globe className="h-4 w-4 text-slate-400" />
                   </div>
                   <div>
-                    <p className="text-white text-sm">{s.deviceInfo || s.userAgent?.slice(0, 60) || 'جهاز غير مسجل'}</p>
+                    <p className="text-white text-sm">{s.deviceInfo || s.userAgent?.slice(0, 60) || 'جهاز غير مسجل'} {s.isCurrent && <span className="text-emerald-400 text-xs mr-2">(الجلسة الحالية)</span>}</p>
                     <p className="text-slate-500 text-xs flex items-center gap-1"><Clock className="h-3 w-3" /> {s.ipAddress || 'عنوان IP غير متوفر'} • آخر نشاط: {s.lastActiveAt ? new Date(s.lastActiveAt).toLocaleString('ar-SA') : 'غير معروف'}</p>
                   </div>
                 </div>
                 <Button variant="danger" size="sm" onClick={() => revokeSession(s.id)} disabled={busy}>إنهاء</Button>
               </div>
             ))}
-            {sessions.length === 0 && <p className="py-3 text-sm text-slate-300">لا توجد جلسات نشطة أخرى ظاهرة.</p>}
+            {sessions.length === 0 && <p className="py-3 text-sm text-slate-300">لا توجد جلسات نشطة ظاهرة.</p>}
           </div>
         )}
       </div>

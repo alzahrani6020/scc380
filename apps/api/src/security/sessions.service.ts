@@ -26,7 +26,7 @@ export class SessionsService {
       }),
       prisma.session.count({ where }),
     ]);
-    return { data, count };
+    return { data: data.map((session) => ({ ...session, isCurrent: session.id === req.user?.sessionId })), count };
   }
 
   async revoke(req: any, id: string) {
@@ -36,7 +36,7 @@ export class SessionsService {
     });
     if (!session) throw new NotFoundException('Session not found');
     const result = await prisma.session.updateMany({
-      where: { id, userId: req.user?.userId, revokedAt: null },
+      where: { id, userId: req.user?.userId, tenantId: req.user?.tenantId ?? null, revokedAt: null },
       data: { revokedAt: new Date() },
     });
     return { revoked: result.count };

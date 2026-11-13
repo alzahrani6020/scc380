@@ -163,3 +163,31 @@ test('session APIs only expose current active sessions without token material', 
   assert.doesNotMatch(service, /token:\s*true/);
   assert.match(service, /prisma\.session\.updateMany/);
 });
+
+
+test('security sessions capture metadata and identify only the current authenticated session', () => {
+  const auth = src('src/auth/auth.service.ts');
+  const controller = src('src/auth/auth.controller.ts');
+  const access = src('src/auth/access-session.ts');
+  const sessions = src('src/security/sessions.service.ts');
+  const web = src('../web/src/app/dashboard/security/page.tsx');
+
+  assert.match(auth, /private sessionMetadata\(req\?: any\)/);
+  assert.match(auth, /\.\.\.this\.sessionMetadata\(req\)/);
+  assert.match(auth, /userAgent: session\.userAgent/);
+  assert.match(controller, /verify2FALoginAndIssueToken\(tempToken, code, req\)/);
+  assert.match(controller, /googleAuth\(credential, req\)/);
+  assert.match(access, /sessionId: payload\.sid/);
+  assert.match(sessions, /isCurrent: session\.id === req\.user\?\.sessionId/);
+  assert.match(web, /const fetchData = async \(\) =>/);
+  assert.match(web, /await Promise\.all/);
+  assert.match(web, /s\.isCurrent/);
+});
+
+test('API keys do not return database records on revocation or expose unmasked listing keys', () => {
+  const keys = src('src/security/api-keys.service.ts');
+  assert.match(keys, /key: k\.key\.slice\(0, 8\)/);
+  assert.match(keys, /return \{ revoked: true \}/);
+  assert.doesNotMatch(keys, /return prisma\.apiKey\.update\(/);
+  assert.doesNotMatch(keys, /return \{ \.\.\.created, key \}/);
+});

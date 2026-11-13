@@ -27,6 +27,13 @@ export class AuthService {
     return email.trim().toLowerCase();
   }
 
+  private sessionMetadata(req?: any) {
+    const userAgent = req?.headers?.['user-agent'];
+    const agent = typeof userAgent === 'string' ? userAgent.slice(0, 512) : null;
+    const ip = typeof req?.ip === 'string' ? req.ip.slice(0, 128) : null;
+    return { userAgent: agent, ipAddress: ip, deviceInfo: agent ? agent.slice(0, 160) : null };
+  }
+
   private hashToken(token: string) {
     return createHash('sha256').update(token).digest('hex');
   }
@@ -115,7 +122,7 @@ export class AuthService {
     return user;
   }
 
-  async login(userId: string, email: string, role: string, tenantId?: string, tenantSlug?: string) {
+  async login(userId: string, email: string, role: string, tenantId?: string, tenantSlug?: string, req?: any) {
     // Re-check account and tenant state at token issuance time.
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -156,6 +163,7 @@ export class AuthService {
           tenantId: tenantId || null,
           token: tokens.refreshTokenHash,
           expiresAt: tokens.expiresAt,
+          ...this.sessionMetadata(req),
         },
       }),
       prisma.user.update({
@@ -171,7 +179,7 @@ export class AuthService {
     };
   }
 
-  async verify2FALoginAndIssueToken(tempToken: string, code: string) {
+  async verify2FALoginAndIssueToken(tempToken: string, code: string, req?: any) {
     let payload: any;
     try {
       payload = this.jwt.verify(tempToken);
@@ -199,6 +207,7 @@ export class AuthService {
           tenantId: tenantId || null,
           token: tokens.refreshTokenHash,
           expiresAt: tokens.expiresAt,
+          ...this.sessionMetadata(req),
         },
       }),
       prisma.user.update({
@@ -305,6 +314,9 @@ export class AuthService {
           tenantId: user.tenantId || null,
           token: tokens.refreshTokenHash,
           expiresAt: tokens.expiresAt,
+          userAgent: session.userAgent,
+          ipAddress: session.ipAddress,
+          deviceInfo: session.deviceInfo,
         },
       });
     });
@@ -526,7 +538,7 @@ export class AuthService {
   }
 
   // ─── Google OAuth ──────────────────────────────────────────────────
-  async googleAuth(credential: string) {
+  async googleAuth(credential: string, req?: any) {
     if (!this.googleClient) {
       throw new BadRequestException('Google OAuth not configured');
     }
@@ -565,7 +577,7 @@ export class AuthService {
       },
     });
 
-    return this.login(user.id, user.email, user.role, user.tenantId || undefined, undefined);
+    return this.login(user.id, user.email, user.role, user.tenantId || undefined, undefined, req);
   }
 
   // ─── 2FA / TOTP ────────────────────────────────────────────────────

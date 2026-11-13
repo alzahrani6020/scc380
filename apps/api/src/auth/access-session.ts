@@ -62,5 +62,6 @@ export async function validateAccessSessionPayload(payload: any) {
     role: user.role,
     tenantId: user.tenantId,
     tenantSlug: user.tenant?.slug,
+    sessionId: payload.sid,
   };
 }
