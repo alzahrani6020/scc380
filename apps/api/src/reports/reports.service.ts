@@ -29,20 +29,23 @@ export class ReportsService {
     userRole: string,
     from?: string,
     to?: string,
+    excludeClosing = false,
   ) {
     const date = this.buildDateFilter(from, to);
     return {
       ...this.tenantFilter(tenantId, userRole),
       status: 'POSTED',
       NOT: { entryNumber: { startsWith: 'LEG-' } },
+      ...(excludeClosing ? { type: { notIn: ['CLOSING', 'REVERSING'] } } : {}),
       ...(date ? { date } : {}),
     } as any;
   }
 
-  private modernHeaderWhere(from?: string, to?: string) {
+  private modernHeaderWhere(from?: string, to?: string, excludeClosing = false) {
     const date = this.buildDateFilter(from, to);
     return {
       status: 'POSTED',
+      ...(excludeClosing ? { type: { notIn: ['CLOSING', 'REVERSING'] } } : {}),
       ...(date ? { date } : {}),
     } as any;
   }
@@ -52,6 +55,7 @@ export class ReportsService {
     userRole: string,
     from?: string,
     to?: string,
+    excludeClosing = false,
   ) {
     const tenant = this.tenantFilter(tenantId, userRole);
     const [accounts, legacyBalances, modernBalances] = await Promise.all([
@@ -61,14 +65,14 @@ export class ReportsService {
       }),
       prisma.journalEntry.groupBy({
         by: ['accountId'],
-        where: this.legacyPostedWhere(tenantId, userRole, from, to),
+        where: this.legacyPostedWhere(tenantId, userRole, from, to, excludeClosing),
         _sum: { debitAmount: true, creditAmount: true },
       }),
       prisma.journalEntryLine.groupBy({
         by: ['accountId'],
         where: {
           ...tenant,
-          journalEntry: this.modernHeaderWhere(from, to),
+          journalEntry: this.modernHeaderWhere(from, to, excludeClosing),
         },
         _sum: { debitAmount: true, creditAmount: true },
       }),
@@ -116,12 +120,13 @@ export class ReportsService {
     userRole: string,
     from?: string,
     to?: string,
+    excludeClosing = false,
   ): Promise<UnifiedLedgerRow[]> {
     const tenant = this.tenantFilter(tenantId, userRole);
     const [legacy, modern] = await Promise.all([
       prisma.journalEntry.findMany({
         where: {
-          ...this.legacyPostedWhere(tenantId, userRole, from, to),
+          ...this.legacyPostedWhere(tenantId, userRole, from, to, excludeClosing),
           accountId,
         },
         select: {
@@ -138,7 +143,7 @@ export class ReportsService {
         where: {
           ...tenant,
           accountId,
-          journalEntry: this.modernHeaderWhere(from, to),
+          journalEntry: this.modernHeaderWhere(from, to, excludeClosing),
         },
         include: {
           journalEntry: {
@@ -197,7 +202,7 @@ export class ReportsService {
   }
 
   async getIncomeStatement(tenantId: string | undefined, userRole: string, from?: string, to?: string) {
-    const balances = await this.getAccountBalances(tenantId, userRole, from, to);
+    const balances = await this.getAccountBalances(tenantId, userRole, from, to, true);
     const revenueAccounts = balances.filter(b => b.type === 'REVENUE');
     const expenseAccounts = balances.filter(b => b.type === 'EXPENSE');
 
@@ -596,6 +601,9 @@ export class ReportsService {
       cashAccount.id,
       tenantId,
       userRole,
+      undefined,
+      undefined,
+      true,
     );
 
     const operatingItems: any[] = [];
