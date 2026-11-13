@@ -13,7 +13,7 @@ export class AuthController {
 
   @UseGuards(AuthRateLimitGuard)
   @Post('login')
-  async login(@Body() body: LoginDto, @Headers('x-tenant-slug') tenantSlug?: string) {
+  async login(@Body() body: LoginDto, @Request() req: any, @Headers('x-tenant-slug') tenantSlug?: string) {
     const user = await this.authService.authenticate(body.email, body.password, tenantSlug);
     return this.authService.login(
       user.id,
@@ -21,6 +21,7 @@ export class AuthController {
       user.role,
       user.tenantId || undefined,
       tenantSlug,
+      req,
     );
   }
 
@@ -83,9 +84,9 @@ export class AuthController {
   // ─── Google OAuth ──────────────────────────────────────────────────
   @UseGuards(AuthRateLimitGuard)
   @Post('google')
-  async googleAuth(@Body('credential') credential: string) {
+  async googleAuth(@Body('credential') credential: string, @Request() req: any) {
     if (!credential) throw new BadRequestException('Google credential is required');
-    return this.authService.googleAuth(credential);
+    return this.authService.googleAuth(credential, req);
   }
 
   // ─── 2FA ───────────────────────────────────────────────────────────
@@ -109,9 +110,10 @@ export class AuthController {
   async verify2FALoginAndIssueToken(
     @Body('tempToken') tempToken: string,
     @Body('code') code: string,
+    @Request() req: any,
   ) {
     if (!tempToken || !code) throw new BadRequestException('tempToken and code are required');
-    return this.authService.verify2FALoginAndIssueToken(tempToken, code);
+    return this.authService.verify2FALoginAndIssueToken(tempToken, code, req);
   }
 
   @UseGuards(JwtAuthGuard)
