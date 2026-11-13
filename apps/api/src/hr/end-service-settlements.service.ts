@@ -207,6 +207,70 @@ export class EndServiceSettlementsService {
     });
   }
 
+  async postPaymentAccounting(req: any, id: string, dto: any) {
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) throw new BadRequestException('Tenant is required');
+
+    const settlement = await prisma.endServiceSettlement.findFirst({
+      where: { ...tenantWhere(tenantId), id },
+    });
+    if (!settlement) throw new NotFoundException('End-service settlement not found');
+    if (settlement.status !== 'PAID') {
+      throw new ConflictException('Settlement must be paid before payment accounting posting');
+    }
+
+    const net = money(settlement.netSettlement);
+    if (net <= 0) throw new BadRequestException('Settlement net amount must be positive');
+    if (!dto.cashAccountId) throw new BadRequestException('Bank/cash account is required');
+
+    const accrual = await prisma.journalEntryHeader.findFirst({
+      where: {
+        tenantId,
+        sourceType: 'END_SERVICE_SETTLEMENT',
+        sourceId: settlement.id,
+      },
+      include: {
+        lines: {
+          orderBy: { lineNumber: 'asc' },
+        },
+      },
+    });
+    if (!accrual) {
+      throw new ConflictException('Settlement accrual must be posted before payment accounting');
+    }
+
+    const payableLine = accrual.lines.find(
+      (line) => money(line.creditAmount) > 0
+        && Math.abs(money(line.creditAmount) - net) <= 0.01
+        && line.description === 'Net employee settlement payable',
+    );
+    if (!payableLine) {
+      throw new ConflictException('Settlement payable line could not be resolved from accrual');
+    }
+
+    return this.accountingPosting.post({
+      tenantId,
+      date: settlement.paidAt || new Date(),
+      entryNumber: `EOS-PAY-${settlement.id.slice(-10)}`,
+      description: `End-service settlement payment for employee ${settlement.employeeId}`,
+      reference: `EOS-PAY-${settlement.id}`,
+      sourceType: 'END_SERVICE_PAYMENT',
+      sourceId: settlement.id,
+      lines: [
+        {
+          accountId: payableLine.accountId,
+          debitAmount: net,
+          description: 'Clear end-service settlement payable',
+        },
+        {
+          accountId: dto.cashAccountId,
+          creditAmount: net,
+          description: 'End-service settlement payment from bank/cash',
+        },
+      ],
+    });
+  }
+
   async pay(req: any, id: string) {
     const tenantId = req.user?.tenantId;
     const settlement = await prisma.endServiceSettlement.findFirst({
