@@ -33,6 +33,11 @@ class PostPayrollAccountingDto {
   @IsString() @IsOptional() loanReceivableAccountId?: string;
 }
 
+class PostPayrollPaymentAccountingDto {
+  @IsString() netPayableAccountId: string;
+  @IsString() cashAccountId: string;
+}
+
 @ApiTags('HR - Payroll Runs')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -70,6 +75,12 @@ export class PayrollRunsController {
   @RequirePermissions('hr:payroll:write', 'erp:write')
   postAccounting(@Req() req: any, @Param('id') id: string, @Body() dto: PostPayrollAccountingDto) {
     return this.service.postAccounting(req, id, dto);
+  }
+
+  @Post(':id/post-payment-accounting')
+  @RequirePermissions('hr:payroll:write', 'erp:write')
+  postPaymentAccounting(@Req() req: any, @Param('id') id: string, @Body() dto: PostPayrollPaymentAccountingDto) {
+    return this.service.postPaymentAccounting(req, id, dto);
   }
 
   @Delete(':id')
