@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsDecimal, IsBoolean, IsInt, Min } from 'class-validator';
+import { IsString, IsOptional, IsDecimal, IsBoolean, IsInt, Min, IsIn } from 'class-validator';
 
 export class CreateProductDto {
   @IsString()
@@ -112,8 +112,16 @@ export class CreateStockMovementDto {
   @IsString()
   warehouseId?: string;
 
-  @IsString()
+  @IsIn(['IN', 'OUT', 'SALE', 'RETURN', 'ADJUSTMENT', 'TRANSFER'])
   type: 'IN' | 'OUT' | 'SALE' | 'RETURN' | 'ADJUSTMENT' | 'TRANSFER';
+
+  @IsOptional()
+  @IsIn(['INCREASE', 'DECREASE'])
+  adjustmentDirection?: 'INCREASE' | 'DECREASE';
+
+  @IsOptional()
+  @IsString()
+  counterAccountId?: string;
 
   @IsInt()
   @Min(1)

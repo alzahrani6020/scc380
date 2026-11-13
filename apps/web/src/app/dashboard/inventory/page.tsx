@@ -1,174 +1,273 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { ArrowDownUp, PackagePlus, Warehouse } from 'lucide-react';
+import api from '@/lib/api';
+import Button from '@/components/ui/Button';
+import Input from '@/components/ui/Input';
+import Modal from '@/components/ui/Modal';
+import Select from '@/components/ui/Select';
 
-interface Product {
+type Product = {
   id: string;
   name: string;
   sku: string;
-  barcode?: string;
-  salePrice: number;
-  costPrice: number;
+  barcode?: string | null;
+  salePrice: number | string;
+  costPrice: number | string;
   currentStock: number;
   minStockLevel: number;
-  category?: { name: string };
-}
+  isActive: boolean;
+  category?: { name: string } | null;
+};
 
 export default function InventoryPage() {
   const [products, setProducts] = useState<Product[]>([]);
+  const [warehouses, setWarehouses] = useState<any[]>([]);
+  const [accounts, setAccounts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState('');
-  const [showForm, setShowForm] = useState(false);
-  const [formData, setFormData] = useState({
-    name: '', sku: '', barcode: '', salePrice: '', costPrice: '', currentStock: '', minStockLevel: '5',
+  const [productOpen, setProductOpen] = useState(false);
+  const [movementOpen, setMovementOpen] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [productForm, setProductForm] = useState<any>({
+    name: '',
+    sku: '',
+    barcode: '',
+    salePrice: '',
+    costPrice: '',
+    minStockLevel: 0,
+  });
+  const [movementForm, setMovementForm] = useState<any>({
+    type: 'SALE',
+    quantity: 1,
+    warehouseId: '',
+    unitCost: '',
+    counterAccountId: '',
+    adjustmentDirection: 'INCREASE',
+    reference: '',
   });
 
-  useEffect(() => {
-    fetchProducts();
-  }, []);
-
-  const fetchProducts = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch('http://localhost:3001/inventory/products');
-      if (res.ok) {
-        const data = await res.json();
-        setProducts(data);
-      }
-    } catch (e) {
-      setProducts([
-        { id: '1', name: 'لابتوب Dell', sku: 'LAP-DELL-001', barcode: '1234567890123', salePrice: 3200, costPrice: 2500, currentStock: 15, minStockLevel: 5, category: { name: 'إلكترونيات' } },
-        { id: '2', name: 'ماوس لاسلكي', sku: 'MOUSE-WL-001', barcode: '1234567890124', salePrice: 75, costPrice: 45, currentStock: 50, minStockLevel: 10, category: { name: 'إلكترونيات' } },
-        { id: '3', name: 'شاشة 27 بوصة', sku: 'MON-27-001', barcode: '1234567890125', salePrice: 1100, costPrice: 800, currentStock: 8, minStockLevel: 3, category: { name: 'إلكترونيات' } },
-        { id: '4', name: 'مياه معدنية', sku: 'WAT-500-001', barcode: '1234567890126', salePrice: 2.5, costPrice: 1.5, currentStock: 200, minStockLevel: 50, category: { name: 'مواد غذائية' } },
-        { id: '5', name: 'كرسي مكتبي', sku: 'CHR-OFF-001', barcode: '1234567890127', salePrice: 500, costPrice: 350, currentStock: 12, minStockLevel: 4, category: { name: 'أثاث مكتبي' } },
-      ]);
-    }
-    setLoading(false);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const res = await fetch('http://localhost:3001/inventory/products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: formData.name,
-          sku: formData.sku,
-          barcode: formData.barcode || undefined,
-          salePrice: formData.salePrice,
-          costPrice: formData.costPrice,
-          currentStock: parseInt(formData.currentStock) || 0,
-          minStockLevel: parseInt(formData.minStockLevel) || 5,
-        }),
-      });
-      if (res.ok) {
-        setShowForm(false);
-        setFormData({ name: '', sku: '', barcode: '', salePrice: '', costPrice: '', currentStock: '', minStockLevel: '5' });
-        fetchProducts();
-      }
-    } catch (e) {
-      alert('فشل في إضافة المنتج');
-    }
-  };
-
-  const filtered = products.filter(p =>
-    p.name.toLowerCase().includes(search.toLowerCase()) ||
-    p.sku.toLowerCase().includes(search.toLowerCase()) ||
-    (p.barcode && p.barcode.includes(search))
+  const activeAccounts = useMemo(
+    () => accounts.filter((a) => a.isActive !== false),
+    [accounts],
   );
 
-  const lowStock = filtered.filter(p => (p.currentStock || 0) <= (p.minStockLevel || 0));
+  const load = () => {
+    setLoading(true);
+    Promise.all([
+      api.get('/inventory/products').then((r) =>
+        setProducts(Array.isArray(r.data) ? r.data : r.data?.data || []),
+      ),
+      api.get('/inventory/warehouses').then((r) =>
+        setWarehouses(Array.isArray(r.data) ? r.data : r.data?.data || []),
+      ),
+      api.get('/finance/chart-of-accounts').then((r) =>
+        setAccounts(Array.isArray(r.data) ? r.data : r.data?.data || []),
+      ),
+    ])
+      .catch((err) => alert(err.response?.data?.message || 'تعذر تحميل المخزون'))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const createProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await api.post('/inventory/products', {
+        name: productForm.name,
+        sku: productForm.sku,
+        barcode: productForm.barcode || undefined,
+        salePrice: String(productForm.salePrice || '0'),
+        costPrice: String(productForm.costPrice || '0'),
+        currentStock: 0,
+        minStockLevel: Number(productForm.minStockLevel || 0),
+      });
+      setProductOpen(false);
+      setProductForm({ name: '', sku: '', barcode: '', salePrice: '', costPrice: '', minStockLevel: 0 });
+      load();
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'تعذر إنشاء المنتج');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openMovement = (product: Product) => {
+    setSelectedProduct(product);
+    setMovementForm({
+      type: 'SALE',
+      quantity: 1,
+      warehouseId: '',
+      unitCost: String(product.costPrice || ''),
+      counterAccountId: '',
+      adjustmentDirection: 'INCREASE',
+      reference: '',
+    });
+    setMovementOpen(true);
+  };
+
+  const createMovement = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedProduct) return;
+    setBusy(true);
+    try {
+      const payload: any = {
+        productId: selectedProduct.id,
+        type: movementForm.type,
+        quantity: Number(movementForm.quantity),
+        warehouseId: movementForm.warehouseId || undefined,
+        unitCost: movementForm.unitCost === '' ? undefined : String(movementForm.unitCost),
+        reference: movementForm.reference || undefined,
+      };
+      if (movementForm.type === 'ADJUSTMENT') {
+        payload.adjustmentDirection = movementForm.adjustmentDirection;
+      }
+      if (movementForm.type !== 'SALE') {
+        payload.counterAccountId = movementForm.counterAccountId || undefined;
+      }
+      await api.post('/inventory/movements', payload);
+      setMovementOpen(false);
+      load();
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'تعذر تسجيل حركة المخزون');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const filtered = products.filter((p) => {
+    const q = search.trim().toLowerCase();
+    return !q ||
+      p.name.toLowerCase().includes(q) ||
+      p.sku.toLowerCase().includes(q) ||
+      Boolean(p.barcode?.includes(q));
+  });
+
+  const stockValue = products.reduce(
+    (sum, p) => sum + p.currentStock * Number(p.costPrice || 0),
+    0,
+  );
+  const lowStock = products.filter((p) => p.currentStock <= p.minStockLevel).length;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white p-4" dir="rtl">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold">📦 إدارة المخزون</h1>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 font-bold"
-        >
-          + منتج جديد
-        </button>
+    <div className="space-y-6 animate-fade-in-up" dir="rtl">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+            <Warehouse className="h-6 w-6 text-primary-400" />
+            إدارة المخزون
+          </h1>
+          <p className="text-slate-400 text-sm mt-1">
+            مخزون فعلي مرتبط بالحركات والقيود المحاسبية
+          </p>
+        </div>
+        <Button onClick={() => setProductOpen(true)}><PackagePlus className="h-4 w-4" /> منتج جديد</Button>
       </div>
 
-      {lowStock.length > 0 && (
-        <div className="mb-4 p-3 rounded-lg bg-red-600/20 border border-red-600/30">
-          ⚠️ <strong>{lowStock.length}</strong> منتجات منخفضة المخزون!
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="scc-card-hover">
+          <p className="text-slate-400 text-xs">عدد المنتجات</p>
+          <p className="text-xl font-bold text-white">{products.length}</p>
         </div>
-      )}
+        <div className="scc-card-hover">
+          <p className="text-slate-400 text-xs">قيمة المخزون بالتكلفة</p>
+          <p className="text-xl font-bold text-white">{stockValue.toLocaleString()} ر.س</p>
+        </div>
+        <div className="scc-card-hover">
+          <p className="text-slate-400 text-xs">منخفض المخزون</p>
+          <p className={`text-xl font-bold ${lowStock ? 'text-red-400' : 'text-emerald-400'}`}>{lowStock}</p>
+        </div>
+      </div>
 
-      {showForm && (
-        <form onSubmit={handleSubmit} className="mb-4 p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-3">
-          <h3 className="font-bold">إضافة منتج جديد</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <input required placeholder="اسم المنتج" className="p-2 rounded bg-slate-800 border border-slate-700" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
-            <input required placeholder="SKU" className="p-2 rounded bg-slate-800 border border-slate-700" value={formData.sku} onChange={e => setFormData({...formData, sku: e.target.value})} />
-            <input placeholder="الباركود" className="p-2 rounded bg-slate-800 border border-slate-700" value={formData.barcode} onChange={e => setFormData({...formData, barcode: e.target.value})} />
-            <input required placeholder="سعر البيع" type="number" step="0.01" className="p-2 rounded bg-slate-800 border border-slate-700" value={formData.salePrice} onChange={e => setFormData({...formData, salePrice: e.target.value})} />
-            <input placeholder="سعر التكلفة" type="number" step="0.01" className="p-2 rounded bg-slate-800 border border-slate-700" value={formData.costPrice} onChange={e => setFormData({...formData, costPrice: e.target.value})} />
-            <input placeholder="المخزون الحالي" type="number" className="p-2 rounded bg-slate-800 border border-slate-700" value={formData.currentStock} onChange={e => setFormData({...formData, currentStock: e.target.value})} />
-            <input placeholder="الحد الأدنى" type="number" className="p-2 rounded bg-slate-800 border border-slate-700" value={formData.minStockLevel} onChange={e => setFormData({...formData, minStockLevel: e.target.value})} />
-          </div>
-          <div className="flex gap-2">
-            <button type="submit" className="px-4 py-2 rounded bg-green-600 hover:bg-green-500 font-bold">حفظ</button>
-            <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 rounded bg-slate-700 hover:bg-slate-600">إلغاء</button>
-          </div>
-        </form>
-      )}
+      <Input label="بحث" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="اسم المنتج، SKU أو الباركود" />
 
-      <input
-        type="text"
-        placeholder="🔍 بحث في المنتجات..."
-        className="w-full p-3 rounded-lg bg-slate-800 border border-slate-700 mb-4"
-        value={search}
-        onChange={e => setSearch(e.target.value)}
-      />
-
-      {loading ? (
-        <div className="text-center py-12 text-slate-500">جاري التحميل...</div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-800 text-slate-400">
-                <th className="text-right p-3">المنتج</th>
-                <th className="text-right p-3">SKU</th>
-                <th className="text-right p-3">الفئة</th>
-                <th className="text-right p-3">سعر التكلفة</th>
-                <th className="text-right p-3">سعر البيع</th>
-                <th className="text-right p-3">المخزون</th>
-                <th className="text-right p-3">الحد الأدنى</th>
-                <th className="text-right p-3">الهامش</th>
+      <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-slate-800/50 border-b border-slate-700 text-slate-400">
+              <th className="p-3 text-right">المنتج</th>
+              <th className="p-3 text-right">SKU</th>
+              <th className="p-3 text-left">التكلفة</th>
+              <th className="p-3 text-left">سعر البيع</th>
+              <th className="p-3 text-center">الرصيد</th>
+              <th className="p-3 text-center">الإجراء</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={6} className="p-8 text-center text-slate-500">جارٍ التحميل...</td></tr>
+            ) : filtered.length === 0 ? (
+              <tr><td colSpan={6} className="p-8 text-center text-slate-500">لا توجد منتجات</td></tr>
+            ) : filtered.map((p) => (
+              <tr key={p.id} className="border-b border-slate-800/50">
+                <td className="p-3 text-white font-medium">{p.name}</td>
+                <td className="p-3 text-slate-300">{p.sku}</td>
+                <td className="p-3 text-left text-slate-300">{Number(p.costPrice).toLocaleString()}</td>
+                <td className="p-3 text-left text-slate-300">{Number(p.salePrice).toLocaleString()}</td>
+                <td className={`p-3 text-center font-bold ${p.currentStock <= p.minStockLevel ? 'text-red-400' : 'text-emerald-400'}`}>
+                  {p.currentStock}
+                </td>
+                <td className="p-3 text-center">
+                  <button onClick={() => openMovement(p)} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-primary-400 hover:bg-primary-500/10">
+                    <ArrowDownUp className="h-4 w-4" />
+                    حركة
+                  </button>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {filtered.map(p => {
-                const margin = ((Number(p.salePrice) - Number(p.costPrice)) / Number(p.salePrice) * 100).toFixed(1);
-                const isLow = p.currentStock <= p.minStockLevel;
-                return (
-                  <tr key={p.id} className="border-b border-slate-800/50 hover:bg-slate-800/30">
-                    <td className="p-3">
-                      <div className="font-medium">{p.name}</div>
-                      {p.barcode && <div className="text-xs text-slate-500">{p.barcode}</div>}
-                    </td>
-                    <td className="p-3 text-slate-400">{p.sku}</td>
-                    <td className="p-3 text-slate-400">{p.category?.name || '-'}</td>
-                    <td className="p-3">{Number(p.costPrice).toFixed(2)}</td>
-                    <td className="p-3">{Number(p.salePrice).toFixed(2)}</td>
-                    <td className={`p-3 font-bold ${isLow ? 'text-red-400' : 'text-green-400'}`}>
-                      {p.currentStock}
-                    </td>
-                    <td className="p-3 text-slate-500">{p.minStockLevel}</td>
-                    <td className="p-3 text-blue-400">{margin}%</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <Modal isOpen={productOpen} onClose={() => setProductOpen(false)} title="منتج جديد">
+        <form onSubmit={createProduct} className="space-y-4">
+          <Input label="اسم المنتج" required value={productForm.name} onChange={(e) => setProductForm({ ...productForm, name: e.target.value })} />
+          <Input label="SKU" required value={productForm.sku} onChange={(e) => setProductForm({ ...productForm, sku: e.target.value })} />
+          <Input label="الباركود" value={productForm.barcode} onChange={(e) => setProductForm({ ...productForm, barcode: e.target.value })} />
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="سعر التكلفة" type="number" step="0.0001" value={productForm.costPrice} onChange={(e) => setProductForm({ ...productForm, costPrice: e.target.value })} />
+            <Input label="سعر البيع" type="number" step="0.0001" value={productForm.salePrice} onChange={(e) => setProductForm({ ...productForm, salePrice: e.target.value })} />
+          </div>
+          <Input label="حد إعادة الطلب" type="number" min="0" value={productForm.minStockLevel} onChange={(e) => setProductForm({ ...productForm, minStockLevel: e.target.value })} />
+          <p className="text-xs text-slate-500">الرصيد الافتتاحي يُسجل بحركة مخزون حتى يبقى مرتبطًا محاسبيًا.</p>
+          <div className="flex justify-end"><Button type="submit" isLoading={busy}>حفظ</Button></div>
+        </form>
+      </Modal>
+
+      <Modal isOpen={movementOpen} onClose={() => setMovementOpen(false)} title={selectedProduct ? `حركة — ${selectedProduct.name}` : 'حركة مخزون'}>
+        <form onSubmit={createMovement} className="space-y-4">
+          <Select label="نوع الحركة" value={movementForm.type} onChange={(e) => setMovementForm({ ...movementForm, type: e.target.value })} options={[
+            { value: 'SALE', label: 'بيع — يرحل تكلفة المبيعات تلقائيًا' },
+            { value: 'IN', label: 'استلام / زيادة' },
+            { value: 'OUT', label: 'صرف / نقصان' },
+            { value: 'RETURN', label: 'مرتجع / زيادة' },
+            { value: 'ADJUSTMENT', label: 'تسوية جرد' },
+          ]} />
+          {movementForm.type === 'ADJUSTMENT' && (
+            <Select label="اتجاه التسوية" value={movementForm.adjustmentDirection} onChange={(e) => setMovementForm({ ...movementForm, adjustmentDirection: e.target.value })} options={[
+              { value: 'INCREASE', label: 'زيادة' },
+              { value: 'DECREASE', label: 'نقصان' },
+            ]} />
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="الكمية" type="number" min="1" required value={movementForm.quantity} onChange={(e) => setMovementForm({ ...movementForm, quantity: e.target.value })} />
+            <Input label="تكلفة الوحدة" type="number" step="0.0001" value={movementForm.unitCost} onChange={(e) => setMovementForm({ ...movementForm, unitCost: e.target.value })} />
+          </div>
+          <Select label="المستودع (اختياري)" value={movementForm.warehouseId} onChange={(e) => setMovementForm({ ...movementForm, warehouseId: e.target.value })} options={[
+            { value: '', label: 'بدون تحديد مستودع' },
+            ...warehouses.filter((w) => w.isActive !== false).map((w) => ({ value: w.id, label: w.name })),
+          ]} />
+          {movementForm.type !== 'SALE' && (
+            <Select label="الحساب المقابل" required value={movementForm.counterAccountId} onChange={(e) => setMovementForm({ ...movementForm, counterAccountId: e.target.value })} options={activeAccounts.map((a) => ({ value: a.id, label: `${a.code} — ${a.name}` }))} />
+          )}
+          <Input label="المرجع" value={movementForm.reference} onChange={(e) => setMovementForm({ ...movementForm, reference: e.target.value })} />
+          <div className="flex justify-end"><Button type="submit" isLoading={busy}>ترحيل الحركة</Button></div>
+        </form>
+      </Modal>
     </div>
   );
 }

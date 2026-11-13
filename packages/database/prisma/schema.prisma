@@ -2903,8 +2903,8 @@ model Product {
 
   name          String
   nameAr        String?
-  sku           String    @unique
-  barcode       String?   @unique
+  sku           String
+  barcode       String?
   categoryId    String?
   category      ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
@@ -2932,6 +2932,8 @@ model Product {
   posOrderItems  PosOrderItem[]
   invoiceItems   InvoiceItem[]
 
+  @@unique([tenantId, sku])
+  @@unique([tenantId, barcode])
   @@index([tenantId])
   @@index([categoryId])
   @@index([barcode])
@@ -2944,7 +2946,7 @@ model Warehouse {
   tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   name          String
-  code          String?   @unique
+  code          String?
   location      String?
   isActive      Boolean   @default(true)
   isDefault     Boolean   @default(false)
@@ -2956,6 +2958,7 @@ model Warehouse {
 
   stockMovements StockMovement[]
 
+  @@unique([tenantId, code])
   @@index([tenantId])
   @@index([branchId])
   @@map("warehouses")
@@ -3002,7 +3005,7 @@ model StockTransfer {
   tenantId      String
   tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  transferNumber String   @unique
+  transferNumber String
   fromBranchId  String
   toBranchId    String
   
@@ -3019,6 +3022,7 @@ model StockTransfer {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
+  @@unique([tenantId, transferNumber])
   @@index([tenantId])
   @@index([status])
   @@map("stock_transfers")
