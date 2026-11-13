@@ -413,8 +413,8 @@ export class PayrollRunsService {
 
     const net = money(run.netTotal);
     if (net <= 0) throw new BadRequestException('Payroll run net total must be positive');
-    if (!dto.netPayableAccountId || !dto.cashAccountId) {
-      throw new BadRequestException('Net salaries payable and bank/cash accounts are required');
+    if (!dto.cashAccountId) {
+      throw new BadRequestException('Bank/cash account is required');
     }
 
     const accrual = await prisma.journalEntryHeader.findFirst({
@@ -423,10 +423,23 @@ export class PayrollRunsService {
         sourceType: 'PAYROLL_RUN',
         sourceId: run.id,
       },
-      select: { id: true },
+      include: {
+        lines: {
+          orderBy: { lineNumber: 'asc' },
+        },
+      },
     });
     if (!accrual) {
       throw new ConflictException('Payroll accrual must be posted before payment accounting');
+    }
+
+    const payableLine = accrual.lines.find(
+      (line) => money(line.creditAmount) > 0
+        && Math.abs(money(line.creditAmount) - net) <= 0.01
+        && line.description === 'Net salaries payable',
+    );
+    if (!payableLine) {
+      throw new ConflictException('Payroll accrual net payable line could not be resolved');
     }
 
     const period = `${run.year}${String(run.month).padStart(2, '0')}`;
@@ -440,7 +453,7 @@ export class PayrollRunsService {
       sourceId: run.id,
       lines: [
         {
-          accountId: dto.netPayableAccountId,
+          accountId: payableLine.accountId,
           debitAmount: net,
           description: 'Clear net salaries payable',
         },
