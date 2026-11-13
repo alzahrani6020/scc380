@@ -283,3 +283,35 @@ test('AR/AP aging is historical, tenant-aware, and payment-cutoff based', () => 
   assert.match(controller, /@Get\('payables-aging'\)/);
 });
 
+test('year-end close is additive, auditable, reversible, and report-safe', () => {
+  const migration = readFileSync(
+    join(process.cwd(), '../../packages/database/prisma/migrations/20261113013000_year_end_close/migration.sql'),
+    'utf8',
+  );
+  const startup = src('scripts/baseline-and-migrate.cjs');
+  const service = src('src/finance/year-end-closing.service.ts');
+  const reports = src('src/reports/reports.service.ts');
+
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS "year_end_closes"/);
+  assert.match(migration, /"version" INTEGER NOT NULL DEFAULT 1/);
+  assert.doesNotMatch(migration, /(^|\n)\s*DROP\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*TRUNCATE\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*DELETE\s+FROM\s+/i);
+  assert.doesNotMatch(migration, /(^|\n)\s*UPDATE\s+["a-z]/i);
+
+  assert.match(startup, /verifyYearEndClosePreconditions/);
+  assert.match(startup, /YEAR_END_CLOSE_BLOCKED/);
+  assert.match(startup, /await verifyYearEndClosePreconditions\(applied\)/);
+
+  assert.match(service, /sourceType:\s*'YEAR_END_CLOSE'/);
+  assert.match(service, /sourceType:\s*'YEAR_END_REVERSAL'/);
+  assert.match(service, /type:\s*JournalType\.CLOSING/);
+  assert.match(service, /type:\s*JournalType\.REVERSING/);
+  assert.match(service, /incomplete bank reconciliations/);
+  assert.match(service, /Only ADMIN or SUPER_ADMIN/);
+  assert.doesNotMatch(service, /journalEntryHeader\.delete/);
+
+  assert.match(reports, /excludeClosing = false/);
+  assert.match(reports, /sourceType:\s*\{\s*not:\s*'YEAR_END_REVERSAL'/);
+});
+
