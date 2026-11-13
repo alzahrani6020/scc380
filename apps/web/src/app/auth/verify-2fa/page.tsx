@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import api from '@/lib/api';
 import { sessionAuth } from '@/lib/session-auth';
 import { setAuth } from '@/lib/auth';
 import { Shield, ArrowRight, Loader2 } from 'lucide-react';
@@ -27,7 +28,8 @@ function Verify2FAForm() {
     if (!tempToken) return;
     setLoading(true); setError('');
     try {
-      const data = await sessionAuth('verify-2fa-login', { tempToken, code, remember: true });
+      const initial = await api.post('/auth/verify-2fa-login', { tempToken, code });
+      const data = await sessionAuth('migrate', { refreshToken: initial.data.refreshToken, remember: true });
       const authData = {
         accessToken: data.accessToken,
         role: data.user.role,
@@ -43,7 +45,7 @@ function Verify2FAForm() {
       sessionStorage.removeItem('scc_2fa_temp_token');
       router.push('/dashboard');
     } catch (err: any) {
-      setError(err.message || 'كود التحقق غير صحيح');
+      setError(err.response?.data?.message || err.message || 'كود التحقق غير صحيح');
     } finally { setLoading(false); }
   };
 
