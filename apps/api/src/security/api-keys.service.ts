@@ -22,7 +22,20 @@ export class ApiKeysService {
       tenantId: req.user?.tenantId ?? null,
     };
     if (dto.expiresAt) data.expiresAt = new Date(dto.expiresAt);
-    const created = await prisma.apiKey.create({ data });
+    const created = await prisma.$transaction(async (tx) => {
+      const entry = await tx.apiKey.create({ data });
+      await tx.auditLog.create({
+        data: {
+          tenantId: req.user?.tenantId ?? null,
+          userId: req.user?.userId,
+          action: 'API_KEY_CREATED',
+          entityType: 'ApiKey',
+          entityId: entry.id,
+          newValues: { keyId: entry.id, name: entry.name },
+        },
+      });
+      return entry;
+    });
     return { id: created.id, name: created.name, key }; // full key returned only on creation
   }
 
@@ -30,7 +43,25 @@ export class ApiKeysService {
     const where: any = { id, userId: req.user?.userId, tenantId: req.user?.tenantId ?? null };
     const existing = await prisma.apiKey.findFirst({ where });
     if (!existing) throw new NotFoundException('API key not found');
-    const result = await prisma.apiKey.updateMany({ where: { ...where, revokedAt: null }, data: { revokedAt: new Date() } });
-    return { revoked: result.count === 1 };
+    const revoked = await prisma.$transaction(async (tx) => {
+      const result = await tx.apiKey.updateMany({
+        where: { ...where, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      if (result.count === 1) {
+        await tx.auditLog.create({
+          data: {
+            tenantId: req.user?.tenantId ?? null,
+            userId: req.user?.userId,
+            action: 'API_KEY_REVOKED',
+            entityType: 'ApiKey',
+            entityId: id,
+            newValues: { keyId: id },
+          },
+        });
+      }
+      return result.count === 1;
+    });
+    return { revoked };
   }
 }
