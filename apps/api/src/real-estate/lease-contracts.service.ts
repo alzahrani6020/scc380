@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { prisma, withTenant } from '@scc/database';
 
 @Injectable()
@@ -86,11 +86,10 @@ export class LeaseContractsService {
   async delete(tenantId: string, id: string) {
     const existing = await prisma.leaseContract.findFirst({ where: withTenant({ id }, tenantId) });
     if (!existing) throw new NotFoundException('Contract not found');
-    // Reset unit status
-    await prisma.unit.update({
-      where: { id: existing.unitId },
-      data: { status: 'VACANT', currentLeaseId: null },
-    });
+    const related = await prisma.rentPayment.count({ where: withTenant({ contractId: id }, tenantId) });
+    if (related || existing.status !== 'DRAFT') {
+      throw new ConflictException('Only draft contracts without scheduled or collected payments can be deleted');
+    }
     return prisma.leaseContract.delete({ where: { id } });
   }
 
