@@ -469,10 +469,6 @@ export class YearEndClosingService {
           })),
         });
 
-        await tx.journalEntryHeader.update({
-          where: { id: closing.id },
-          data: { status: 'REVERSED' },
-        });
       }
 
       const updated = await tx.yearEndClose.update({
