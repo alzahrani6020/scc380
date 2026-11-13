@@ -25,6 +25,8 @@ import { FixedAssetsController } from './fixed-assets.controller';
 import { FixedAssetsService } from './fixed-assets.service';
 import { BudgetsController } from './budgets.controller';
 import { BudgetsService } from './budgets.service';
+import { ForeignExchangeController } from './foreign-exchange.controller';
+import { ForeignExchangeService } from './foreign-exchange.service';
 
 @Module({
   imports: [AccountingCoreModule],
@@ -42,6 +44,7 @@ import { BudgetsService } from './budgets.service';
     AccountingJournalsController,
     FixedAssetsController,
     BudgetsController,
+    ForeignExchangeController,
   ],
   providers: [
     PaymentsService,
@@ -56,6 +59,7 @@ import { BudgetsService } from './budgets.service';
     CostCentersService,
     FixedAssetsService,
     BudgetsService,
+    ForeignExchangeService,
   ],
 })
 export class FinanceModule {}
