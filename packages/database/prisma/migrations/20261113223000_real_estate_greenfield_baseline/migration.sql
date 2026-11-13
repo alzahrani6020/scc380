@@ -18,7 +18,7 @@ CREATE TYPE "PaymentFrequency" AS ENUM ('MONTHLY', 'QUARTERLY', 'SEMI_ANNUAL', '
 CREATE TYPE "LeaseStatus" AS ENUM ('DRAFT', 'ACTIVE', 'EXPIRED', 'TERMINATED', 'RENEWED');
 -- PaymentStatus is shared with pre-existing finance functionality.
 -- Validate exact enum values instead of replacing an existing production type.
-DO $
+DO $$
 DECLARE actual TEXT[];
 BEGIN
  SELECT array_agg(e.enumlabel::text ORDER BY e.enumsortorder)
@@ -31,7 +31,7 @@ BEGIN
  ELSIF actual <> ARRAY['PENDING','COMPLETED','FAILED','REFUNDED']::text[] THEN
   RAISE EXCEPTION 'Existing PaymentStatus enum differs from real-estate schema: %', actual;
  END IF;
-END $;
+END $$;
 CREATE TYPE "ContractDocumentType" AS ENUM ('DEED', 'ID_COPY', 'COMMERCIAL_REGISTER', 'POWER_OF_ATTORNEY', 'INSPECTION_REPORT', 'CONTRACT_COPY', 'OTHER');
 CREATE TYPE "PropertyExpenseType" AS ENUM ('MAINTENANCE', 'INSURANCE', 'TAX', 'UTILITY', 'MANAGEMENT_FEE', 'RENOVATION', 'CLEANING', 'SECURITY', 'OTHER');
 
