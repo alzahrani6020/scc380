@@ -235,6 +235,15 @@ export default function FinancePage() {
             <p className="text-slate-400 text-sm">قيود أجنبية وفروق إعادة التقييم</p>
           </div>
         </a>
+        <a href="/dashboard/finance/accounting-schedules" className="scc-card-hover flex items-center gap-4 group">
+          <div className="w-12 h-12 rounded-xl bg-violet-500/10 flex items-center justify-center group-hover:bg-violet-500/20 transition-colors">
+            <CalendarRange className="h-6 w-6 text-violet-400" />
+          </div>
+          <div>
+            <h3 className="font-bold text-white">القيود الدورية والاستحقاقات</h3>
+            <p className="text-slate-400 text-sm">دوري · استحقاق · مصروف مقدم</p>
+          </div>
+        </a>
         <a href="/dashboard/finance/vat-returns" className="scc-card-hover flex items-center gap-4 group">
           <div className="w-12 h-12 rounded-xl bg-sky-500/10 flex items-center justify-center group-hover:bg-sky-500/20 transition-colors">
             <FileCheck2 className="h-6 w-6 text-sky-400" />

@@ -24,6 +24,7 @@ export type PostJournalInput = {
   sourceId?: string;
   transactionCurrency?: string;
   exchangeRate?: Prisma.Decimal.Value;
+  reversalOfId?: string;
   lines: PostingLine[];
 };
 
@@ -216,6 +217,7 @@ export class AccountingPostingService {
         transactionCurrency: input.transactionCurrency,
         exchangeRate:
           input.exchangeRate === undefined ? undefined : this.decimal(input.exchangeRate),
+        reversalOfId: input.reversalOfId,
         postedAt: new Date(),
         lines: {
           create: input.lines.map((line, index) => ({
