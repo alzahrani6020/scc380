@@ -23,7 +23,7 @@ export default function PropertiesPage(){
  useEffect(()=>{load().catch(console.error)},[]);
  const create=()=>{setEditing(null);setForm({propertyType:'RESIDENTIAL',status:'ACTIVE'});setOpen(true)};
  const edit=(x:any)=>{setEditing(x);setForm({...x});setOpen(true)};
- const submit=async(e:React.FormEvent)=>{e.preventDefault();setSaving(true);try{const p={...form};if(p.totalAreaSqm!==undefined&&p.totalAreaSqm!=='')p.totalAreaSqm=String(p.totalAreaSqm);if(editing)await api.patch('/real-estate/properties/'+editing.id,p);else await api.post('/real-estate/properties',p);setOpen(false);await load()}finally{setSaving(false)}};
+ const submit=async(e:React.FormEvent)=>{e.preventDefault();setSaving(true);try{const fields=['name','description','propertyType','status','address','city','district','buildingNumber','latitude','longitude','deedNumber','deedFileUrl','ownerName','ownerIdNumber','ownerPhone','regaLicenseNumber','acquisitionDate','acquisitionCost','totalAreaSqm'];const p:any=Object.fromEntries(fields.filter(k=>form[k]!==undefined&&form[k]!==null&&form[k]!=='').map(k=>[k,form[k]]));for(const key of ['latitude','longitude','acquisitionCost','totalAreaSqm'])if(p[key]!==undefined)p[key]=String(p[key]);if(editing)await api.patch('/real-estate/properties/'+editing.id,p);else await api.post('/real-estate/properties',p);setOpen(false);await load()}finally{setSaving(false)}};
  const remove=async(id:string)=>{if(!confirm('حذف العقار؟'))return;await api.delete('/real-estate/properties/'+id);await load()};
  const filtered=items.filter(x=>[x.name,x.city,x.district,x.deedNumber].some(v=>String(v||'').includes(search)));
  return <div className="space-y-6 animate-fade-in-up">
