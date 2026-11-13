@@ -43,14 +43,16 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true); setError('');
     try {
-      const data = await sessionAuth('login', { email, password, remember: rememberMe });
+      const initial = await api.post('/auth/login', { email, password });
+      const loginResult = initial.data;
 
-      if (data.requires2FA) {
-        sessionStorage.setItem('scc_2fa_temp_token', data.tempToken);
+      if (loginResult.requires2FA) {
+        sessionStorage.setItem('scc_2fa_temp_token', loginResult.tempToken);
         window.location.href = '/auth/verify-2fa';
         return;
       }
 
+      const data = await sessionAuth('migrate', { refreshToken: loginResult.refreshToken, remember: rememberMe });
       const authData = {
         accessToken: data.accessToken,
         role: data.user.role,
@@ -73,14 +75,20 @@ export default function LoginPage() {
       // to save/fill the credentials on the next visit
       window.location.href = '/dashboard';
     } catch (err: any) {
-      setError(err.message || 'فشل تسجيل الدخول');
+      setError(err.response?.data?.message || err.message || 'فشل تسجيل الدخول');
     } finally { setLoading(false); }
   };
 
   const handleGoogleSuccess = async (credentialResponse: any) => {
     setLoading(true); setError('');
     try {
-      const data = await sessionAuth('google', { credential: credentialResponse.credential, remember: true });
+      const initial = await api.post('/auth/google', { credential: credentialResponse.credential });
+      if (initial.data.requires2FA) {
+        sessionStorage.setItem('scc_2fa_temp_token', initial.data.tempToken);
+        window.location.href = '/auth/verify-2fa';
+        return;
+      }
+      const data = await sessionAuth('migrate', { refreshToken: initial.data.refreshToken, remember: true });
       const authData = {
         accessToken: data.accessToken,
         role: data.user.role,
@@ -91,7 +99,7 @@ export default function LoginPage() {
       setAuth(authData, true);
       router.push('/dashboard');
     } catch (err: any) {
-      setError(err.message || 'فشل تسجيل الدخول بـ Google');
+      setError(err.response?.data?.message || err.message || 'فشل تسجيل الدخول بـ Google');
       googleLogout();
     } finally { setLoading(false); }
   };
