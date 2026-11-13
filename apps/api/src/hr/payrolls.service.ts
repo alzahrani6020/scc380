@@ -100,6 +100,7 @@ export class PayrollsService {
       return prisma.payroll.findFirstOrThrow({ where: scope });
     }
     if (existing.status !== 'DRAFT') throw new ConflictException('Unsupported payroll state');
+    if (dto.status === 'PAID') throw new BadRequestException('Payroll must be approved before payment');
     if (dto.status && !['DRAFT', 'APPROVED'].includes(dto.status)) {
       throw new ConflictException('Draft payroll can only be approved');
     }
