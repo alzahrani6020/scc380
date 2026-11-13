@@ -32,7 +32,7 @@ export default function ContractsPage(){
  const create=()=>{setEditing(null);setForm({contractType:'RESIDENTIAL',paymentFrequency:'MONTHLY'});setOpen(true)};
  const edit=(x:any)=>{setEditing(x);setForm({...x,startDate:x.startDate?new Date(x.startDate).toISOString().split('T')[0]:'',endDate:x.endDate?new Date(x.endDate).toISOString().split('T')[0]:''});setOpen(true)};
  const submit=async(e:React.FormEvent)=>{e.preventDefault();setSaving(true);try{
-   const p={...form,rentAmount:String(form.rentAmount),securityDeposit:form.securityDeposit?String(form.securityDeposit):undefined};
+   const fields=['propertyId','unitId','ejarContractNumber','contractType','lessorId','lesseeId','lessorName','lessorIdNumber','lessorPhone','lesseeName','lesseeIdNumber','lesseePhone','startDate','endDate','rentAmount','paymentFrequency','securityDeposit','paymentMethod','bankAccount','autoRenew','renewalNoticeDays'];const p:any=Object.fromEntries(fields.filter(k=>form[k]!==undefined&&form[k]!==null&&form[k]!=='').map(k=>[k,form[k]]));for(const key of ['rentAmount','securityDeposit'])if(p[key]!==undefined)p[key]=String(p[key]);
    if(editing) await api.patch('/real-estate/contracts/'+editing.id,p); else await api.post('/real-estate/contracts',p);
    setOpen(false);await load();
  }finally{setSaving(false)}};
