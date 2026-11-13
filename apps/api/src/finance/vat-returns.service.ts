@@ -7,6 +7,7 @@ import {
 import { JournalType, Prisma, VatReturnStatus, prisma } from '@scc/database';
 import { AccountMappingService } from '../accounting-core/account-mapping.service';
 import { AccountingPostingService } from '../accounting-core/accounting-posting.service';
+import { VatLedgerService } from '../accounting-core/vat-ledger.service';
 
 type VatSnapshot = {
   outputVat: Prisma.Decimal;
@@ -19,6 +20,7 @@ export class VatReturnsService {
   constructor(
     private readonly accountMapping: AccountMappingService,
     private readonly posting: AccountingPostingService,
+    private readonly vatLedger: VatLedgerService,
   ) {}
 
   private date(value: string | Date, label: string) {
@@ -149,79 +151,6 @@ export class VatReturnsService {
     });
   }
 
-  private async snapshotInTransaction(
-    tx: Prisma.TransactionClient,
-    tenantId: string,
-    periodStart: Date,
-    periodEnd: Date,
-  ): Promise<VatSnapshot> {
-    const accounts = await this.accountMapping.resolveInTransaction(
-      tx,
-      tenantId,
-      ['VAT_PAYABLE', 'VAT_RECEIVABLE'],
-    );
-
-    const accountIds = [accounts.VAT_PAYABLE.id, accounts.VAT_RECEIVABLE.id];
-
-    const [modern, legacy] = await Promise.all([
-      tx.journalEntryLine.groupBy({
-        by: ['accountId'],
-        where: {
-          tenantId,
-          accountId: { in: accountIds },
-          journalEntry: {
-            status: 'POSTED',
-            date: { gte: periodStart, lte: periodEnd },
-            NOT: {
-              sourceType: { in: ['VAT_SETTLEMENT', 'VAT_SETTLEMENT_REVERSAL'] },
-            },
-          },
-        },
-        _sum: { debitAmount: true, creditAmount: true },
-      }),
-      tx.journalEntry.groupBy({
-        by: ['accountId'],
-        where: {
-          tenantId,
-          accountId: { in: accountIds },
-          status: 'POSTED',
-          date: { gte: periodStart, lte: periodEnd },
-          NOT: { entryNumber: { startsWith: 'LEG-' } },
-        },
-        _sum: { debitAmount: true, creditAmount: true },
-      }),
-    ]);
-
-    const totals = new Map<string, { debit: Prisma.Decimal; credit: Prisma.Decimal }>();
-    const add = (accountId: string | null, debit: unknown, credit: unknown) => {
-      if (!accountId) return;
-      const current = totals.get(accountId) || {
-        debit: new Prisma.Decimal(0),
-        credit: new Prisma.Decimal(0),
-      };
-      current.debit = current.debit.add(new Prisma.Decimal((debit as any) || 0));
-      current.credit = current.credit.add(new Prisma.Decimal((credit as any) || 0));
-      totals.set(accountId, current);
-    };
-
-    for (const row of modern) add(row.accountId, row._sum.debitAmount, row._sum.creditAmount);
-    for (const row of legacy) add(row.accountId, row._sum.debitAmount, row._sum.creditAmount);
-
-    const output = totals.get(accounts.VAT_PAYABLE.id) || {
-      debit: new Prisma.Decimal(0),
-      credit: new Prisma.Decimal(0),
-    };
-    const input = totals.get(accounts.VAT_RECEIVABLE.id) || {
-      debit: new Prisma.Decimal(0),
-      credit: new Prisma.Decimal(0),
-    };
-
-    const outputVat = output.credit.sub(output.debit).toDecimalPlaces(2);
-    const inputVat = input.debit.sub(input.credit).toDecimalPlaces(2);
-    const netVat = outputVat.sub(inputVat).toDecimalPlaces(2);
-
-    return { outputVat, inputVat, netVat };
-  }
 
   async preview(tenantId: string, id: string) {
     const item = await this.get(tenantId, id);
@@ -232,7 +161,7 @@ export class VatReturnsService {
       };
     }
     const snapshot = await prisma.$transaction(tx =>
-      this.snapshotInTransaction(tx, tenantId, item.periodStart, item.periodEnd),
+      this.vatLedger.snapshot(tx, tenantId, item.periodStart, item.periodEnd),
     );
     return {
       ...item,
@@ -263,7 +192,7 @@ export class VatReturnsService {
         throw new ConflictException('Cannot file an earlier VAT return after a later settled return');
       }
 
-      const snapshot = await this.snapshotInTransaction(
+      const snapshot = await this.vatLedger.snapshot(
         tx,
         tenantId,
         item.periodStart,
