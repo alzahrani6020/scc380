@@ -29,7 +29,7 @@ interface NavItem {
 
 type NavEntry = NavItem | { header: string };
 
-const navigation: NavEntry[] = [
+export const navigation: NavEntry[] = [
   { header: 'الرئيسية' },
   { name: 'لوحة التحكم', href: '/dashboard', icon: LayoutDashboard },
   { name: 'التحليلات', href: '/dashboard/analytics', icon: BarChart3 },
