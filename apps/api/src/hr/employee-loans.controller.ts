@@ -23,7 +23,14 @@ class UpdateEmployeeLoanDto {
 }
 class RepayEmployeeLoanDto {
   @Type(() => Number) @IsNumber() @Min(0.01) amount: number;
+  @IsString() cashAccountId: string;
+  @IsString() loanReceivableAccountId: string;
   @IsString() @IsOptional() notes?: string;
+}
+
+class PostLoanDisbursementAccountingDto {
+  @IsString() cashAccountId: string;
+  @IsString() loanReceivableAccountId: string;
 }
 
 @ApiTags('HR - Employee Loans')
@@ -53,8 +60,14 @@ export class EmployeeLoansController {
   @RequirePermissions('hr:loans:write')
   approve(@Req() req: any, @Param('id') id: string) { return this.service.approve(req, id); }
 
+  @Post(':id/post-disbursement-accounting')
+  @RequirePermissions('hr:loans:write', 'erp:write')
+  postDisbursementAccounting(@Req() req: any, @Param('id') id: string, @Body() dto: PostLoanDisbursementAccountingDto) {
+    return this.service.postDisbursementAccounting(req, id, dto);
+  }
+
   @Post(':id/repay')
-  @RequirePermissions('hr:loans:write')
+  @RequirePermissions('hr:loans:write', 'erp:write')
   repay(@Req() req: any, @Param('id') id: string, @Body() dto: RepayEmployeeLoanDto) { return this.service.repay(req, id, dto); }
 
   @Post(':id/cancel')

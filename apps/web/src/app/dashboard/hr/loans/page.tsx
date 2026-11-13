@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import api from '@/lib/api';
-import { Banknote, CheckCircle2, Plus, RotateCcw, X } from 'lucide-react';
+import { Banknote, CheckCircle2, Plus, RotateCcw, X, Landmark } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Modal from '@/components/ui/Modal';
@@ -14,6 +14,11 @@ export default function EmployeeLoansPage() {
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [accounts, setAccounts] = useState<any[]>([]);
+  const [disbursementItem, setDisbursementItem] = useState<any>(null);
+  const [disbursementData, setDisbursementData] = useState<any>({});
+  const [repaymentItem, setRepaymentItem] = useState<any>(null);
+  const [repaymentData, setRepaymentData] = useState<any>({});
   const [form, setForm] = useState<any>({ type: 'LOAN', startDate: new Date().toISOString().split('T')[0] });
 
   const load = () => {
@@ -54,14 +59,85 @@ export default function EmployeeLoansPage() {
     await api.post(`/hr/employee-loans/${id}/approve`, {});
     load();
   };
-  const repay = async (item: any) => {
-    const raw = prompt(`قيمة السداد اليدوي — الرصيد الحالي ${Number(item.balance).toLocaleString('ar-SA')} ر.س`);
-    if (!raw) return;
-    const amount = Number(raw);
-    if (!Number.isFinite(amount) || amount <= 0) return alert('أدخل مبلغًا صحيحًا');
-    await api.post(`/hr/employee-loans/${item.id}/repay`, { amount });
-    load();
+  const loadAccounts = async () => {
+    const r = await api.get('/finance/chart-of-accounts');
+    const active = (r.data?.data || []).filter((account: any) => account.isActive !== false);
+    setAccounts(active);
+    return active;
   };
+
+  const openDisbursement = async (item: any) => {
+    setSaving(true);
+    try {
+      await loadAccounts();
+      setDisbursementData({});
+      setDisbursementItem(item);
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'تعذر تحميل دليل الحسابات');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const postDisbursement = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!disbursementItem) return;
+    setSaving(true);
+    try {
+      await api.post(`/hr/employee-loans/${disbursementItem.id}/post-disbursement-accounting`, {
+        cashAccountId: disbursementData.cashAccountId,
+        loanReceivableAccountId: disbursementData.loanReceivableAccountId,
+      });
+      setDisbursementItem(null);
+      alert('تم ترحيل صرف السلفة/القرض إلى المحاسبة بنجاح');
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'تعذر ترحيل صرف السلفة/القرض');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openRepayment = async (item: any) => {
+    setSaving(true);
+    try {
+      await loadAccounts();
+      setRepaymentData({ amount: '' });
+      setRepaymentItem(item);
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'تعذر تحميل دليل الحسابات');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const repay = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!repaymentItem) return;
+    const amount = Number(repaymentData.amount);
+    if (!Number.isFinite(amount) || amount <= 0) return alert('أدخل مبلغًا صحيحًا');
+    if (amount > Number(repaymentItem.balance || 0)) return alert('قيمة السداد أكبر من الرصيد الحالي');
+
+    setSaving(true);
+    try {
+      await api.post(`/hr/employee-loans/${repaymentItem.id}/repay`, {
+        amount,
+        cashAccountId: repaymentData.cashAccountId,
+        loanReceivableAccountId: repaymentData.loanReceivableAccountId,
+        notes: repaymentData.notes || undefined,
+      });
+      setRepaymentItem(null);
+      await load();
+      alert('تم تسجيل السداد وترحيله محاسبيًا بنجاح');
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'تعذر تسجيل السداد');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const accountOptions = (type: string) => accounts
+    .filter((account: any) => account.type === type)
+    .map((account: any) => ({ value: account.id, label: `${account.code} — ${account.name}` }));
 
   return (
     <div className="space-y-6 animate-fade-in-up">
@@ -86,7 +162,16 @@ export default function EmployeeLoansPage() {
               <div className="flex items-center gap-2 flex-wrap justify-end">
                 <span className="px-2 py-1 rounded-full bg-slate-800 text-slate-300 text-xs">{item.status}</span>
                 {item.status === 'DRAFT' && <Button size="sm" onClick={() => approve(item.id)}><CheckCircle2 className="h-3 w-3" /> اعتماد</Button>}
-                {item.status === 'ACTIVE' && <Button size="sm" variant="ghost" onClick={() => repay(item)}><RotateCcw className="h-3 w-3" /> سداد يدوي</Button>}
+                {['ACTIVE','PAID'].includes(item.status) && (
+                  <Button size="sm" variant="ghost" onClick={() => openDisbursement(item)} isLoading={saving}>
+                    <Landmark className="h-3 w-3" /> ترحيل الصرف
+                  </Button>
+                )}
+                {item.status === 'ACTIVE' && (
+                  <Button size="sm" variant="ghost" onClick={() => openRepayment(item)} isLoading={saving}>
+                    <RotateCcw className="h-3 w-3" /> سداد يدوي
+                  </Button>
+                )}
               </div>
             </div>
           ))}
@@ -109,6 +194,71 @@ export default function EmployeeLoansPage() {
           </div>
         </form>
       </Modal>
+
+      <Modal isOpen={!!disbursementItem} onClose={() => setDisbursementItem(null)} title="ترحيل صرف السلفة / القرض" size="lg">
+        <form onSubmit={postDisbursement} className="space-y-4">
+          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 text-sm text-slate-300">
+            ينشئ النظام قيد صرف واحدًا للقرض: مدين سلف وقروض الموظفين، دائن البنك/الصندوق. يمنع تكرار الترحيل لنفس القرض.
+          </div>
+          <Select
+            label="حساب سلف وقروض الموظفين"
+            required
+            options={accountOptions('ASSET')}
+            value={disbursementData.loanReceivableAccountId || ''}
+            onChange={e => setDisbursementData({ ...disbursementData, loanReceivableAccountId: e.target.value })}
+          />
+          <Select
+            label="حساب البنك / الصندوق"
+            required
+            options={accountOptions('ASSET')}
+            value={disbursementData.cashAccountId || ''}
+            onChange={e => setDisbursementData({ ...disbursementData, cashAccountId: e.target.value })}
+          />
+          <div className="flex justify-end gap-3">
+            <Button type="button" variant="ghost" onClick={() => setDisbursementItem(null)}><X className="h-4 w-4" /> إلغاء</Button>
+            <Button type="submit" isLoading={saving}><Landmark className="h-4 w-4" /> ترحيل الصرف</Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal isOpen={!!repaymentItem} onClose={() => setRepaymentItem(null)} title="سداد يدوي للسلفة / القرض" size="lg">
+        <form onSubmit={repay} className="space-y-4">
+          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 text-sm text-slate-300">
+            يتم تسجيل دفعة القرض وتحديث الرصيد وإنشاء القيد المحاسبي في transaction واحدة؛ إذا فشل القيد لا يُسجل السداد.
+          </div>
+          <Input
+            label={`قيمة السداد — الرصيد الحالي ${Number(repaymentItem?.balance || 0).toLocaleString('ar-SA')} ر.س`}
+            type="number"
+            required
+            value={repaymentData.amount || ''}
+            onChange={e => setRepaymentData({ ...repaymentData, amount: e.target.value })}
+          />
+          <Select
+            label="حساب البنك / الصندوق"
+            required
+            options={accountOptions('ASSET')}
+            value={repaymentData.cashAccountId || ''}
+            onChange={e => setRepaymentData({ ...repaymentData, cashAccountId: e.target.value })}
+          />
+          <Select
+            label="حساب سلف وقروض الموظفين"
+            required
+            options={accountOptions('ASSET')}
+            value={repaymentData.loanReceivableAccountId || ''}
+            onChange={e => setRepaymentData({ ...repaymentData, loanReceivableAccountId: e.target.value })}
+          />
+          <Input
+            label="ملاحظات"
+            value={repaymentData.notes || ''}
+            onChange={e => setRepaymentData({ ...repaymentData, notes: e.target.value })}
+          />
+          <div className="flex justify-end gap-3">
+            <Button type="button" variant="ghost" onClick={() => setRepaymentItem(null)}><X className="h-4 w-4" /> إلغاء</Button>
+            <Button type="submit" isLoading={saving}><RotateCcw className="h-4 w-4" /> تسجيل وترحيل السداد</Button>
+          </div>
+        </form>
+      </Modal>
+
     </div>
   );
 }

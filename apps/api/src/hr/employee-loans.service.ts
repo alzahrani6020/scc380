@@ -1,10 +1,12 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { prisma, tenantWhere } from '@scc/database';
+import { AccountingPostingService } from '../accounting-core/accounting-posting.service';
 
 const money = (value: any) => Number(value || 0);
 
 @Injectable()
 export class EmployeeLoansService {
+  constructor(private readonly accountingPosting: AccountingPostingService) {}
   async findAll(req: any, query: any) {
     const tenantId = req.user?.tenantId;
     const where: any = { ...tenantWhere(tenantId) };
@@ -95,6 +97,47 @@ export class EmployeeLoansService {
     });
   }
 
+  async postDisbursementAccounting(req: any, id: string, dto: any) {
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) throw new BadRequestException('Tenant is required');
+
+    const loan = await prisma.employeeLoan.findFirst({
+      where: { ...tenantWhere(tenantId), id },
+    });
+    if (!loan) throw new NotFoundException('Employee loan not found');
+    if (!['ACTIVE', 'PAID'].includes(loan.status)) {
+      throw new ConflictException('Loan must be approved before disbursement accounting');
+    }
+    if (!dto.loanReceivableAccountId || !dto.cashAccountId) {
+      throw new BadRequestException('Loan receivable and bank/cash accounts are required');
+    }
+
+    const principal = money(loan.principal);
+    if (principal <= 0) throw new BadRequestException('Loan principal must be positive');
+
+    return this.accountingPosting.post({
+      tenantId,
+      date: loan.approvedAt || loan.createdAt,
+      entryNumber: `LOAN-DISB-${loan.id.slice(-10)}`,
+      description: `Employee ${loan.type === 'ADVANCE' ? 'advance' : 'loan'} disbursement`,
+      reference: `EMPLOYEE-LOAN-${loan.id}`,
+      sourceType: 'EMPLOYEE_LOAN_DISBURSEMENT',
+      sourceId: loan.id,
+      lines: [
+        {
+          accountId: dto.loanReceivableAccountId,
+          debitAmount: principal,
+          description: 'Employee loan receivable',
+        },
+        {
+          accountId: dto.cashAccountId,
+          creditAmount: principal,
+          description: 'Loan disbursement from bank/cash',
+        },
+      ],
+    });
+  }
+
   async repay(req: any, id: string, dto: any) {
     const tenantId = req.user?.tenantId;
     const amount = money(dto.amount);
@@ -108,9 +151,36 @@ export class EmployeeLoansService {
       if (amount > balance + 0.001) throw new BadRequestException('Repayment exceeds outstanding balance');
       const newBalance = Math.max(0, Math.round((balance - amount) * 100) / 100);
 
-      await tx.employeeLoanPayment.create({
+      if (!dto.cashAccountId || !dto.loanReceivableAccountId) {
+        throw new BadRequestException('Bank/cash and loan receivable accounts are required for manual repayment');
+      }
+
+      const payment = await tx.employeeLoanPayment.create({
         data: { tenantId, loanId: id, amount, source: 'MANUAL', notes: dto.notes || null },
       });
+
+      await this.accountingPosting.postInTransaction(tx, {
+        tenantId,
+        date: payment.paidAt,
+        entryNumber: `LOAN-REPAY-${payment.id.slice(-10)}`,
+        description: `Manual employee loan repayment`,
+        reference: `EMPLOYEE-LOAN-PAYMENT-${payment.id}`,
+        sourceType: 'EMPLOYEE_LOAN_PAYMENT',
+        sourceId: payment.id,
+        lines: [
+          {
+            accountId: dto.cashAccountId,
+            debitAmount: amount,
+            description: 'Loan repayment received in bank/cash',
+          },
+          {
+            accountId: dto.loanReceivableAccountId,
+            creditAmount: amount,
+            description: 'Reduce employee loan receivable',
+          },
+        ],
+      });
+
       return tx.employeeLoan.update({
         where: { id },
         data: { balance: newBalance, status: newBalance === 0 ? 'PAID' : 'ACTIVE' },
