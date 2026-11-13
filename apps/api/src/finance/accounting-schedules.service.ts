@@ -156,7 +156,7 @@ export class AccountingSchedulesService {
     const targetMonth = targetIndex % 12;
     const lastDay = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate();
     return new Date(
-      Date.UTC(targetYear, targetMonth, Math.min(originalDay, lastDay), 12, 0, 0, 0),
+      Date.UTC(targetYear, targetMonth, Math.min(originalDay, lastDay), 0, 0, 0, 0),
     );
   }
 
