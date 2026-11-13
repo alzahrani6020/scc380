@@ -27,6 +27,8 @@ import { BudgetsController } from './budgets.controller';
 import { BudgetsService } from './budgets.service';
 import { ForeignExchangeController } from './foreign-exchange.controller';
 import { ForeignExchangeService } from './foreign-exchange.service';
+import { VatReturnsController } from './vat-returns.controller';
+import { VatReturnsService } from './vat-returns.service';
 
 @Module({
   imports: [AccountingCoreModule],
@@ -45,6 +47,7 @@ import { ForeignExchangeService } from './foreign-exchange.service';
     FixedAssetsController,
     BudgetsController,
     ForeignExchangeController,
+    VatReturnsController,
   ],
   providers: [
     PaymentsService,
@@ -60,6 +63,7 @@ import { ForeignExchangeService } from './foreign-exchange.service';
     FixedAssetsService,
     BudgetsService,
     ForeignExchangeService,
+    VatReturnsService,
   ],
 })
 export class FinanceModule {}
