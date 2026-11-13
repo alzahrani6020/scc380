@@ -65,7 +65,7 @@ test(
       assert.equal(janRuns.length, 1);
       assert.equal(janRuns[0].status, 'POSTED');
       assert.ok(janRuns[0].reversalDueDate);
-      assert.equal(janRuns[0].snapshot?.kind, 'ACCRUAL');
+      assert.equal((janRuns[0].snapshot as any)?.kind, 'ACCRUAL');
 
       const janJournal = await prisma.journalEntryHeader.findUniqueOrThrow({
         where: { id: janRuns[0].postingJournalId },
