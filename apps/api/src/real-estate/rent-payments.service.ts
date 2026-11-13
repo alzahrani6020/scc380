@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { prisma, withTenant } from '@scc/database';
 import { PaymentStatus } from '@prisma/client';
 
@@ -66,21 +66,33 @@ export class RentPaymentsService {
     const existing = await prisma.rentPayment.findFirst({ where: withTenant({ id }, tenantId) });
     if (!existing) throw new NotFoundException('Payment not found');
 
-    const paidAmount = parseFloat(dto.amount);
+    if (existing.status !== PaymentStatus.PENDING) {
+      throw new ConflictException('Only pending rent receivables can be settled');
+    }
+    const paidAmount = Number(dto.amount);
     const expectedAmount = Number(existing.amount);
-    const status = paidAmount >= expectedAmount ? PaymentStatus.COMPLETED : paidAmount > 0 ? PaymentStatus.PENDING : PaymentStatus.PENDING;
-
-    return prisma.rentPayment.update({
-      where: { id },
+    if (!Number.isFinite(paidAmount) || paidAmount <= 0 || !Number.isFinite(expectedAmount) || expectedAmount <= 0) {
+      throw new BadRequestException('Payment amounts must be finite and positive');
+    }
+    // RentPayment has no paid-amount ledger. Until a separate collection ledger is
+    // introduced, reject partial/overpayments rather than corrupt the receivable.
+    if (Math.round(paidAmount * 100) !== Math.round(expectedAmount * 100)) {
+      throw new BadRequestException('Partial or excess payments require a payment ledger and cannot be recorded here');
+    }
+    const paidDate = new Date(dto.paidDate);
+    if (Number.isNaN(paidDate.getTime())) throw new BadRequestException('Invalid paid date');
+    const result = await prisma.rentPayment.updateMany({
+      where: withTenant({ id, status: PaymentStatus.PENDING, amount: existing.amount }, tenantId),
       data: {
-        paidDate: new Date(dto.paidDate),
-        amount: paidAmount,
-        status,
+        paidDate,
+        status: PaymentStatus.COMPLETED,
         paymentMethod: dto.paymentMethod,
         transactionRef: dto.transactionRef,
         bankReference: dto.bankReference,
       },
     });
+    if (result.count !== 1) throw new ConflictException('Payment was modified or settled concurrently');
+    return prisma.rentPayment.findFirstOrThrow({ where: withTenant({ id }, tenantId) });
   }
 
   async overdueReport(tenantId: string) {
