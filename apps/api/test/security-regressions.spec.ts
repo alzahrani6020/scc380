@@ -191,3 +191,13 @@ test('API keys do not return database records on revocation or expose unmasked l
   assert.doesNotMatch(keys, /return prisma\.apiKey\.update\(/);
   assert.doesNotMatch(keys, /return \{ \.\.\.created, key \}/);
 });
+
+test('security dashboard preserves partial responses and readable browser metadata', () => {
+  const web = src('../web/src/app/dashboard/security/page.tsx');
+  const auth = src('src/auth/auth.service.ts');
+  assert.match(web, /Promise\.allSettled/);
+  assert.match(web, /sessionResult\.status === 'fulfilled'/);
+  assert.match(web, /keysResult\.status === 'fulfilled'/);
+  assert.match(auth, /deviceInfo: browser && system/);
+  assert.match(auth, /lastActiveAt: now/);
+});
