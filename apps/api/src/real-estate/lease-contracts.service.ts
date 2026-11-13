@@ -97,6 +97,43 @@ export class LeaseContractsService {
     return contract;
   }
 
+  async activate(tenantId: string, id: string) {
+    return prisma.$transaction(async (tx) => {
+      const contract = await tx.leaseContract.findFirst({
+        where: withTenant({ id }, tenantId),
+      });
+      if (!contract) throw new NotFoundException('Contract not found');
+      if (contract.status !== 'DRAFT') throw new ConflictException('Only draft contracts may be activated');
+      const unit = await tx.unit.findFirst({
+        where: withTenant({ id: contract.unitId, propertyId: contract.propertyId }, tenantId),
+      });
+      if (!unit) throw new NotFoundException('Unit not found');
+      if (unit.status !== 'VACANT' || unit.currentLeaseId) {
+        throw new ConflictException('Unit must be vacant before activating a lease');
+      }
+      const scheduled = await tx.rentPayment.count({
+        where: withTenant({ contractId: id }, tenantId),
+      });
+      if (scheduled) throw new ConflictException('Lease already has receivables');
+      this.assertLeaseDates(contract.startDate.toISOString(), contract.endDate.toISOString());
+      if (!Number.isFinite(Number(contract.rentAmount)) || Number(contract.rentAmount) <= 0) {
+        throw new BadRequestException('Rent amount must be positive');
+      }
+      const claimed = await tx.leaseContract.updateMany({
+        where: { id, tenantId, status: 'DRAFT' },
+        data: { status: 'ACTIVE' },
+      });
+      if (claimed.count !== 1) throw new ConflictException('Lease was already activated');
+      const unitClaim = await tx.unit.updateMany({
+        where: { id: unit.id, tenantId, status: 'VACANT', currentLeaseId: null },
+        data: { status: 'OCCUPIED', currentLeaseId: id },
+      });
+      if (unitClaim.count !== 1) throw new ConflictException('Unit is no longer available');
+      await this.generatePaymentSchedule({ ...contract, status: 'ACTIVE' }, tx);
+      return tx.leaseContract.findFirstOrThrow({ where: { id, tenantId } });
+    }, { isolationLevel: 'Serializable' });
+  }
+
   async update(tenantId: string, id: string, dto: any) {
     const existing = await prisma.leaseContract.findFirst({ where: withTenant({ id }, tenantId) });
     if (!existing) throw new NotFoundException('Contract not found');
@@ -192,7 +229,7 @@ export class LeaseContractsService {
     return contract;
   }
 
-  private async generatePaymentSchedule(contract: any) {
+  private async generatePaymentSchedule(contract: any, db: typeof prisma = prisma) {
     const start = new Date(contract.startDate);
     const end = new Date(contract.endDate);
     const payments = [];
@@ -218,7 +255,7 @@ export class LeaseContractsService {
     }
 
     if (payments.length > 0) {
-      await prisma.rentPayment.createMany({ data: payments });
+      await db.rentPayment.createMany({ data: payments });
     }
   }
 }
