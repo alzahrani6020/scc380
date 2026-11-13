@@ -203,7 +203,8 @@ test('API keys do not return database records on revocation or expose unmasked l
   const keys = src('src/security/api-keys.service.ts');
   assert.match(keys, /k\.key\.startsWith\('sha256:'\)/);
   assert.match(keys, /createHash\('sha256'\)\.update\(key\)\.digest\('hex'\)/);
-  assert.match(keys, /return \{ revoked: result\.count === 1 \}/);
+  assert.match(keys, /return \{ revoked \}/);
+  assert.match(keys, /return result\.count === 1/);
   assert.doesNotMatch(keys, /return prisma\.apiKey\.update\(/);
   assert.doesNotMatch(keys, /return \{ \.\.\.created, key \}/);
 });
