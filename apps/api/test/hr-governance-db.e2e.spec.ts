@@ -50,7 +50,7 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
       const reviewing = await service.transition(reqA,record.id,'IN_REVIEW');
       assert.equal(reviewing.status,'IN_REVIEW');
       const noted = await service.addNote(reqA,record.id,'Employee response received');
-      assert.equal(noted.events.length,3);
+      assert.equal(noted.events.length,4);
       await assert.rejects(()=>service.transition(reqA,record.id,'CLOSED'),/rationale is required/);
       const resolved = await service.transition(reqA,record.id,'RESOLVED','No substantiated violation');
       assert.equal(resolved.status,'RESOLVED');
