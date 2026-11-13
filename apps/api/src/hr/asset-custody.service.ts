@@ -1,10 +1,12 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, prisma, tenantWhere } from '@scc/database';
+import { AccountingPostingService } from '../accounting-core/accounting-posting.service';
 
 const CLOSED_STATUSES = new Set(['RETURNED', 'LOST', 'DAMAGED']);
 
 @Injectable()
 export class HrAssetCustodyService {
+  constructor(private readonly accountingPosting: AccountingPostingService) {}
   async listCategories(req: any) {
     return prisma.fixedAssetCategory.findMany({
       where: tenantWhere(req.user?.tenantId),
@@ -140,26 +142,128 @@ export class HrAssetCustodyService {
 
   async closeAssignment(req: any, id: string, dto: any) {
     const tenantId = req.user?.tenantId;
+    if (!tenantId) throw new BadRequestException('Tenant is required');
     if (!CLOSED_STATUSES.has(dto.status)) throw new BadRequestException('Unsupported custody close status');
-    const assignment = await prisma.assetCustodyAssignment.findFirst({
-      where: { ...tenantWhere(tenantId), id },
-    });
-    if (!assignment) throw new NotFoundException('Custody assignment not found');
-    if (assignment.status !== 'ACTIVE') throw new ConflictException('Custody assignment is already closed');
 
-    return prisma.assetCustodyAssignment.update({
-      where: { id },
-      data: {
-        status: dto.status,
-        returnedAt: new Date(),
-        conditionIn: dto.conditionIn || null,
-        returnedById: req.user?.userId || req.user?.id || null,
-        notes: dto.notes !== undefined ? dto.notes : assignment.notes,
-      },
-      include: {
-        asset: { include: { category: true } },
-        employee: { select: { id: true, employeeCode: true, firstName: true, lastName: true } },
-      },
+    return prisma.$transaction(async tx => {
+      const assignment = await tx.assetCustodyAssignment.findFirst({
+        where: { ...tenantWhere(tenantId), id },
+        include: { asset: true },
+      });
+      if (!assignment) throw new NotFoundException('Custody assignment not found');
+      if (assignment.status !== 'ACTIVE') throw new ConflictException('Custody assignment is already closed');
+
+      const asset = assignment.asset;
+      const currentValue = Number(asset.currentValue);
+      const acquisitionCost = Number(asset.acquisitionCost);
+      const accumulatedDepreciation = Number(asset.accumulatedDepreciation);
+
+      if (dto.status === 'LOST') {
+        if (!dto.assetAccountId || !dto.accumulatedDepreciationAccountId || !dto.lossAccountId) {
+          throw new BadRequestException('Asset, accumulated depreciation, and loss accounts are required for lost assets');
+        }
+
+        const reconciliationGap = Math.abs((accumulatedDepreciation + currentValue) - acquisitionCost);
+        if (reconciliationGap > 0.01) {
+          throw new ConflictException('Asset carrying values do not reconcile to acquisition cost');
+        }
+
+        const lines: any[] = [];
+        if (accumulatedDepreciation > 0) {
+          lines.push({
+            accountId: dto.accumulatedDepreciationAccountId,
+            debitAmount: accumulatedDepreciation,
+            description: 'Clear accumulated depreciation on lost asset',
+          });
+        }
+        if (currentValue > 0) {
+          lines.push({
+            accountId: dto.lossAccountId,
+            debitAmount: currentValue,
+            description: 'Loss on lost fixed asset',
+          });
+        }
+        lines.push({
+          accountId: dto.assetAccountId,
+          creditAmount: acquisitionCost,
+          description: 'Derecognize lost fixed asset',
+        });
+
+        await this.accountingPosting.postInTransaction(tx, {
+          tenantId,
+          date: new Date(),
+          entryNumber: `ASSET-LOST-${asset.id.slice(-10)}`,
+          description: `Write off lost fixed asset ${asset.name}`,
+          reference: `ASSET-CUSTODY-${assignment.id}`,
+          sourceType: 'FIXED_ASSET_LOSS',
+          sourceId: assignment.id,
+          lines,
+        });
+
+        await tx.fixedAsset.update({
+          where: { id: asset.id },
+          data: { currentValue: 0, status: 'DISPOSED' },
+        });
+      }
+
+      if (dto.status === 'DAMAGED') {
+        const impairmentAmount = Number(dto.impairmentAmount);
+        if (!Number.isFinite(impairmentAmount) || impairmentAmount <= 0) {
+          throw new BadRequestException('A positive impairment amount is required for damaged assets');
+        }
+        if (impairmentAmount > currentValue) {
+          throw new BadRequestException('Impairment amount cannot exceed current book value');
+        }
+        if (!dto.assetAccountId || !dto.lossAccountId) {
+          throw new BadRequestException('Asset and impairment loss accounts are required for damaged assets');
+        }
+
+        await this.accountingPosting.postInTransaction(tx, {
+          tenantId,
+          date: new Date(),
+          entryNumber: `ASSET-IMPAIR-${assignment.id.slice(-10)}`,
+          description: `Impairment of damaged fixed asset ${asset.name}`,
+          reference: `ASSET-CUSTODY-${assignment.id}`,
+          sourceType: 'FIXED_ASSET_IMPAIRMENT',
+          sourceId: assignment.id,
+          lines: [
+            {
+              accountId: dto.lossAccountId,
+              debitAmount: impairmentAmount,
+              description: 'Fixed asset impairment loss',
+            },
+            {
+              accountId: dto.assetAccountId,
+              creditAmount: impairmentAmount,
+              description: 'Reduce carrying value of damaged fixed asset',
+            },
+          ],
+        });
+
+        const newValue = Math.max(0, currentValue - impairmentAmount);
+        await tx.fixedAsset.update({
+          where: { id: asset.id },
+          data: {
+            currentValue: newValue,
+            status: newValue === 0 ? 'DISPOSED' : 'ACTIVE',
+          },
+        });
+      }
+
+      return tx.assetCustodyAssignment.update({
+        where: { id },
+        data: {
+          status: dto.status,
+          returnedAt: new Date(),
+          conditionIn: dto.conditionIn || null,
+          returnedById: req.user?.userId || req.user?.id || null,
+          notes: dto.notes !== undefined ? dto.notes : assignment.notes,
+        },
+        include: {
+          asset: { include: { category: true } },
+          employee: { select: { id: true, employeeCode: true, firstName: true, lastName: true } },
+        },
+      });
     });
   }
 
