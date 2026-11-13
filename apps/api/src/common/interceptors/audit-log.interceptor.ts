@@ -10,7 +10,7 @@ const SENSITIVE_FIELDS = new Set([
   'privatekey', 'cookie', 'cookies', 'contentbase64',
 ]);
 
-function sanitizeBody(value: any): any {
+export function sanitizeBody(value: any): any {
   if (value === null || value === undefined) return value;
   if (value instanceof Date) return value.toISOString();
   if (Array.isArray(value)) return value.map(sanitizeBody);
