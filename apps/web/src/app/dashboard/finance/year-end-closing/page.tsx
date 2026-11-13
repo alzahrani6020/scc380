@@ -17,7 +17,7 @@ export default function YearEndClosingPage() {
   const [working,setWorking]=useState(false);
 
   const years=useMemo(
-    ()=>[...new Set(periods.map((p:any)=>String(p.year)))].sort((a,b)=>Number(b)-Number(a)),
+    ()=>Array.from(new Set(periods.map((p:any)=>String(p.year)))).sort((a,b)=>Number(b)-Number(a)),
     [periods],
   );
 
