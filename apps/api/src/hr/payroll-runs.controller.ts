@@ -34,7 +34,6 @@ class PostPayrollAccountingDto {
 }
 
 class PostPayrollPaymentAccountingDto {
-  @IsString() netPayableAccountId: string;
   @IsString() cashAccountId: string;
 }
 
