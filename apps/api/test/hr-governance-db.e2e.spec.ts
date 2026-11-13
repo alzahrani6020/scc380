@@ -47,6 +47,8 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
       await assert.rejects(()=>service.transition(reqA,record.id,'IN_REVIEW'),/Invalid case status transition/);
       assert.equal(await prisma.hrGovernanceEvent.count({where:{tenantId:a.id,caseId:record.id}}),5);
     } finally {
+      await prisma.hrGovernanceEvent.deleteMany({where:{tenantId:a.id}});
+      await prisma.hrGovernanceCase.deleteMany({where:{tenantId:a.id}});
       await prisma.tenant.deleteMany({where:{id:{in:[a.id,b.id]}}});
     }
   },
