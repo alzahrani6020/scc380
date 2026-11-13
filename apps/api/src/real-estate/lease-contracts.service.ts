@@ -76,23 +76,14 @@ export class LeaseContractsService {
       tenantId,
       startDate: new Date(dto.startDate),
       endDate: new Date(dto.endDate),
-      status: dto.status || 'DRAFT',
+      status: 'DRAFT' as const,
     };
-
-    const contract = await prisma.leaseContract.create({ data });
-
-    // Auto-generate payment schedule
-    await this.generatePaymentSchedule(contract);
-
-    // Update unit status if contract is ACTIVE
-    if (contract.status === 'ACTIVE') {
-      await prisma.unit.update({
-        where: { id: contract.unitId },
-        data: { status: 'OCCUPIED', currentLeaseId: contract.id },
-      });
-    }
-
-    return contract;
+    // Contract and schedule are one transaction: neither survives a schedule failure.
+    return prisma.$transaction(async (tx) => {
+      const contract = await tx.leaseContract.create({ data });
+      await this.generatePaymentSchedule(contract, tx);
+      return contract;
+    });
   }
 
   async update(tenantId: string, id: string, dto: any) {
@@ -134,63 +125,77 @@ export class LeaseContractsService {
   }
 
   async renew(tenantId: string, id: string, dto: { startDate: string; endDate: string; rentAmount?: string }) {
-    const existing = await prisma.leaseContract.findFirst({
-      where: withTenant({ id }, tenantId),
-      include: { payments: true },
+    this.assertLeaseDates(dto.startDate, dto.endDate);
+    if (dto.rentAmount !== undefined && (!Number.isFinite(Number(dto.rentAmount)) || Number(dto.rentAmount) <= 0)) {
+      throw new BadRequestException('Rent amount must be positive');
+    }
+    return prisma.$transaction(async (tx) => {
+      const existing = await tx.leaseContract.findFirst({ where: withTenant({ id }, tenantId) });
+      if (!existing) throw new NotFoundException('Contract not found');
+      if (existing.status !== 'ACTIVE') throw new ConflictException('Only active leases can be renewed');
+      const nextStart = new Date(dto.startDate);
+      if (nextStart < existing.endDate) throw new ConflictException('Renewal overlaps the original lease');
+      // Conditional update serializes competing renewals of the same active lease.
+      const claimed = await tx.leaseContract.updateMany({
+        where: withTenant({ id, status: 'ACTIVE' }, tenantId),
+        data: { status: 'RENEWED' },
+      });
+      if (claimed.count !== 1) throw new ConflictException('Lease was renewed concurrently');
+      const newContract = await tx.leaseContract.create({
+        data: {
+          tenantId,
+          propertyId: existing.propertyId,
+          unitId: existing.unitId,
+          contractType: existing.contractType,
+          lessorName: existing.lessorName,
+          lessorIdNumber: existing.lessorIdNumber,
+          lessorPhone: existing.lessorPhone,
+          lesseeName: existing.lesseeName,
+          lesseeIdNumber: existing.lesseeIdNumber,
+          lesseePhone: existing.lesseePhone,
+          startDate: nextStart,
+          endDate: new Date(dto.endDate),
+          rentAmount: dto.rentAmount !== undefined ? dto.rentAmount : existing.rentAmount,
+          paymentFrequency: existing.paymentFrequency,
+          securityDeposit: existing.securityDeposit,
+          paymentMethod: existing.paymentMethod,
+          bankAccount: existing.bankAccount,
+          status: 'ACTIVE',
+          autoRenew: existing.autoRenew,
+          renewalNoticeDays: existing.renewalNoticeDays,
+        },
+      });
+      await this.generatePaymentSchedule(newContract, tx);
+      // Do not steal the occupancy pointer if another active contract owns the unit.
+      const occupancy = await tx.unit.updateMany({
+        where: withTenant({ id: existing.unitId, propertyId: existing.propertyId, currentLeaseId: id }, tenantId),
+        data: { status: 'OCCUPIED', currentLeaseId: newContract.id },
+      });
+      if (occupancy.count !== 1) throw new ConflictException('Unit occupancy no longer matches the renewed lease');
+      return newContract;
     });
-    if (!existing) throw new NotFoundException('Contract not found');
-
-    // Mark old as RENEWED
-    await prisma.leaseContract.update({
-      where: { id },
-      data: { status: 'RENEWED' },
-    });
-
-    // Create new contract
-    const newContract = await prisma.leaseContract.create({
-      data: {
-        tenantId,
-        propertyId: existing.propertyId,
-        unitId: existing.unitId,
-        contractType: existing.contractType,
-        lessorName: existing.lessorName,
-        lessorIdNumber: existing.lessorIdNumber,
-        lessorPhone: existing.lessorPhone,
-        lesseeName: existing.lesseeName,
-        lesseeIdNumber: existing.lesseeIdNumber,
-        lesseePhone: existing.lesseePhone,
-        startDate: new Date(dto.startDate),
-        endDate: new Date(dto.endDate),
-        rentAmount: dto.rentAmount ? parseFloat(dto.rentAmount) : existing.rentAmount,
-        paymentFrequency: existing.paymentFrequency,
-        securityDeposit: existing.securityDeposit,
-        paymentMethod: existing.paymentMethod,
-        bankAccount: existing.bankAccount,
-        status: 'ACTIVE',
-        autoRenew: existing.autoRenew,
-        renewalNoticeDays: existing.renewalNoticeDays,
-      },
-    });
-
-    await this.generatePaymentSchedule(newContract);
-    return newContract;
   }
 
   async terminate(tenantId: string, id: string) {
-    const existing = await prisma.leaseContract.findFirst({ where: withTenant({ id }, tenantId) });
-    if (!existing) throw new NotFoundException('Contract not found');
-    const contract = await prisma.leaseContract.update({
-      where: { id },
-      data: { status: 'TERMINATED', endDate: new Date() },
+    return prisma.$transaction(async (tx) => {
+      const existing = await tx.leaseContract.findFirst({ where: withTenant({ id }, tenantId) });
+      if (!existing) throw new NotFoundException('Contract not found');
+      if (existing.status !== 'ACTIVE') throw new ConflictException('Only active leases can be terminated');
+      const changed = await tx.leaseContract.updateMany({
+        where: withTenant({ id, status: 'ACTIVE' }, tenantId),
+        data: { status: 'TERMINATED', endDate: new Date() },
+      });
+      if (changed.count !== 1) throw new ConflictException('Lease status changed concurrently');
+      // Clear occupancy only if it still belongs to THIS lease.
+      await tx.unit.updateMany({
+        where: withTenant({ id: existing.unitId, currentLeaseId: id }, tenantId),
+        data: { status: 'VACANT', currentLeaseId: null },
+      });
+      return tx.leaseContract.findFirstOrThrow({ where: withTenant({ id }, tenantId) });
     });
-    await prisma.unit.update({
-      where: { id: existing.unitId },
-      data: { status: 'VACANT', currentLeaseId: null },
-    });
-    return contract;
   }
 
-  private async generatePaymentSchedule(contract: any) {
+  private async generatePaymentSchedule(contract: any, tx: any) {
     const start = new Date(contract.startDate);
     const end = new Date(contract.endDate);
     const payments = [];
@@ -216,7 +221,7 @@ export class LeaseContractsService {
     }
 
     if (payments.length > 0) {
-      await prisma.rentPayment.createMany({ data: payments });
+      await tx.rentPayment.createMany({ data: payments });
     }
   }
 }
