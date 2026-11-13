@@ -162,9 +162,24 @@ test('session APIs only expose current active sessions without token material', 
   assert.match(service, /expiresAt:\s*\{\s*gt:\s*new Date\(\)\s*\}/);
   assert.match(service, /select:\s*\{\s*id:\s*true/);
   assert.doesNotMatch(service, /token:\s*true/);
-  assert.match(service, /prisma\.session\.updateMany/);
+  assert.match(service, /tx\.session\.updateMany/);
 });
 
+
+test('security audit writes are transactional and never include key or token values', () => {
+  const keys = src('src/security/api-keys.service.ts');
+  const sessions = src('src/security/sessions.service.ts');
+  for (const source of [keys, sessions]) {
+    assert.match(source, /prisma\.\$transaction\(async \(tx\) =>/);
+    assert.match(source, /tx\.auditLog\.create\(/);
+    assert.doesNotMatch(source, /newValues:\s*\{[^}]*\b(?:key|token|refreshToken|accessToken|password)\s*:/);
+  }
+  assert.match(keys, /API_KEY_CREATED/);
+  assert.match(keys, /API_KEY_REVOKED/);
+  assert.match(sessions, /SESSION_REVOKED/);
+  assert.match(sessions, /SESSIONS_REVOKED_ALL/);
+  assert.match(sessions, /if \(result\.count > 0\)/);
+});
 
 test('security sessions capture metadata and identify only the current authenticated session', () => {
   const auth = src('src/auth/auth.service.ts');
@@ -189,7 +204,8 @@ test('API keys do not return database records on revocation or expose unmasked l
   const keys = src('src/security/api-keys.service.ts');
   assert.match(keys, /k\.key\.startsWith\('sha256:'\)/);
   assert.match(keys, /createHash\('sha256'\)\.update\(key\)\.digest\('hex'\)/);
-  assert.match(keys, /return \{ revoked: result\.count === 1 \}/);
+  assert.match(keys, /return \{ revoked \}/);
+  assert.match(keys, /return result\.count === 1/);
   assert.doesNotMatch(keys, /return prisma\.apiKey\.update\(/);
   assert.doesNotMatch(keys, /return \{ \.\.\.created, key \}/);
 });
