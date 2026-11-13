@@ -94,6 +94,15 @@ async function main() {
   const vatConfig = await expectStatus('ADMIN', admin, '/finance/vat-returns/config', 200);
   assert.equal(vatConfig.payload?.baseCurrency, 'SAR');
 
+  const schedules = await expectStatus('ADMIN', admin, '/finance/accounting-schedules', 200);
+  assert.deepEqual(ids(schedules.payload), []);
+  const scheduleRuns = await expectStatus('ADMIN', admin, '/finance/accounting-schedules/runs', 200);
+  assert.deepEqual(ids(scheduleRuns.payload), []);
+  await expectStatus('ADMIN', admin, '/finance/accounting-schedules/run-due', [200, 201], {
+    method: 'POST',
+    body: {},
+  });
+
   for (const path of [
     '/finance/cost-centers',
     '/finance/fixed-assets/categories',
@@ -104,6 +113,8 @@ async function main() {
     '/inventory/products',
     '/finance/vat-returns',
     '/finance/vat-returns/config',
+    '/finance/accounting-schedules',
+    '/finance/accounting-schedules/runs',
   ]) {
     await expectStatus('READONLY', readonly, path, 200);
   }
@@ -130,6 +141,22 @@ async function main() {
     body: {
       periodStart: '2099-01-01',
       periodEnd: '2099-03-31',
+    },
+  });
+  await expectStatus('READONLY', readonly, '/finance/accounting-schedules/run-due', 403, {
+    method: 'POST',
+    body: {},
+  });
+  await expectStatus('READONLY', readonly, '/finance/accounting-schedules', 403, {
+    method: 'POST',
+    body: {
+      name: 'MUST NOT CREATE',
+      kind: 'RECURRING',
+      frequency: 'MONTHLY',
+      startDate: '2099-01-01',
+      entryPrefix: 'DENY-SCHED',
+      description: 'Must be forbidden',
+      lines: [],
     },
   });
 
