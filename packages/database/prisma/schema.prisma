@@ -3698,3 +3698,44 @@ model FinancialPeriod {
   @@index([tenantId])
   @@map("financial_periods")
 }
+
+
+// Employee governance cases: evidence-first records, never automatic sanctions or deductions.
+model HrGovernanceCase {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  employeeId         String
+  contractId         String?
+  category           String
+  title              String
+  description        String
+  status             String   @default("OPEN")
+  priority           String   @default("NORMAL")
+  createdById        String
+  assignedToId       String?
+  resolution         String?
+  closedById         String?
+  closedAt           DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  events             HrGovernanceEvent[]
+
+  @@index([tenantId, status, createdAt])
+  @@index([tenantId, employeeId])
+  @@index([tenantId, category])
+  @@map("hr_governance_cases")
+}
+
+model HrGovernanceEvent {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  caseId             String
+  case               HrGovernanceCase @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  action             String
+  details            String
+  actorUserId        String
+  createdAt          DateTime @default(now())
+
+  @@index([tenantId, caseId, createdAt])
+  @@map("hr_governance_events")
+}
