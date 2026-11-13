@@ -111,7 +111,7 @@ export default function PayrollPage() {
       await api.delete(`/hr/payrolls/${id}`);
       fetchData();
     } catch {
-      alert('لا يمكن حذف راتب مدفوع');
+      alert('لا يمكن حذف إلا مسودة راتب مستقلة. الرواتب المعتمدة والمدفوعة مقفلة.');
     }
   };
 
@@ -175,7 +175,7 @@ export default function PayrollPage() {
                 {p.status === 'APPROVED' && <Button size="sm" onClick={() => handlePay(p.id)}><Wallet className="h-3 w-3" /> دفع</Button>}
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   {p.status === 'DRAFT' && <button onClick={() => openEdit(p)} className="p-1.5 rounded-lg hover:bg-primary-500/10 text-primary-400"><Pencil className="h-4 w-4" /></button>}
-                  {p.status !== 'PAID' && <button onClick={() => handleDelete(p.id)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-400"><Trash2 className="h-4 w-4" /></button>}
+                  {p.status === 'DRAFT' && <button onClick={() => handleDelete(p.id)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-400"><Trash2 className="h-4 w-4" /></button>}
                 </div>
               </div>
             </div>
