@@ -35,7 +35,15 @@ class CreateCategoryDto {
   depreciationMethod?: string;
 }
 
-class UpdateCategoryDto extends CreateCategoryDto {}
+class UpdateCategoryDto {
+  @IsString() @IsOptional() name?: string;
+  @IsString() @IsOptional() code?: string;
+  @IsNumber() @Min(0) @Max(100) @IsOptional() depreciationRate?: number;
+  @IsInt() @Min(1) @IsOptional() usefulLifeYears?: number;
+  @IsIn(['STRAIGHT_LINE', 'DECLINING_BALANCE', 'UNITS_OF_PRODUCTION'])
+  @IsOptional()
+  depreciationMethod?: string;
+}
 
 class CreateAssetDto {
   @IsString() name: string;
