@@ -86,7 +86,12 @@ export async function middleware(request: NextRequest) {
       sessionValid = false;
     }
   }
-  if (!sessionValid) {
+  // A browser may have an expired access JWT while holding a valid HttpOnly
+  // refresh cookie. Allow the UI to load and let the API enforce the actual
+  // authenticated session during the subsequent refresh request.
+  const refreshCookieName = process.env.NODE_ENV === 'production' ? '__Host-scc_refresh' : 'scc_refresh';
+  const mayRefresh = !!request.cookies.get(refreshCookieName)?.value;
+  if (!sessionValid && !mayRefresh) {
     const login = NextResponse.redirect(new URL('/auth/login', request.url));
     login.headers.set('Cache-Control', 'no-store');
     return login;
