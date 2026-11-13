@@ -36,8 +36,7 @@ export default function PropertiesPage(){
    <div className="mt-4 text-sm text-slate-400 space-y-1"><p>النوع: {types.find(t=>t.value===x.propertyType)?.label||x.propertyType}</p><p>الوحدات: {x._count?.units||0}</p><p>العقود: {x._count?.contracts||0}</p><p>رقم الصك: {x.deedNumber||'—'}</p></div>
    <div className="mt-4 flex gap-3"><button onClick={()=>edit(x)} className="text-primary-400"><Pencil className="h-4 w-4"/></button><button onClick={()=>remove(x.id)} className="text-red-400"><Trash2 className="h-4 w-4"/></button></div>
   </div>)}</div>}
-  {actionError&&<div role="alert" className="rounded-lg border border-red-800 p-4 text-red-200">فشلت العملية ولم يتم تأكيد حفظ التغييرات. تحقق من المدخلات والصلاحيات وحاول مجددًا.</div>}
-  <Modal isOpen={open} onClose={()=>setOpen(false)} title={editing?'تعديل عقار':'عقار جديد'} size="lg"><form onSubmit={submit} className="space-y-4">
+  <Modal isOpen={open} onClose={()=>setOpen(false)} title={editing?'تعديل عقار':'عقار جديد'} size="lg"><form onSubmit={submit} className="space-y-4">{actionError&&<div role="alert" className="rounded-lg border border-red-800 p-4 text-red-200">تعذر تأكيد العملية. تحقق من المدخلات والصلاحيات وحاول مجددًا.</div>}
    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
     <Input label="اسم العقار" required value={form.name||''} onChange={e=>setForm({...form,name:e.target.value})}/>
     <Select label="النوع" options={types} value={form.propertyType||'RESIDENTIAL'} onChange={e=>setForm({...form,propertyType:e.target.value})}/>
