@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 
 const origin = 'http://127.0.0.1:3000';
 let nextRefresh = 1;
+let legacyConsumed = false;
 let lastLogout = '';
 const server = createServer(async (req, res) => {
   if (req.method !== 'POST' || !req.url?.startsWith('/api/auth/')) {
@@ -23,8 +24,13 @@ const server = createServer(async (req, res) => {
     }));
     return;
   }
+  if (route === 'refresh' && body.refreshToken === 'legacy-token' && legacyConsumed) {
+    res.writeHead(401).end(JSON.stringify({ message: 'Refresh token already rotated' }));
+    return;
+  }
   if (route === 'refresh' && typeof body.refreshToken === 'string' &&
       (body.refreshToken.startsWith('refresh-') || body.refreshToken === 'legacy-token')) {
+    if (body.refreshToken === 'legacy-token') legacyConsumed = true;
     nextRefresh++;
     res.end(JSON.stringify({
       accessToken: 'test-access-' + nextRefresh,
@@ -95,7 +101,7 @@ try {
   assert.match(rotatedCookie, /__Host-scc_refresh=refresh-3/);
 
   const oldMigration = await exchange({ action: 'migrate', refreshToken: 'legacy-token' });
-  assert.equal(oldMigration.status, 200, 'legacy refresh should migrate through server');
+  assert.equal(oldMigration.status, 401, 'consumed legacy token cannot be reused');
   const migrationBody = await oldMigration.json();
   assert.equal('refreshToken' in migrationBody, false);
 
