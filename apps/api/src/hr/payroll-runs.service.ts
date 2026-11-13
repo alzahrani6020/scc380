@@ -178,8 +178,8 @@ export class PayrollRunsService {
       });
       if (locked.count !== 1) throw new ConflictException('Only draft payroll runs can be edited');
       const run = await tx.payrollRun.findFirst({
-      where: { ...tenantWhere(tenantId), id: runId },
-    });
+        where: { ...tenantWhere(tenantId), id: runId },
+      });
     if (!run) throw new NotFoundException('Payroll run not found');
     if (run.status !== 'DRAFT') throw new ConflictException('Only draft payroll runs can be edited');
 
@@ -210,8 +210,7 @@ export class PayrollRunsService {
     const netSalary = grossSalary - totalDeductions;
     if (netSalary < 0) throw new BadRequestException('Payroll net salary cannot be negative');
 
-    {
-      const updated = await tx.payrollRunItem.update({
+    const updated = await tx.payrollRunItem.update({
         where: { id: itemId },
         data: {
           basicSalary,
@@ -229,7 +228,6 @@ export class PayrollRunsService {
       });
       await this.recalculateTotals(tx, runId);
       return updated;
-    }
     }, { isolationLevel: 'Serializable' });
   }
 
@@ -246,9 +244,9 @@ export class PayrollRunsService {
       });
       if (locked.count !== 1) throw new ConflictException('Only draft payroll runs can be approved');
       const run = await tx.payrollRun.findFirst({
-      where: { ...tenantWhere(tenantId), id },
-      include: { items: true },
-    });
+        where: { ...tenantWhere(tenantId), id },
+        include: { items: true },
+      });
     if (!run) throw new NotFoundException('Payroll run not found');
     if (run.status !== 'DRAFT') throw new ConflictException('Only draft payroll runs can be approved');
     if (run.items.length === 0) throw new BadRequestException('Payroll run has no items');
