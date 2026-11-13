@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import api from '@/lib/api';
-import { CheckCircle2, PackageCheck, Plus, RotateCcw, AlertTriangle } from 'lucide-react';
+import { CheckCircle2, PackageCheck, Plus, RotateCcw, AlertTriangle, Landmark, X } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Modal from '@/components/ui/Modal';
@@ -18,6 +18,10 @@ export default function HrAssetsPage() {
   const [assetForm, setAssetForm] = useState<any>({ purchaseDate: new Date().toISOString().slice(0,10) });
   const [assignForm, setAssignForm] = useState<any>({});
   const [busy, setBusy] = useState(false);
+  const [accounts, setAccounts] = useState<any[]>([]);
+  const [closeItem, setCloseItem] = useState<any>(null);
+  const [closeStatus, setCloseStatus] = useState<'LOST'|'DAMAGED'|null>(null);
+  const [closeData, setCloseData] = useState<any>({});
 
   const load = () => Promise.all([
     api.get('/hr/assets').then(r => setAssets(r.data.data || [])),
@@ -81,12 +85,65 @@ export default function HrAssetsPage() {
   };
 
   const close = async (item: any, status: 'RETURNED'|'LOST'|'DAMAGED') => {
-    const conditionIn = status === 'RETURNED' ? (prompt('حالة الأصل عند الاستلام') || '') : '';
-    const message = status === 'RETURNED' ? 'تأكيد استلام العهدة؟' : status === 'LOST' ? 'تسجيل الأصل كمفقود وإغلاق العهدة؟' : 'تسجيل الأصل كمتضرر وإغلاق العهدة؟';
-    if (!confirm(message)) return;
-    await api.post(`/hr/assets/custody/${item.id}/close`, { status, conditionIn });
-    await load();
+    if (status === 'RETURNED') {
+      const conditionIn = prompt('حالة الأصل عند الاستلام') || '';
+      if (!confirm('تأكيد استلام العهدة؟')) return;
+      await api.post(`/hr/assets/custody/${item.id}/close`, { status, conditionIn });
+      await load();
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const r = await api.get('/finance/chart-of-accounts');
+      setAccounts((r.data?.data || []).filter((account: any) => account.isActive !== false));
+      setCloseItem(item);
+      setCloseStatus(status);
+      setCloseData({});
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'تعذر تحميل دليل الحسابات');
+    } finally {
+      setBusy(false);
+    }
   };
+
+  const submitAccountingClose = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!closeItem || !closeStatus) return;
+
+    const payload: any = {
+      status: closeStatus,
+      assetAccountId: closeData.assetAccountId,
+      lossAccountId: closeData.lossAccountId,
+      notes: closeData.notes || undefined,
+    };
+    if (closeStatus === 'LOST') {
+      payload.accumulatedDepreciationAccountId = closeData.accumulatedDepreciationAccountId;
+    }
+    if (closeStatus === 'DAMAGED') {
+      payload.impairmentAmount = Number(closeData.impairmentAmount);
+    }
+
+    setBusy(true);
+    try {
+      await api.post(`/hr/assets/custody/${closeItem.id}/close`, payload);
+      setCloseItem(null);
+      setCloseStatus(null);
+      setCloseData({});
+      await load();
+      alert(closeStatus === 'LOST'
+        ? 'تم استبعاد الأصل المفقود وترحيل الخسارة محاسبيًا'
+        : 'تم إثبات انخفاض قيمة الأصل المتضرر محاسبيًا');
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'تعذر إغلاق العهدة محاسبيًا');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const accountOptions = (type: string) => accounts
+    .filter((account: any) => account.type === type)
+    .map((account: any) => ({ value: account.id, label: `${account.code} — ${account.name}` }));
 
   return <div className="space-y-6 animate-fade-in-up">
     <div className="flex justify-between gap-4 flex-wrap">
@@ -151,5 +208,61 @@ export default function HrAssetsPage() {
         <div className="flex justify-end"><Button disabled={!assignForm.assetId||!assignForm.employeeId} isLoading={busy} onClick={assign}><CheckCircle2 className="h-4 w-4" /> تأكيد التسليم</Button></div>
       </div>
     </Modal>
+
+    <Modal isOpen={!!closeItem && !!closeStatus} onClose={() => { setCloseItem(null); setCloseStatus(null); }} title={closeStatus === 'LOST' ? 'استبعاد أصل مفقود' : 'إثبات انخفاض قيمة أصل متضرر'} size="lg">
+      <form onSubmit={submitAccountingClose} className="space-y-4">
+        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 text-sm text-slate-300">
+          {closeStatus === 'LOST'
+            ? 'سيتم إغلاق العهدة واستبعاد الأصل من الدفاتر في transaction واحدة. القيد: مدين مجمع الإهلاك + خسارة الاستبعاد، دائن حساب الأصل بالتكلفة التاريخية.'
+            : 'سيتم إغلاق العهدة وتخفيض القيمة الدفترية للأصل في transaction واحدة. يبقى الأصل نشطًا ما دامت قيمته الدفترية أكبر من صفر.'}
+        </div>
+        <Select
+          label="حساب الأصل الثابت"
+          required
+          options={accountOptions('ASSET')}
+          value={closeData.assetAccountId || ''}
+          onChange={e => setCloseData({ ...closeData, assetAccountId: e.target.value })}
+        />
+        {closeStatus === 'LOST' && (
+          <Select
+            label="حساب مجمع الإهلاك"
+            required
+            options={accountOptions('ASSET')}
+            value={closeData.accumulatedDepreciationAccountId || ''}
+            onChange={e => setCloseData({ ...closeData, accumulatedDepreciationAccountId: e.target.value })}
+          />
+        )}
+        <Select
+          label={closeStatus === 'LOST' ? 'حساب خسارة استبعاد الأصل' : 'حساب خسارة انخفاض القيمة'}
+          required
+          options={accountOptions('EXPENSE')}
+          value={closeData.lossAccountId || ''}
+          onChange={e => setCloseData({ ...closeData, lossAccountId: e.target.value })}
+        />
+        {closeStatus === 'DAMAGED' && (
+          <Input
+            label={`مبلغ انخفاض القيمة — القيمة الدفترية الحالية ${Number(closeItem?.asset?.currentValue || 0).toLocaleString('ar-SA')} ر.س`}
+            type="number"
+            required
+            value={closeData.impairmentAmount || ''}
+            onChange={e => setCloseData({ ...closeData, impairmentAmount: e.target.value })}
+          />
+        )}
+        <Input
+          label="ملاحظات"
+          value={closeData.notes || ''}
+          onChange={e => setCloseData({ ...closeData, notes: e.target.value })}
+        />
+        <div className="flex justify-end gap-3">
+          <Button type="button" variant="ghost" onClick={() => { setCloseItem(null); setCloseStatus(null); }}>
+            <X className="h-4 w-4" /> إلغاء
+          </Button>
+          <Button type="submit" isLoading={busy}>
+            <Landmark className="h-4 w-4" /> تنفيذ وإثبات القيد
+          </Button>
+        </div>
+      </form>
+    </Modal>
+
   </div>;
 }
