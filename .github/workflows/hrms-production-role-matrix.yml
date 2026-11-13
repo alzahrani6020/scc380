@@ -52,13 +52,25 @@ jobs:
           docker logs role-smoke-postgres
           exit 1
 
-      - name: Start exact production API image
+      - name: Initialize ephemeral schema from exact production image
         env:
           IMAGE: ${{ steps.image.outputs.image }}
         shell: bash
         run: |
           set -euo pipefail
           docker pull "$IMAGE"
+          docker run --rm --network host \
+            -e DATABASE_URL='postgresql://postgres:postgres@127.0.0.1:5432/scc_role_smoke?schema=public' \
+            -e DIRECT_URL='postgresql://postgres:postgres@127.0.0.1:5432/scc_role_smoke?schema=public' \
+            "$IMAGE" \
+            sh -lc 'pnpm --dir packages/database exec prisma migrate deploy --schema prisma/schema.prisma'
+
+      - name: Start exact production API image
+        env:
+          IMAGE: ${{ steps.image.outputs.image }}
+        shell: bash
+        run: |
+          set -euo pipefail
           docker run -d --name role-smoke-api --network host \
             -e DATABASE_URL='postgresql://postgres:postgres@127.0.0.1:5432/scc_role_smoke?schema=public' \
             -e DIRECT_URL='postgresql://postgres:postgres@127.0.0.1:5432/scc_role_smoke?schema=public' \
