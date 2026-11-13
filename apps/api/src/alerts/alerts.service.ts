@@ -4,7 +4,7 @@ import { AlertsGateway } from './gateway/alerts.gateway';
 
 export interface AlertItem {
   id: string;
-  type: 'LOW_STOCK' | 'OVERDUE_INVOICE' | 'UPCOMING_INVOICE' | 'PENDING_PAYMENT' | 'ASSET_DEPRECIATION' | 'PENDING_LEAVE' | 'EMPLOYEE_DOCUMENT_EXPIRY' | 'EMPLOYEE_CONTRACT_EXPIRY';
+  type: 'LOW_STOCK' | 'OVERDUE_INVOICE' | 'UPCOMING_INVOICE' | 'PENDING_PAYMENT' | 'ASSET_DEPRECIATION' | 'PENDING_LEAVE' | 'EMPLOYEE_DOCUMENT_EXPIRY' | 'EMPLOYEE_CONTRACT_EXPIRY' | 'EMPLOYEE_PROBATION_EXPIRY';
   severity: 'CRITICAL' | 'WARNING' | 'INFO';
   title: string;
   message: string;
@@ -191,6 +191,89 @@ export class SmartAlertsService {
     this.gateway?.sendAlertCount(resolvedTenantId, counts);
 
     return this.getAllAlerts(tenantId, userRole) as Promise<AlertItem[]>;
+  }
+
+  async generateHrExpiryAlerts(tenantId: string) {
+    const now = new Date();
+    const next30Days = new Date(now);
+    next30Days.setDate(next30Days.getDate() + 30);
+    const tw = tenantWhere(tenantId);
+
+    const [documents, contracts] = await Promise.all([
+      prisma.employeeDocument.findMany({
+        where: { ...tw, expiresAt: { not: null, lte: next30Days } },
+        include: { employee: { select: { firstName: true, lastName: true } } },
+      }),
+      prisma.employeeContract.findMany({
+        where: {
+          ...tw,
+          status: 'ACTIVE',
+          OR: [
+            { endDate: { not: null, lte: next30Days } },
+            { probationEndDate: { not: null, lte: next30Days } },
+          ],
+        },
+        include: { employee: { select: { firstName: true, lastName: true } } },
+      }),
+    ]);
+
+    for (const doc of documents) {
+      if (!doc.expiresAt) continue;
+      const daysLeft = Math.ceil((doc.expiresAt.getTime() - now.getTime()) / 86400000);
+      await this.saveAlert(tenantId, {
+        type: 'EMPLOYEE_DOCUMENT_EXPIRY',
+        severity: daysLeft < 0 ? 'CRITICAL' : daysLeft <= 7 ? 'WARNING' : 'INFO',
+        title: daysLeft < 0 ? 'مستند موظف منتهي' : 'مستند موظف يوشك على الانتهاء',
+        message: `${doc.employee.firstName} ${doc.employee.lastName} — ${doc.title} — ${daysLeft < 0 ? `منتهي منذ ${Math.abs(daysLeft)} يوم` : `متبقي ${daysLeft} يوم`}`,
+        entityId: doc.id,
+        entityType: 'EmployeeDocument',
+        actionUrl: `/dashboard/hr/documents?employeeId=${doc.employeeId}`,
+      });
+    }
+
+    for (const contract of contracts) {
+      if (contract.endDate && contract.endDate <= next30Days) {
+        const daysLeft = Math.ceil((contract.endDate.getTime() - now.getTime()) / 86400000);
+        await this.saveAlert(tenantId, {
+          type: 'EMPLOYEE_CONTRACT_EXPIRY',
+          severity: daysLeft < 0 ? 'CRITICAL' : daysLeft <= 7 ? 'WARNING' : 'INFO',
+          title: daysLeft < 0 ? 'عقد موظف منتهي' : 'عقد موظف يوشك على الانتهاء',
+          message: `${contract.employee.firstName} ${contract.employee.lastName} — ${contract.contractNumber} — ${daysLeft < 0 ? `منتهي منذ ${Math.abs(daysLeft)} يوم` : `متبقي ${daysLeft} يوم`}`,
+          entityId: contract.id,
+          entityType: 'EmployeeContract',
+          actionUrl: `/dashboard/hr/contracts?employeeId=${contract.employeeId}`,
+        });
+      }
+
+      if (contract.probationEndDate && contract.probationEndDate <= next30Days) {
+        const daysLeft = Math.ceil((contract.probationEndDate.getTime() - now.getTime()) / 86400000);
+        await this.saveAlert(tenantId, {
+          type: 'EMPLOYEE_PROBATION_EXPIRY',
+          severity: daysLeft < 0 ? 'CRITICAL' : daysLeft <= 7 ? 'WARNING' : 'INFO',
+          title: daysLeft < 0 ? 'فترة تجربة منتهية' : 'فترة تجربة توشك على الانتهاء',
+          message: `${contract.employee.firstName} ${contract.employee.lastName} — ${daysLeft < 0 ? `انتهت منذ ${Math.abs(daysLeft)} يوم` : `متبقي ${daysLeft} يوم`}`,
+          entityId: contract.id,
+          entityType: 'EmployeeContractProbation',
+          actionUrl: `/dashboard/hr/contracts?employeeId=${contract.employeeId}`,
+        });
+      }
+    }
+
+    return {
+      tenantId,
+      matchedDocuments: documents.length,
+      matchedContracts: contracts.filter((item) => item.endDate && item.endDate <= next30Days).length,
+      matchedProbations: contracts.filter((item) => item.probationEndDate && item.probationEndDate <= next30Days).length,
+    };
+  }
+
+  async generateHrExpiryAlertsForAllTenants() {
+    const tenants = await prisma.tenant.findMany({ select: { id: true } });
+    const results = [];
+    for (const tenant of tenants) {
+      results.push(await this.generateHrExpiryAlerts(tenant.id));
+    }
+    return { processedTenants: tenants.length, results, generatedAt: new Date().toISOString() };
   }
 
   async getAllAlerts(tenantId: string | undefined, userRole: string) {
