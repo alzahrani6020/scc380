@@ -18,7 +18,15 @@ export default function HrDashboardPage() {
     setError('');
     api.get('/hr/dashboard')
       .then(r => setData(r.data))
-      .catch(() => setError('تعذر تحميل مؤشرات مكين'))
+      .catch((err: unknown) => {
+        const response = (err as { response?: { status?: number } })?.response;
+        const status = response?.status;
+        if (status === 403) setError('لا تملك صلاحية عرض مؤشرات مكين (hr:read). تواصل مع مسؤول المنشأة.');
+        else if (status === 401) setError('انتهت جلسة الدخول. سجّل الدخول مجددًا.');
+        else if (status === 500 || (status != null && status >= 500)) setError('فشل خادم مؤشرات مكين. رمز الاستجابة: ' + status);
+        else if (!response) setError('تعذر الاتصال بخادم مكين. تحقق من الشبكة ثم أعد المحاولة.');
+        else setError('تعذر تحميل مؤشرات مكين. رمز الاستجابة: ' + status);
+      })
       .finally(() => setLoading(false));
   };
 
