@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { getRole } from '@/lib/auth';
 import api from '@/lib/api';
 import { Download, FileText, RefreshCw, Send, UserCircle2, WalletCards } from 'lucide-react';
 import Button from '@/components/ui/Button';
@@ -19,6 +21,9 @@ const requestTypes = [
 export default function HrSelfServicePage() {
   const [data, setData] = useState<any>(null);
   const [payroll, setPayroll] = useState<any[]>([]);
+  const [loans, setLoans] = useState<any[]>([]);
+  const [error, setError] = useState('');
+  const [sectionWarnings, setSectionWarnings] = useState<string[]>([]);
   const [documents, setDocuments] = useState<any[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
   const [custody, setCustody] = useState<any[]>([]);
@@ -30,25 +35,54 @@ export default function HrSelfServicePage() {
   const [busy, setBusy] = useState(false);
 
   const load = async () => {
-    setLoading(true); setUnlinked(false);
+    setLoading(true);
+    setUnlinked(false);
+    setError('');
+    setSectionWarnings([]);
     try {
-      const [me, p, docs, reqs, assets, reviews] = await Promise.all([
-        api.get('/hr/self/me'),
+      // Only an explicit 404 from identity resolution means the account is unlinked.
+      const me = await api.get('/hr/self/me');
+      setData(me.data);
+      setLoans(me.data.loans || []);
+      setProfile({
+        phone: me.data.employee?.phone || '',
+        emergencyContactName: me.data.employee?.emergencyContactName || '',
+        emergencyContactPhone: me.data.employee?.emergencyContactPhone || '',
+      });
+
+      const results = await Promise.allSettled([
         api.get('/hr/self/payroll?limit=12'),
         api.get('/hr/self/documents'),
         api.get('/hr/self/requests'),
         api.get('/hr/self/assets'),
         api.get('/hr/self/performance'),
       ]);
-      setData(me.data); setPayroll(p.data || []); setDocuments(docs.data || []); setRequests(reqs.data || []); setCustody(assets.data || []); setPerformance(reviews.data || []);
-      setProfile({
-        phone: me.data.employee?.phone || '',
-        emergencyContactName: me.data.employee?.emergencyContactName || '',
-        emergencyContactPhone: me.data.employee?.emergencyContactPhone || '',
+      const names = ['الرواتب', 'المستندات', 'الطلبات', 'العهد', 'تقييمات الأداء'];
+      const setters = [setPayroll, setDocuments, setRequests, setCustody, setPerformance];
+      const warnings: string[] = [];
+      results.forEach((result, index) => {
+        if (result.status === 'fulfilled') setters[index](result.value.data || []);
+        else {
+          setters[index]([]);
+          warnings.push(names[index]);
+        }
       });
+      setSectionWarnings(warnings);
     } catch (err: any) {
-      if (err?.response?.status === 404) setUnlinked(true); else console.error(err);
-    } finally { setLoading(false); }
+      setData(null);
+      if (err?.response?.status === 404) {
+        setUnlinked(true);
+      } else if (err?.response?.status === 403) {
+        setError('ليس لديك تصريح للوصول إلى ملف الموظف.');
+      } else if (err?.response?.status === 401) {
+        setError('انتهت صلاحية الجلسة. يرجى تسجيل الدخول مجددًا.');
+      } else {
+        const status = err?.response?.status;
+        setError(status ? `تعذر تحميل ملف الموظف (HTTP ${status}).` : 'تعذر الاتصال بخدمة الموظف. تحقق من الاتصال ثم أعد المحاولة.');
+      }
+    } finally {
+      setLoading(false);
+    }
   };
   useEffect(() => { load(); }, []);
 
@@ -105,17 +139,35 @@ export default function HrSelfServicePage() {
       <UserCircle2 className="h-12 w-12 text-amber-400 mx-auto mb-3" />
       <h1 className="text-xl font-bold text-white">الحساب غير مربوط بملف موظف</h1>
       <p className="text-slate-400 mt-2">يجب على مسؤول الموارد البشرية ربط مستخدمك بملف الموظف أولًا.</p>
-      <Button className="mt-5" onClick={load}><RefreshCw className="h-4 w-4" /> إعادة المحاولة</Button>
+      <div className="mt-5 flex flex-wrap justify-center gap-3">
+        <Button onClick={load}><RefreshCw className="h-4 w-4" /> إعادة المحاولة</Button>
+        {['ADMIN', 'SUPER_ADMIN', 'MANAGER'].includes(getRole() || '') && (
+          <Link href="/dashboard/hr/employees" className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-200 hover:bg-slate-800">إدارة وربط حسابات الموظفين</Link>
+        )}
+      </div>
     </div>
   );
 
-  const employee = data?.employee || {};
+  if (error || !data) return (
+    <div role="alert" className="scc-card py-14 text-center space-y-4">
+      <p className="text-amber-400">{error || 'بيانات الموظف غير متاحة.'}</p>
+      <Button onClick={load}><RefreshCw className="h-4 w-4" /> إعادة المحاولة</Button>
+    </div>
+  );
+
+  const employee = data.employee;
   return (
     <div className="space-y-6 animate-fade-in-up">
       <div>
         <h1 className="text-2xl font-bold text-white flex items-center gap-2"><UserCircle2 className="h-6 w-6 text-primary-400" /> الخدمة الذاتية للموظف</h1>
         <p className="text-slate-400 text-sm mt-1">{employee.firstName} {employee.lastName} · {employee.employeeCode} · {employee.jobTitle || '—'}</p>
       </div>
+
+      {sectionWarnings.length > 0 && (
+        <div role="status" className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-amber-200 text-sm">
+          تعذر تحميل الأقسام التالية: {sectionWarnings.join('، ')}. بقية بياناتك متاحة. <button className="underline mr-2" onClick={load}>إعادة التحميل</button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
         <div className="scc-card space-y-4">
@@ -153,6 +205,22 @@ export default function HrSelfServicePage() {
             <tbody>{payroll.map(row => <tr key={row.id} className="border-b border-slate-800/60"><td className="py-3 text-white">{row.year}/{String(row.month).padStart(2,'0')}</td><td>{Number(row.grossSalary).toLocaleString('ar-SA')}</td><td>{Number(row.loanDeductions || 0).toLocaleString('ar-SA')}</td><td className="text-emerald-400">{Number(row.netSalary).toLocaleString('ar-SA')}</td><td>{row.status}</td></tr>)}</tbody>
           </table>
         </div>
+      </div>
+
+      <div className="scc-card">
+        <h2 className="font-bold text-white flex items-center gap-2 mb-4"><WalletCards className="h-5 w-5 text-primary-400" /> السلف والقروض المسجلة</h2>
+        {loans.length === 0 ? <p className="text-slate-500 text-sm">لا توجد سلف أو قروض مسجلة.</p> : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="border-b border-slate-800 text-slate-400"><th className="text-right py-2">النوع</th><th className="text-right">الأصل</th><th className="text-right">القسط</th><th className="text-right">المتبقي</th><th className="text-right">الحالة</th></tr></thead>
+              <tbody>{loans.map((loan: any) => <tr key={loan.id} className="border-b border-slate-800/60">
+                <td className="py-3">{loan.type}</td><td>{Number(loan.principal).toLocaleString('ar-SA')}</td>
+                <td>{Number(loan.installmentAmount).toLocaleString('ar-SA')}</td>
+                <td>{Number(loan.balance).toLocaleString('ar-SA')}</td><td>{loan.status}</td>
+              </tr>)}</tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <div className="scc-card">
