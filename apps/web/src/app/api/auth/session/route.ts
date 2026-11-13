@@ -38,8 +38,18 @@ function clearRefreshCookie(response: NextResponse) {
 }
 
 function apiUrl(action: Exclude<Action, 'clear'>) {
-  const raw = process.env.API_INTERNAL_URL || process.env.NEXT_PUBLIC_API_URL;
-  if (!raw || !/^https?:\/\//.test(raw)) return null;
+  const internal = process.env.API_INTERNAL_URL;
+  const publicUrl = process.env.NEXT_PUBLIC_API_URL;
+  // The production API origin is pinned to the existing Render service when
+  // browser config is relative ("/api") and no internal origin is set.
+  const raw = internal && /^https?:\/\//.test(internal)
+    ? internal
+    : publicUrl && /^https?:\/\//.test(publicUrl)
+      ? publicUrl
+      : process.env.NODE_ENV === 'production'
+        ? 'https://scc380-api.onrender.com'
+        : null;
+  if (!raw) return null;
   const base = raw.replace(/\/+$/, '');
   return base.endsWith('/api') ? `${base}/auth/${action}` : `${base}/api/auth/${action}`;
 }
