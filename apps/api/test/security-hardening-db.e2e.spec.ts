@@ -70,6 +70,18 @@ test('Redis-backed 2FA challenge can issue only one session', {
     assert.ok(result.accessToken);
     await assert.rejects(() => auth.verify2FALoginAndIssueToken(pending.tempToken, code));
     assert.equal(await prisma.session.count({ where: { userId: user.id } }), 1);
+    const backup = 'ABCD1234EF567890';
+    const backupHash = createHash('sha256').update(backup).digest('hex');
+    await prisma.user.update({
+      where: { id: user.id }, data: { twoFactorBackupCodes: [backupHash] },
+    });
+    const attempts = await Promise.allSettled([
+      auth.verify2FALogin(user.id, backup),
+      auth.verify2FALogin(user.id, backup),
+    ]);
+    assert.equal(attempts.filter((x) => x.status === 'fulfilled').length, 1);
+    assert.equal(attempts.filter((x) => x.status === 'rejected').length, 1);
+    assert.deepEqual((await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).twoFactorBackupCodes, []);
   } finally {
     await prisma.tenant.delete({ where: { id: tenant.id } });
     await prisma.$disconnect();
