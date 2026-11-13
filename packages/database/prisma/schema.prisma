@@ -122,6 +122,8 @@ model Tenant {
   budgetLines BudgetLine[]
   exchangeRates ExchangeRate[]
   vatReturns VatReturn[]
+  accountingSchedules AccountingSchedule[]
+  accountingScheduleRuns AccountingScheduleRun[]
   yearEndCloses YearEndClose[]
   zatcaCredential ZatcaCredential?
   dataSubjectConsents DataSubjectConsent[]
@@ -3576,6 +3578,104 @@ model VatReturn {
   @@index([tenantId, status])
   @@index([tenantId, periodStart, periodEnd])
   @@map("vat_returns")
+}
+
+enum AccountingScheduleKind {
+  RECURRING
+  ACCRUAL
+  PREPAID
+}
+
+enum AccountingScheduleFrequency {
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+enum AccountingScheduleStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+}
+
+enum AccountingScheduleRunStatus {
+  POSTED
+  REVERSED
+}
+
+model AccountingSchedule {
+  id               String                      @id @default(cuid())
+  tenantId         String
+  tenant           Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name             String
+  kind             AccountingScheduleKind
+  frequency        AccountingScheduleFrequency
+  status           AccountingScheduleStatus    @default(ACTIVE)
+  startDate        DateTime
+  endDate          DateTime?
+  nextRunDate      DateTime
+  autoReverse      Boolean                     @default(false)
+  reverseAfterDays Int                         @default(1)
+  entryPrefix      String
+  description      String
+  createdBy        String?
+  lastRunAt        DateTime?
+  createdAt        DateTime                    @default(now())
+  updatedAt        DateTime                    @updatedAt
+
+  lines            AccountingScheduleLine[]
+  runs             AccountingScheduleRun[]
+
+  @@unique([tenantId, entryPrefix])
+  @@index([tenantId, status, nextRunDate])
+  @@index([tenantId, kind])
+  @@map("accounting_schedules")
+}
+
+model AccountingScheduleLine {
+  id             String             @id @default(cuid())
+  scheduleId     String
+  schedule       AccountingSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  lineNumber     Int
+  accountId      String
+  debitAmount    Decimal            @default(0) @db.Decimal(18,2)
+  creditAmount   Decimal            @default(0) @db.Decimal(18,2)
+  description    String?
+  costCenterId   String?
+  projectId      String?
+  branchId       String?
+  createdAt      DateTime           @default(now())
+
+  @@unique([scheduleId, lineNumber])
+  @@index([accountId])
+  @@index([costCenterId])
+  @@index([projectId])
+  @@index([branchId])
+  @@map("accounting_schedule_lines")
+}
+
+model AccountingScheduleRun {
+  id                String                      @id @default(cuid())
+  tenantId          String
+  tenant            Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  scheduleId        String
+  schedule          AccountingSchedule          @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  scheduledDate     DateTime
+  status            AccountingScheduleRunStatus @default(POSTED)
+  postingJournalId  String
+  reversalDueDate   DateTime?
+  reversalJournalId String?
+  snapshot          Json
+  postedAt          DateTime                    @default(now())
+  reversedAt        DateTime?
+  createdAt         DateTime                    @default(now())
+
+  @@unique([scheduleId, scheduledDate])
+  @@index([tenantId, scheduledDate])
+  @@index([tenantId, status, reversalDueDate])
+  @@index([postingJournalId])
+  @@index([reversalJournalId])
+  @@map("accounting_schedule_runs")
 }
 
 model FinancialPeriod {
