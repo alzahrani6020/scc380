@@ -81,8 +81,10 @@ export class LeaseContractsService {
 
     const contract = await prisma.leaseContract.create({ data });
 
-    // Auto-generate payment schedule
-    await this.generatePaymentSchedule(contract);
+    // Drafts are editable proposals: only active leases may generate receivables.
+    if (contract.status === 'ACTIVE') {
+      await this.generatePaymentSchedule(contract);
+    }
 
     // Update unit status if contract is ACTIVE
     if (contract.status === 'ACTIVE') {
