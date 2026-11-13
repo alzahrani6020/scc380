@@ -61,23 +61,25 @@ async function exchange(body, opts = {}) {
 
 try {
   await listen();
-  const crossSite = await exchange({ action: 'login', email: 'user@example.test', password: 'test-only-pass' }, {
+  const crossSite = await exchange({ action: 'migrate', refreshToken: 'legacy-token' }, {
     origin: 'https://attacker.example.test',
   });
   assert.equal(crossSite.status, 403, 'cross-site requests must not reach upstream auth');
 
-  const missingHeader = await exchange({ action: 'login', email: 'user@example.test', password: 'test-only-pass' }, {
+  const missingHeader = await exchange({ action: 'migrate', refreshToken: 'legacy-token' }, {
     intent: '0',
   });
   assert.equal(missingHeader.status, 403, 'custom CSRF header required');
 
-  const login = await exchange({ action: 'login', email: 'user@example.test', password: 'test-only-pass', remember: true });
+  const invalidLoginProxy = await exchange({ action: 'login', email: 'user@example.test', password: 'test-only-pass' });
+  assert.equal(invalidLoginProxy.status, 400, 'credential logins must remain direct for per-client IP rate limits');
+  const login = await exchange({ action: 'migrate', refreshToken: 'legacy-token', remember: true });
   assert.equal(login.status, 200, 'login exchange must succeed');
   const loginBody = await login.json();
-  assert.equal(loginBody.accessToken, 'test-access');
+  assert.equal(loginBody.accessToken, 'test-access-2');
   assert.equal('refreshToken' in loginBody, false, 'refresh token must not be exposed in JSON');
   const issuedCookie = login.headers.get('set-cookie') || '';
-  assert.match(issuedCookie, /__Host-scc_refresh=refresh-1/);
+  assert.match(issuedCookie, /__Host-scc_refresh=refresh-2/);
   assert.match(issuedCookie, /httponly/i);
   assert.match(issuedCookie, /secure/i);
   assert.match(issuedCookie, /samesite=strict/i);
@@ -87,10 +89,10 @@ try {
   const rotated = await exchange({ action: 'refresh' }, { cookie: issuedCookie.split(';')[0] });
   assert.equal(rotated.status, 200, 'cookie-only refresh must succeed');
   const rotatedBody = await rotated.json();
-  assert.equal(rotatedBody.accessToken, 'test-access-2');
+  assert.equal(rotatedBody.accessToken, 'test-access-3');
   assert.equal('refreshToken' in rotatedBody, false);
   const rotatedCookie = rotated.headers.get('set-cookie') || '';
-  assert.match(rotatedCookie, /__Host-scc_refresh=refresh-2/);
+  assert.match(rotatedCookie, /__Host-scc_refresh=refresh-3/);
 
   const oldMigration = await exchange({ action: 'migrate', refreshToken: 'legacy-token' });
   assert.equal(oldMigration.status, 200, 'legacy refresh should migrate through server');
@@ -99,7 +101,7 @@ try {
 
   const logout = await exchange({ action: 'logout' }, { cookie: rotatedCookie.split(';')[0] });
   assert.equal(logout.status, 200);
-  assert.equal(lastLogout, 'refresh-2', 'logout must revoke the cookie-backed session');
+  assert.equal(lastLogout, 'refresh-3', 'logout must revoke the cookie-backed session');
   assert.match(logout.headers.get('set-cookie') || '', /max-age=0/i);
 
   process.stdout.write('AUTH_COOKIE_HTTP_E2E_PASS\n');
