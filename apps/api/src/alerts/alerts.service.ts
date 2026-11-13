@@ -145,46 +145,8 @@ export class SmartAlertsService {
     }
 
 
-    // 6. مستندات الموظفين المنتهية أو التي ستنتهي خلال 30 يومًا
-    const next30Days = new Date(now);
-    next30Days.setDate(next30Days.getDate() + 30);
-    const expiringDocuments = await prisma.employeeDocument.findMany({
-      where: { ...tw, expiresAt: { not: null, lte: next30Days } },
-      include: { employee: { select: { firstName: true, lastName: true } } },
-    });
-    for (const doc of expiringDocuments) {
-      if (!doc.expiresAt) continue;
-      const daysLeft = Math.ceil((doc.expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-      activeKeys.add(`EMPLOYEE_DOCUMENT_EXPIRY:${doc.id}`);
-      await this.saveAlert(tenantId, {
-        type: 'EMPLOYEE_DOCUMENT_EXPIRY',
-        severity: daysLeft < 0 ? 'CRITICAL' : daysLeft <= 7 ? 'WARNING' : 'INFO',
-        title: daysLeft < 0 ? 'مستند موظف منتهي' : 'مستند موظف يوشك على الانتهاء',
-        message: `${doc.employee.firstName} ${doc.employee.lastName} — ${doc.title} — ${daysLeft < 0 ? `منتهي منذ ${Math.abs(daysLeft)} يوم` : `متبقي ${daysLeft} يوم`}`,
-        entityId: doc.id,
-        entityType: 'EmployeeDocument',
-        actionUrl: `/dashboard/hr/documents?employeeId=${doc.employeeId}`,
-      });
-    }
-
-    // 7. العقود النشطة المنتهية أو التي ستنتهي خلال 30 يومًا
-    const expiringContracts = await prisma.employeeContract.findMany({
-      where: { ...tw, status: 'ACTIVE', endDate: { not: null, lte: next30Days } },
-      include: { employee: { select: { firstName: true, lastName: true } } },
-    });
-    for (const contract of expiringContracts) {
-      if (!contract.endDate) continue;
-      const daysLeft = Math.ceil((contract.endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-      await this.saveAlert(tenantId, {
-        type: 'EMPLOYEE_CONTRACT_EXPIRY',
-        severity: daysLeft < 0 ? 'CRITICAL' : daysLeft <= 7 ? 'WARNING' : 'INFO',
-        title: daysLeft < 0 ? 'عقد موظف منتهي' : 'عقد موظف يوشك على الانتهاء',
-        message: `${contract.employee.firstName} ${contract.employee.lastName} — ${contract.contractNumber} — ${daysLeft < 0 ? `منتهي منذ ${Math.abs(daysLeft)} يوم` : `متبقي ${daysLeft} يوم`}`,
-        entityId: contract.id,
-        entityType: 'EmployeeContract',
-        actionUrl: `/dashboard/hr/contracts?employeeId=${contract.employeeId}`,
-      });
-    }
+    // 6. تنبيهات الموارد البشرية: مصدر واحد مشترك مع المجدول اليومي
+    await this.generateHrExpiryAlerts(await this.resolveTenantId(tenantId));
 
     // Broadcast counts
     const resolvedTenantId = await this.resolveTenantId(tenantId);
@@ -223,6 +185,7 @@ export class SmartAlertsService {
     for (const doc of documents) {
       if (!doc.expiresAt) continue;
       const daysLeft = Math.ceil((doc.expiresAt.getTime() - now.getTime()) / 86400000);
+      activeKeys.add(`EMPLOYEE_DOCUMENT_EXPIRY:${doc.id}`);
       await this.saveAlert(tenantId, {
         type: 'EMPLOYEE_DOCUMENT_EXPIRY',
         severity: daysLeft < 0 ? 'CRITICAL' : daysLeft <= 7 ? 'WARNING' : 'INFO',
