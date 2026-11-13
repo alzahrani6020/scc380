@@ -13,6 +13,16 @@ test('employee self-service resolves identity only through explicit tenant user 
   assert.match(employees, /User is already linked to another employee/);
 });
 
+test('automatic self-service provisioning does not take over an admin account with the same email', () => {
+  const service = src('src/hr/employees.service.ts');
+  const provision = service.slice(service.indexOf('async provisionSelfService'), service.indexOf('async unlinkUser'));
+  assert.match(provision, /select:\s*\{ id: true, tenantId: true, status: true, role: true \}/);
+  assert.match(provision, /existing\.role === 'ADMIN' \|\| existing\.role === 'SUPER_ADMIN'/);
+  assert.match(provision, /Admin accounts cannot be automatically provisioned/);
+  assert.match(provision, /existing\.tenantId !== tenantId/);
+  assert.match(provision, /linkedUser\.role === 'ADMIN' \|\| linkedUser\.role === 'SUPER_ADMIN'/);
+});
+
 test('legacy approvals my-requests no longer guesses employee from email contains user id', () => {
   const approvals = src('src/approvals/approvals.service.ts');
   assert.match(approvals, /employee\.findFirst\(\{ where: \{ \.\.\.tw, userId \} \}\)/);
