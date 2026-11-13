@@ -36,6 +36,9 @@ export class HrDashboardService {
       approvedPayrolls,
       paidPayrolls,
       currentPayrollRun,
+      expiringDocuments,
+      expiringContracts,
+      expiringProbations,
     ] = await Promise.all([
       prisma.employee.count({ where: tenant }),
       prisma.employee.count({ where: { ...tenant, status: 'ACTIVE' } }),
@@ -58,6 +61,26 @@ export class HrDashboardService {
       prisma.payroll.count({ where: { ...tenant, month, year, status: 'APPROVED' } }),
       prisma.payroll.count({ where: { ...tenant, month, year, status: 'PAID' } }),
       prisma.payrollRun.findFirst({ where: { ...tenant, month, year }, select: { id: true, status: true, employeeCount: true, grossTotal: true, deductionTotal: true, netTotal: true } }),
+      prisma.employeeDocument.count({
+        where: {
+          ...tenant,
+          expiresAt: { not: null, lte: new Date(Date.now() + 30 * 86400000) },
+        },
+      }),
+      prisma.employeeContract.count({
+        where: {
+          ...tenant,
+          status: 'ACTIVE',
+          endDate: { not: null, lte: new Date(Date.now() + 30 * 86400000) },
+        },
+      }),
+      prisma.employeeContract.count({
+        where: {
+          ...tenant,
+          status: 'ACTIVE',
+          probationEndDate: { not: null, lte: new Date(Date.now() + 30 * 86400000) },
+        },
+      }),
     ]);
 
     return {
@@ -79,6 +102,12 @@ export class HrDashboardService {
       pendingLeaves,
       departments,
       shifts,
+      expiries: {
+        documents: expiringDocuments,
+        contracts: expiringContracts,
+        probation: expiringProbations,
+        horizonDays: 30,
+      },
       payroll: {
         month,
         year,
