@@ -125,6 +125,29 @@ test(
       assert.equal(reviewed.status, 'APPROVED');
       assert.equal(reviewed.reviewedById, adminReq.user.userId);
 
+      // Simultaneous decisions must not overwrite each other or apply across tenants.
+      const racingRequest = await requests.createSelf(selfReq, {
+        type: 'LETTER',
+        subject: 'Race-safe HR approval',
+      });
+      const outcomes = await Promise.allSettled([
+        requests.review(adminReq, racingRequest.id, 'APPROVED'),
+        requests.cancelSelf(selfReq, racingRequest.id),
+      ]);
+      assert.equal(outcomes.filter((outcome) => outcome.status === 'fulfilled').length, 1);
+      assert.equal(outcomes.filter((outcome) => outcome.status === 'rejected').length, 1);
+      const raceResult = await prisma.hrRequest.findUniqueOrThrow({ where: { id: racingRequest.id } });
+      assert.ok(['APPROVED', 'CANCELLED'].includes(raceResult.status));
+
+      await assert.rejects(
+        () => requests.review({ user: { tenantId: tenantB.id, userId: userB.id } }, racingRequest.id, 'APPROVED'),
+        /HR request not found/,
+      );
+      await assert.rejects(
+        () => requests.cancelSelf(selfReq, racingRequest.id),
+        /Only pending requests can be cancelled/,
+      );
+
       const orderedTasks = onboarding.tasks.sort((a, b) => a.order - b.order);
       let updatedCase: any = onboarding;
       for (const task of orderedTasks) {
