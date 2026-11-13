@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import api from '@/lib/api';
-import { Briefcase, Plus, Search, Pencil, UserMinus, X, Phone, Mail, Calendar, FileText, FolderOpen } from 'lucide-react';
+import { Briefcase, Plus, Search, Pencil, UserMinus, X, Phone, Mail, Calendar, FileText, FolderOpen, UserPlus } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
 import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
@@ -137,9 +137,9 @@ export default function HrPage() {
         const created = await api.post('/hr/employees', payload);
         employeeId = created.data.id;
       }
-      if (formData.userId) {
+      if (formData.userId && formData.userId !== editing?.userId) {
         await api.post(`/hr/employees/${employeeId}/link-user`, { userId: formData.userId });
-      } else if (editing?.userId) {
+      } else if (!formData.userId && editing?.userId) {
         await api.delete(`/hr/employees/${employeeId}/link-user`);
       }
       setIsModalOpen(false);
@@ -149,6 +149,29 @@ export default function HrPage() {
       alert('تعذر حفظ بيانات الموظف');
     } finally {
       setFormLoading(false);
+    }
+  };
+
+  const provisionSelfService = async (emp: any) => {
+    const retry = emp.user?.status === 'PENDING_VERIFICATION';
+    const message = retry
+      ? 'إعادة إرسال دعوة تفعيل الخدمة الذاتية لهذا الموظف؟'
+      : 'إنشاء حساب خدمة ذاتية للموظف وإرسال رابط تعيين كلمة المرور؟';
+    if (!confirm(message)) return;
+
+    try {
+      const response = await api.post(`/hr/employees/${emp.id}/provision-self-service`, {});
+      const result = response.data || {};
+      if (result.status === 'ACTIVE') {
+        alert('تم ربط الموظف بحساب مستخدم نشط.');
+      } else if (result.invitationSent) {
+        alert('تم إنشاء/ربط الحساب وإرسال دعوة التفعيل إلى بريد الموظف.');
+      } else {
+        alert('تم إنشاء/ربط الحساب بحالة معلقة، لكن تعذر إرسال البريد. يمكنك إعادة إرسال الدعوة بعد تهيئة البريد.');
+      }
+      fetchData();
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'تعذر إنشاء أو إرسال دعوة حساب الخدمة الذاتية');
     }
   };
 
@@ -210,6 +233,15 @@ export default function HrPage() {
                   <Link href={`/dashboard/hr/documents?employeeId=${emp.id}`} className="p-1.5 rounded-lg hover:bg-emerald-500/10 text-emerald-400" title="مستندات الموظف"><FolderOpen className="h-4 w-4" /></Link>
                   <button onClick={() => window.open('/dashboard/templates?search=عقد+عمل', '_blank')} className="p-1.5 rounded-lg hover:bg-blue-500/10 text-blue-400" title="تصدير كنموذج"><FileText className="h-4 w-4" /></button>
                   <button onClick={() => openEdit(emp)} className="p-1.5 rounded-lg hover:bg-primary-500/10 text-primary-400"><Pencil className="h-4 w-4" /></button>
+                  {emp.email && emp.status !== 'TERMINATED' && (!emp.userId || emp.user?.status === 'PENDING_VERIFICATION') && (
+                    <button
+                      onClick={() => provisionSelfService(emp)}
+                      className="p-1.5 rounded-lg hover:bg-cyan-500/10 text-cyan-400"
+                      title={emp.user?.status === 'PENDING_VERIFICATION' ? 'إعادة إرسال دعوة الخدمة الذاتية' : 'إنشاء حساب الخدمة الذاتية'}
+                    >
+                      <UserPlus className="h-4 w-4" />
+                    </button>
+                  )}
                   {emp.status !== 'TERMINATED' && <button onClick={() => handleTerminate(emp.id)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-400" title="إنهاء الخدمة"><UserMinus className="h-4 w-4" /></button>}
                 </div>
               </div>
@@ -221,6 +253,8 @@ export default function HrPage() {
               <div className="mt-3 flex items-center gap-2">
                 <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${emp.status === 'ACTIVE' ? 'bg-emerald-500/20 text-emerald-400' : emp.status === 'ON_LEAVE' ? 'bg-amber-500/20 text-amber-400' : 'bg-red-500/20 text-red-400'}`}>{empStatuses.find(s => s.value === emp.status)?.label || emp.status}</span>
                 <span className="text-slate-500 text-xs">{emp.employeeCode}</span>
+                {emp.user?.status === 'PENDING_VERIFICATION' && <span className="text-amber-400 text-xs">دعوة خدمة ذاتية معلقة</span>}
+                {emp.user?.status === 'ACTIVE' && <span className="text-cyan-400 text-xs">خدمة ذاتية مفعلة</span>}
               </div>
             </div>
           ))}
