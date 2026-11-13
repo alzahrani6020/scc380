@@ -81,8 +81,10 @@ export class LeaseContractsService {
 
     const contract = await prisma.leaseContract.create({ data });
 
-    // Auto-generate payment schedule
-    await this.generatePaymentSchedule(contract);
+    // Drafts are editable proposals: only active leases may generate receivables.
+    if (contract.status === 'ACTIVE') {
+      await this.generatePaymentSchedule(contract);
+    }
 
     // Update unit status if contract is ACTIVE
     if (contract.status === 'ACTIVE') {
@@ -93,6 +95,43 @@ export class LeaseContractsService {
     }
 
     return contract;
+  }
+
+  async activate(tenantId: string, id: string) {
+    return prisma.$transaction(async (tx) => {
+      const contract = await tx.leaseContract.findFirst({
+        where: withTenant({ id }, tenantId),
+      });
+      if (!contract) throw new NotFoundException('Contract not found');
+      if (contract.status !== 'DRAFT') throw new ConflictException('Only draft contracts may be activated');
+      const unit = await tx.unit.findFirst({
+        where: withTenant({ id: contract.unitId, propertyId: contract.propertyId }, tenantId),
+      });
+      if (!unit) throw new NotFoundException('Unit not found');
+      if (unit.status !== 'VACANT' || unit.currentLeaseId) {
+        throw new ConflictException('Unit must be vacant before activating a lease');
+      }
+      const scheduled = await tx.rentPayment.count({
+        where: withTenant({ contractId: id }, tenantId),
+      });
+      if (scheduled) throw new ConflictException('Lease already has receivables');
+      this.assertLeaseDates(contract.startDate.toISOString(), contract.endDate.toISOString());
+      if (!Number.isFinite(Number(contract.rentAmount)) || Number(contract.rentAmount) <= 0) {
+        throw new BadRequestException('Rent amount must be positive');
+      }
+      const claimed = await tx.leaseContract.updateMany({
+        where: { id, tenantId, status: 'DRAFT' },
+        data: { status: 'ACTIVE' },
+      });
+      if (claimed.count !== 1) throw new ConflictException('Lease was already activated');
+      const unitClaim = await tx.unit.updateMany({
+        where: { id: unit.id, tenantId, status: 'VACANT', currentLeaseId: null },
+        data: { status: 'OCCUPIED', currentLeaseId: id },
+      });
+      if (unitClaim.count !== 1) throw new ConflictException('Unit is no longer available');
+      await this.generatePaymentSchedule({ ...contract, status: 'ACTIVE' }, tx);
+      return tx.leaseContract.findFirstOrThrow({ where: { id, tenantId } });
+    }, { isolationLevel: 'Serializable' });
   }
 
   async update(tenantId: string, id: string, dto: any) {
@@ -190,33 +229,50 @@ export class LeaseContractsService {
     return contract;
   }
 
-  private async generatePaymentSchedule(contract: any) {
+  private async generatePaymentSchedule(contract: any, db: Pick<typeof prisma, 'rentPayment'> = prisma) {
     const start = new Date(contract.startDate);
     const end = new Date(contract.endDate);
+    this.assertLeaseDates(start.toISOString(), end.toISOString());
+
+    const frequency = contract.paymentFrequency || 'MONTHLY';
+    const monthSteps: Record<string, number> = {
+      MONTHLY: 1, QUARTERLY: 3, SEMI_ANNUAL: 6, ANNUAL: 12,
+    };
+    if (frequency !== 'WEEKLY' && !monthSteps[frequency]) {
+      throw new BadRequestException('Unsupported rent payment frequency');
+    }
+
+    // Anchor each date to the original start day: Jan 31 -> Feb 28 -> Mar 31.
+    // The end date is an exclusive boundary, avoiding an extra installment at expiry.
+    const dueAt = (step: number): Date => {
+      if (frequency === 'WEEKLY') {
+        return new Date(start.getTime() + step * 7 * 24 * 60 * 60 * 1000);
+      }
+      const target = new Date(Date.UTC(
+        start.getUTCFullYear(), start.getUTCMonth() + step * monthSteps[frequency], 1,
+        start.getUTCHours(), start.getUTCMinutes(), start.getUTCSeconds(), start.getUTCMilliseconds(),
+      ));
+      const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+      target.setUTCDate(Math.min(start.getUTCDate(), lastDay));
+      return target;
+    };
+
     const payments = [];
-    let current = new Date(start);
-
-    const intervalMonths =
-      contract.paymentFrequency === 'MONTHLY' ? 1 :
-      contract.paymentFrequency === 'QUARTERLY' ? 3 :
-      contract.paymentFrequency === 'SEMI_ANNUAL' ? 6 :
-      contract.paymentFrequency === 'ANNUAL' ? 12 : 1;
-
-    while (current <= end) {
+    for (let step = 0; ; step++) {
+      const dueDate = dueAt(step);
+      if (dueDate >= end) break;
       payments.push({
         tenantId: contract.tenantId,
         contractId: contract.id,
         propertyId: contract.propertyId,
         unitId: contract.unitId,
-        dueDate: new Date(current),
+        dueDate,
         amount: contract.rentAmount,
         status: 'PENDING',
       });
-      current.setMonth(current.getMonth() + intervalMonths);
+      if (payments.length > 1200) throw new BadRequestException('Lease schedule exceeds supported length');
     }
+    if (payments.length) await db.rentPayment.createMany({ data: payments });
 
-    if (payments.length > 0) {
-      await prisma.rentPayment.createMany({ data: payments });
-    }
   }
 }
