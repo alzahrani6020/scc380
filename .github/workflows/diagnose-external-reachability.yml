@@ -1,0 +1,32 @@
+name: Diagnose SCC380 External Reachability
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/diagnose-external-reachability.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  external-probes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check external DNS and HTTPS without credentials
+        shell: bash
+        run: |
+          set -uo pipefail
+          failed=0
+          for host in dr-talal-h-alzahrani.com www.dr-talal-h-alzahrani.com scc380-web-render3.onrender.com scc380-api.onrender.com; do
+            echo "::group::$host"
+            echo "DNS A / AAAA"
+            getent ahosts "$host" || { echo "DNS_FAILED $host"; failed=1; }
+            echo "TLS and HTTP (no auth or writes)"
+            code=$(curl -L -sS -o /dev/null --connect-timeout 8 --max-time 20 -w '%{http_code}' "https://$host/" ) || { echo "HTTP_CONNECT_FAILED $host"; failed=1; code="000"; }
+            echo "HTTP_STATUS $host $code"
+            if [ "$code" = "000" ] || [ "$code" -ge 500 ]; then failed=1; fi
+            echo "::endgroup::"
+          done
+          exit "$failed"
