@@ -155,6 +155,7 @@ export class SmartAlertsService {
     for (const doc of expiringDocuments) {
       if (!doc.expiresAt) continue;
       const daysLeft = Math.ceil((doc.expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      activeKeys.add(`EMPLOYEE_DOCUMENT_EXPIRY:${doc.id}`);
       await this.saveAlert(tenantId, {
         type: 'EMPLOYEE_DOCUMENT_EXPIRY',
         severity: daysLeft < 0 ? 'CRITICAL' : daysLeft <= 7 ? 'WARNING' : 'INFO',
@@ -199,6 +200,8 @@ export class SmartAlertsService {
     next30Days.setDate(next30Days.getDate() + 30);
     const tw = tenantWhere(tenantId);
 
+    const activeKeys = new Set<string>();
+
     const [documents, contracts] = await Promise.all([
       prisma.employeeDocument.findMany({
         where: { ...tw, expiresAt: { not: null, lte: next30Days } },
@@ -234,6 +237,7 @@ export class SmartAlertsService {
     for (const contract of contracts) {
       if (contract.endDate && contract.endDate <= next30Days) {
         const daysLeft = Math.ceil((contract.endDate.getTime() - now.getTime()) / 86400000);
+        activeKeys.add(`EMPLOYEE_CONTRACT_EXPIRY:${contract.id}`);
         await this.saveAlert(tenantId, {
           type: 'EMPLOYEE_CONTRACT_EXPIRY',
           severity: daysLeft < 0 ? 'CRITICAL' : daysLeft <= 7 ? 'WARNING' : 'INFO',
@@ -247,6 +251,7 @@ export class SmartAlertsService {
 
       if (contract.probationEndDate && contract.probationEndDate <= next30Days) {
         const daysLeft = Math.ceil((contract.probationEndDate.getTime() - now.getTime()) / 86400000);
+        activeKeys.add(`EMPLOYEE_PROBATION_EXPIRY:${contract.id}`);
         await this.saveAlert(tenantId, {
           type: 'EMPLOYEE_PROBATION_EXPIRY',
           severity: daysLeft < 0 ? 'CRITICAL' : daysLeft <= 7 ? 'WARNING' : 'INFO',
@@ -257,6 +262,28 @@ export class SmartAlertsService {
           actionUrl: `/dashboard/hr/contracts?employeeId=${contract.employeeId}`,
         });
       }
+    }
+
+    const existingHrAlerts = await prisma.alert.findMany({
+      where: {
+        ...tw,
+        dismissedAt: null,
+        type: {
+          in: ['EMPLOYEE_DOCUMENT_EXPIRY', 'EMPLOYEE_CONTRACT_EXPIRY', 'EMPLOYEE_PROBATION_EXPIRY'],
+        },
+      },
+      select: { id: true, type: true, entityId: true },
+    });
+
+    const staleAlertIds = existingHrAlerts
+      .filter((item) => !item.entityId || !activeKeys.has(`${item.type}:${item.entityId}`))
+      .map((item) => item.id);
+
+    if (staleAlertIds.length > 0) {
+      await prisma.alert.updateMany({
+        where: { ...tw, id: { in: staleAlertIds } },
+        data: { dismissedAt: new Date() },
+      });
     }
 
     return {
