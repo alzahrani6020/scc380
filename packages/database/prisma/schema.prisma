@@ -113,6 +113,7 @@ model Tenant {
   depreciationEntries DepreciationEntry[]
   costCenters   CostCenter[]
   financialPeriods FinancialPeriod[]
+  yearEndCloses YearEndClose[]
   zatcaCredential ZatcaCredential?
   dataSubjectConsents DataSubjectConsent[]
   gpsLogs         VehicleGpsLog[]
@@ -634,6 +635,7 @@ model ChartOfAccount {
   expenseDebits Expense[] @relation("ExpenseDebitAccount")
   expenseCredits Expense[] @relation("ExpenseCreditAccount")
   bankAccounts BankAccount[] @relation("BankAccountLedgerAccount")
+  yearEndRetainedEarnings YearEndClose[] @relation("YearEndRetainedEarnings")
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -685,6 +687,8 @@ model JournalEntryHeader {
   updatedAt     DateTime      @updatedAt
 
   lines         JournalEntryLine[]
+  yearEndClosingRecord YearEndClose? @relation("YearEndClosingJournal")
+  yearEndReversalRecord YearEndClose? @relation("YearEndReversalJournal")
 
   @@unique([tenantId, entryNumber])
   @@unique([tenantId, sourceType, sourceId])
@@ -726,6 +730,35 @@ model JournalEntryLine {
   @@index([projectId])
   @@index([branchId])
   @@map("journal_entry_lines")
+}
+
+model YearEndClose {
+  id                        String   @id @default(cuid())
+  tenantId                  String
+  tenant                    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  year                      Int
+  startDate                 DateTime
+  endDate                   DateTime
+  retainedEarningsAccountId String
+  retainedEarningsAccount   ChartOfAccount @relation("YearEndRetainedEarnings", fields: [retainedEarningsAccountId], references: [id], onDelete: Restrict)
+  netIncome                 Decimal  @db.Decimal(18,2)
+  status                    YearEndCloseStatus @default(CLOSED)
+  closingJournalId          String?  @unique
+  closingJournal            JournalEntryHeader? @relation("YearEndClosingJournal", fields: [closingJournalId], references: [id], onDelete: Restrict)
+  reversalJournalId         String?  @unique
+  reversalJournal           JournalEntryHeader? @relation("YearEndReversalJournal", fields: [reversalJournalId], references: [id], onDelete: Restrict)
+  closedBy                  String?
+  closedAt                  DateTime @default(now())
+  reversedBy                String?
+  reversedAt                DateTime?
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  @@unique([tenantId, year])
+  @@index([tenantId])
+  @@index([status])
+  @@index([retainedEarningsAccountId])
+  @@map("year_end_closes")
 }
 
 model BankAccount {
@@ -2563,6 +2596,11 @@ enum JournalType {
 enum JournalStatus {
   DRAFT
   POSTED
+  REVERSED
+}
+
+enum YearEndCloseStatus {
+  CLOSED
   REVERSED
 }
 
