@@ -16,7 +16,22 @@ CREATE TYPE "UnitStatus" AS ENUM ('VACANT', 'OCCUPIED', 'RESERVED', 'UNDER_MAINT
 CREATE TYPE "LeaseType" AS ENUM ('RESIDENTIAL', 'COMMERCIAL');
 CREATE TYPE "PaymentFrequency" AS ENUM ('MONTHLY', 'QUARTERLY', 'SEMI_ANNUAL', 'ANNUAL', 'WEEKLY');
 CREATE TYPE "LeaseStatus" AS ENUM ('DRAFT', 'ACTIVE', 'EXPIRED', 'TERMINATED', 'RENEWED');
-CREATE TYPE "PaymentStatus" AS ENUM ('PENDING', 'COMPLETED', 'FAILED', 'REFUNDED');
+-- PaymentStatus is shared with pre-existing finance functionality.
+-- Validate exact enum values instead of replacing an existing production type.
+DO $
+DECLARE actual TEXT[];
+BEGIN
+ SELECT array_agg(e.enumlabel::text ORDER BY e.enumsortorder)
+ INTO actual
+ FROM pg_type t JOIN pg_enum e ON e.enumtypid = t.oid
+ JOIN pg_namespace n ON n.oid=t.typnamespace
+ WHERE n.nspname='public' AND t.typname='PaymentStatus';
+ IF actual IS NULL THEN
+  CREATE TYPE "PaymentStatus" AS ENUM ('PENDING', 'COMPLETED', 'FAILED', 'REFUNDED');
+ ELSIF actual <> ARRAY['PENDING','COMPLETED','FAILED','REFUNDED']::text[] THEN
+  RAISE EXCEPTION 'Existing PaymentStatus enum differs from real-estate schema: %', actual;
+ END IF;
+END $;
 CREATE TYPE "ContractDocumentType" AS ENUM ('DEED', 'ID_COPY', 'COMMERCIAL_REGISTER', 'POWER_OF_ATTORNEY', 'INSPECTION_REPORT', 'CONTRACT_COPY', 'OTHER');
 CREATE TYPE "PropertyExpenseType" AS ENUM ('MAINTENANCE', 'INSURANCE', 'TAX', 'UTILITY', 'MANAGEMENT_FEE', 'RENOVATION', 'CLEANING', 'SECURITY', 'OTHER');
 
