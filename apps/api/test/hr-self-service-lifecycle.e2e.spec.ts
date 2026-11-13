@@ -7,6 +7,7 @@ import { HrRequestsService } from '../src/hr/hr-requests.service';
 import { HrLifecycleService } from '../src/hr/hr-lifecycle.service';
 import { ContractsService } from '../src/hr/contracts.service';
 import { PerformanceService } from '../src/hr/performance.service';
+import { AuthService } from '../src/auth/auth.service';
 
 test(
   'HR self-service lifecycle: explicit user link -> self profile -> request -> onboarding tasks',
@@ -22,7 +23,9 @@ test(
       data: { email: `self-b-${run}@example.test`, firstName: 'Self', lastName: 'B', tenantId: tenantB.id, role: 'USER', status: 'ACTIVE' },
     });
 
-    const employees = new EmployeesService();
+    const invitationAuth = { sendAccountSetupEmail: async () => ({ sent: true }) } as any;
+    const employees = new EmployeesService(invitationAuth);
+    const activationAuth = new AuthService({} as any, { get: () => undefined } as any);
     const selfService = new HrSelfService();
     const requests = new HrRequestsService();
     const lifecycle = new HrLifecycleService();
@@ -30,6 +33,7 @@ test(
     const performance = new PerformanceService();
     const adminReq: any = { user: { tenantId: tenantA.id, userId: `admin-${run}`, role: 'ADMIN' } };
     const selfReq: any = { user: { tenantId: tenantA.id, userId: userA.id, role: 'USER' } };
+    let invitedUserId: string | undefined;
 
     try {
       const employee = await employees.create(tenantA.id, {
@@ -47,6 +51,45 @@ test(
       });
       assert.equal(onboarding.status, 'OPEN');
       assert.ok(onboarding.tasks.length >= 5);
+
+      const invitedEmployee = await employees.create(tenantA.id, {
+        employeeCode: `INVITE-${run}`,
+        firstName: 'Invited',
+        lastName: 'Employee',
+        email: `invited-${run}@example.test`,
+        hireDate: '2026-11-01T00:00:00.000Z',
+      });
+      const provisioned = await employees.provisionSelfService(tenantA.id, invitedEmployee.id);
+      invitedUserId = provisioned.userId;
+      assert.equal(provisioned.status, 'PENDING_VERIFICATION');
+      assert.equal(provisioned.invitationSent, true);
+
+      const reprovisioned = await employees.provisionSelfService(tenantA.id, invitedEmployee.id);
+      assert.equal(reprovisioned.userId, invitedUserId);
+      assert.equal(
+        await prisma.user.count({ where: { email: `invited-${run}@example.test` } }),
+        1,
+      );
+
+      const inviteToken = `invite-token-${run}`;
+      await prisma.passwordResetToken.create({
+        data: {
+          email: `invited-${run}@example.test`,
+          token: inviteToken,
+          expiresAt: new Date(Date.now() + 60_000),
+          userId: invitedUserId,
+        },
+      });
+      await activationAuth.resetPassword(inviteToken, `Invite-${run}-StrongAa1!`);
+      const activatedInvite = await prisma.user.findUniqueOrThrow({ where: { id: invitedUserId } });
+      assert.equal(activatedInvite.status, 'ACTIVE');
+      assert.equal(activatedInvite.emailVerified, true);
+      assert.ok(activatedInvite.passwordHash);
+
+      const invitedSelf = await selfService.getMe({
+        user: { tenantId: tenantA.id, userId: invitedUserId, role: 'USER' },
+      });
+      assert.equal(invitedSelf.employee.id, invitedEmployee.id);
 
       await assert.rejects(
         () => employees.linkUser(tenantA.id, employee.id, userB.id),
@@ -128,7 +171,9 @@ test(
       assert.equal(selfRequests.length, 1);
       assert.equal(selfRequests[0].status, 'APPROVED');
     } finally {
-      await prisma.user.deleteMany({ where: { id: { in: [userA.id, userB.id] } } });
+      await prisma.user.deleteMany({
+        where: { id: { in: [userA.id, userB.id, ...(invitedUserId ? [invitedUserId] : [])] } },
+      });
       await prisma.tenant.deleteMany({ where: { id: { in: [tenantA.id, tenantB.id] } } });
     }
   },
