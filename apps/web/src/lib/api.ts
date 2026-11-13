@@ -102,6 +102,12 @@ api.interceptors.response.use(
         return api(original);
       }
 
+      // A revoked session can leave an HttpOnly cookie in the browser.
+      // Clear it on the same origin before redirecting so middleware will
+      // not treat the stale cookie as a resumable session.
+      try { await sessionAuth('clear'); } catch {
+        // Network failure cannot be mistaken for successful server revocation.
+      }
       clearAuth();
       window.location.href = '/auth/login';
     }
