@@ -137,3 +137,39 @@ test(
     }
   },
 );
+
+
+test(
+  'Rent schedule respects exclusive end date, month-end anchor, and weekly frequency',
+  { skip: process.env.REAL_ESTATE_DB_E2E !== '1' ? 'Isolated test database required' : false },
+  async () => {
+    const suffix = `${process.pid}-${Date.now()}`;
+    const tenant = await prisma.tenant.create({ data: { name: `Schedule test ${suffix}`, slug: `schedule-test-${suffix}` } });
+    const properties = new PropertiesService();
+    const units = new UnitsService();
+    const leases = new LeaseContractsService();
+    try {
+      const property = await properties.create(tenant.id, { name: 'Schedule property' });
+      for (const scenario of [
+        { frequency: 'MONTHLY', start: '2026-01-31T00:00:00.000Z', end: '2026-04-30T00:00:00.000Z', expected: ['2026-01-31', '2026-02-28', '2026-03-31'] },
+        { frequency: 'WEEKLY', start: '2026-01-01T00:00:00.000Z', end: '2026-01-22T00:00:00.000Z', expected: ['2026-01-01', '2026-01-08', '2026-01-15'] },
+        { frequency: 'QUARTERLY', start: '2026-01-01T00:00:00.000Z', end: '2027-01-01T00:00:00.000Z', expected: ['2026-01-01', '2026-04-01', '2026-07-01', '2026-10-01'] },
+      ]) {
+        const unit = await units.create(tenant.id, { propertyId: property.id, unitNumber: scenario.frequency });
+        const draft = await leases.create(tenant.id, {
+          propertyId: property.id, unitId: unit.id,
+          lessorName: 'Lessor', lessorIdNumber: '123',
+          lesseeName: 'Lessee', lesseeIdNumber: '456',
+          startDate: scenario.start, endDate: scenario.end,
+          rentAmount: '1000.00', paymentFrequency: scenario.frequency,
+        });
+        await leases.activate(tenant.id, draft.id);
+        const actual = (await leases.findOne(tenant.id, draft.id)).payments.map((p: any) => p.dueDate.toISOString().slice(0, 10));
+        assert.deepEqual(actual, scenario.expected, scenario.frequency);
+      }
+    } finally {
+      await prisma.tenant.deleteMany({ where: { id: tenant.id } });
+      await prisma.$disconnect();
+    }
+  },
+);
