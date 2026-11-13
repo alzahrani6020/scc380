@@ -170,6 +170,32 @@ test(
       const completed = await lifecycle.complete(adminReq, onboarding.id);
       assert.equal(completed.status, 'COMPLETED');
 
+      // Closed lifecycle cases must never be reopened by a late completion/cancellation.
+      await assert.rejects(
+        () => lifecycle.cancel(adminReq, onboarding.id),
+        /Lifecycle case is closed/,
+      );
+      await assert.rejects(
+        () => lifecycle.complete(adminReq, onboarding.id),
+        /Lifecycle case is closed/,
+      );
+      const cancelledCase = await lifecycle.create(adminReq, {
+        employeeId: employee.id,
+        type: 'OFFBOARDING',
+      });
+      const cancelled = await lifecycle.cancel(adminReq, cancelledCase.id);
+      assert.equal(cancelled.status, 'CANCELLED');
+      await assert.rejects(
+        () => lifecycle.complete(adminReq, cancelledCase.id),
+        /Lifecycle case is closed/,
+      );
+      await assert.rejects(
+        () => lifecycle.cancel(adminReq, cancelledCase.id),
+        /Lifecycle case is closed/,
+      );
+      const stillCancelled = await prisma.hrLifecycleCase.findUniqueOrThrow({ where: { id: cancelledCase.id } });
+      assert.equal(stillCancelled.status, 'CANCELLED');
+
       const review = await performance.create(adminReq, {
         employeeId: employee.id,
         periodStart: '2026-01-01T00:00:00.000Z',
