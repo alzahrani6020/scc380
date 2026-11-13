@@ -196,7 +196,6 @@ export default function PayrollRunsPage() {
     setAccountingLoading(true);
     try {
       await api.post(`/hr/payroll-runs/${selected.id}/post-payment-accounting`, {
-        netPayableAccountId: paymentAccountingData.netPayableAccountId,
         cashAccountId: paymentAccountingData.cashAccountId,
       });
       setPaymentAccountingOpen(false);
@@ -398,16 +397,9 @@ export default function PayrollRunsPage() {
       <Modal isOpen={paymentAccountingOpen} onClose={() => setPaymentAccountingOpen(false)} title="ترحيل سداد الرواتب إلى المحاسبة" size="lg">
         <form onSubmit={postPaymentAccounting} className="space-y-4">
           <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 text-sm text-slate-300">
-            هذا القيد يصفّي صافي الرواتب المستحقة مقابل البنك أو الصندوق. يشترط النظام وجود قيد الاستحقاق أولًا ويمنع تكرار قيد السداد.
+            هذا القيد يصفّي صافي الرواتب المستحقة مقابل البنك أو الصندوق. يستخرج النظام حساب الرواتب المستحقة تلقائيًا من قيد الاستحقاق نفسه، ويمنع تكرار قيد السداد.
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Select
-              label="حساب صافي الرواتب المستحقة"
-              required
-              options={accountOptions('LIABILITY')}
-              value={paymentAccountingData.netPayableAccountId || ''}
-              onChange={e => setPaymentAccountingData({ ...paymentAccountingData, netPayableAccountId: e.target.value })}
-            />
+          <div className="grid grid-cols-1 gap-4">
             <Select
               label="حساب البنك / الصندوق"
               required
