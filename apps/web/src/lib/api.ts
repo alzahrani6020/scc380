@@ -43,13 +43,14 @@ async function refreshAccessToken(): Promise<string | null> {
   if (typeof window === 'undefined') return null;
   if (refreshPromise) return refreshPromise;
 
-  const legacyToken = getRefreshToken();
   refreshPromise = (async () => {
     try {
       // Serialize refreshes across same-origin tabs where Web Locks is
       // available. API rotation remains atomic when Web Locks is unsupported.
       const rotate = async (): Promise<string | null> => {
-      let res: any;
+        // Read browser storage after obtaining the cross-tab lock.
+        const legacyToken = getRefreshToken();
+        let res: any;
       // One-time migration for existing signed-in users. Rotate the old
       // credential server-side, then remove it from browser storage.
       if (legacyToken) {
