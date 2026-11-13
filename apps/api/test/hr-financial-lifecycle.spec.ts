@@ -70,7 +70,7 @@ test('payroll net integrity rejects inconsistent or invalid amounts using intege
   const payroll = new PayrollsService() as any;
   const values = { basicSalary: 10000, housingAllowance: 1500.25, transportAllowance: 300.1,
     otherAllowances: 0, gosiDeduction: 950, taxDeduction: 0, otherDeductions: 50.35, loanDeductions: 0 };
-  const correctNet = 10700;
+  const correctNet = 10800;
   assert.equal(payroll.verifyAmounts(values, correctNet), correctNet);
   assert.throws(() => payroll.verifyAmounts(values, correctNet + 0.01), /does not match/);
   assert.throws(() => payroll.verifyAmounts({ ...values, basicSalary: -1 }, 0), /non-negative/);
