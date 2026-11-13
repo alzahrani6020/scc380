@@ -18,6 +18,8 @@ const contractTypes = [
 export default function ContractsPage() {
   const [items, setItems] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
+  const [employeesLoading, setEmployeesLoading] = useState(true);
+  const [employeesError, setEmployeesError] = useState('');
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<any>(null);
   const [formData, setFormData] = useState<any>({});
@@ -27,11 +29,15 @@ export default function ContractsPage() {
   useEffect(() => { fetchData(); }, []);
 
   const fetchData = () => {
+    setEmployeesLoading(true);
     const employeeId = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('employeeId') : null;
     const url = employeeId ? '/hr/contracts?employeeId=' + encodeURIComponent(employeeId) : '/hr/contracts';
     Promise.all([
       api.get(url).then(r => setItems(r.data.data || [])),
-      api.get('/hr/employees?limit=200').then(r => setEmployees(r.data.data || [])),
+      api.get('/hr/employees?limit=200')
+        .then(r => { setEmployees(r.data.data || []); setEmployeesError(''); })
+        .catch(() => { setEmployees([]); setEmployeesError('تعذر تحميل قائمة الموظفين. أعد تحميل الصفحة.'); })
+        .finally(() => setEmployeesLoading(false)),
     ]).catch(console.error).finally(() => setLoading(false));
   };
 
@@ -65,6 +71,10 @@ export default function ContractsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!editing && !employees.some(employee => employee.id === formData.employeeId)) {
+      setEmployeesError('اختر موظفًا من القائمة قبل إنشاء العقد.');
+      return;
+    }
     setFormLoading(true);
     const payload = {
       ...(editing ? {} : { employeeId: formData.employeeId }),
@@ -112,7 +122,10 @@ export default function ContractsPage() {
     fetchData();
   };
 
-  const employeeOptions = employees.map(e => ({ value: e.id, label: `${e.firstName} ${e.lastName} · ${e.employeeCode}` }));
+  const employeeOptions = [
+    { value: '', label: employeesLoading ? 'جاري تحميل الموظفين...' : 'اختر الموظف' },
+    ...employees.map(e => ({ value: e.id, label: `${e.firstName} ${e.lastName} · ${e.employeeCode}` })),
+  ];
 
   return (
     <div className="space-y-6 animate-fade-in-up">
@@ -148,7 +161,13 @@ export default function ContractsPage() {
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editing ? 'تعديل مسودة العقد' : 'عقد موظف جديد'} size="xl">
         <form onSubmit={handleSubmit} className="space-y-4">
-          {!editing && <Select label="الموظف" required options={employeeOptions} value={formData.employeeId || ''} onChange={e => setFormData({ ...formData, employeeId: e.target.value })} />}
+          {!editing && (
+            <div className="space-y-2">
+              <Select label="الموظف" required options={employeeOptions} disabled={employeesLoading || employees.length === 0} value={formData.employeeId || ''} onChange={e => { setFormData({ ...formData, employeeId: e.target.value }); setEmployeesError(''); }} />
+              {employeesError && <p role="alert" className="text-sm text-red-400">{employeesError}</p>}
+              {!employeesLoading && !employeesError && employees.length === 0 && <p role="status" className="text-sm text-amber-400">لا يوجد موظفون متاحون. أضف موظفًا أولًا من صفحة الموظفين.</p>}
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Input label="رقم العقد" required value={formData.contractNumber || ''} onChange={e => setFormData({ ...formData, contractNumber: e.target.value })} />
             <Select label="نوع العقد" options={contractTypes} value={formData.type || 'FIXED_TERM'} onChange={e => setFormData({ ...formData, type: e.target.value })} />
@@ -165,7 +184,7 @@ export default function ContractsPage() {
           </div>
           <div className="flex justify-end gap-3">
             <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}><X className="h-4 w-4" /> إلغاء</Button>
-            <Button type="submit" isLoading={formLoading}>{editing ? 'حفظ' : 'إنشاء مسودة'}</Button>
+            <Button type="submit" disabled={!editing && (employeesLoading || employees.length === 0 || !formData.employeeId)} isLoading={formLoading}>{editing ? 'حفظ' : 'إنشاء مسودة'}</Button>
           </div>
         </form>
       </Modal>
