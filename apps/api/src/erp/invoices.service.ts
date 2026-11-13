@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, ForbiddenException 
 import { Prisma, prisma, withTenant } from '@scc/database';
 import { AccountMappingService, AccountingRole } from '../accounting-core/account-mapping.service';
 import { AccountingDualWriteService } from '../accounting-core/accounting-dual-write.service';
+import { CurrencyAccountingService } from '../accounting-core/currency-accounting.service';
 
 @Injectable()
 export class InvoicesService {
@@ -10,6 +11,7 @@ export class InvoicesService {
   constructor(
     private readonly accountMapping: AccountMappingService,
     private readonly dualWrite: AccountingDualWriteService,
+    private readonly currencyAccounting: CurrencyAccountingService,
   ) {}
 
   private async guardZatcaLocked(tenantId: string, id: string) {
@@ -70,6 +72,8 @@ export class InvoicesService {
       discount: Prisma.Decimal | null;
       taxAmount: Prisma.Decimal;
       total: Prisma.Decimal;
+      currency: string | null;
+      exchangeRate: Prisma.Decimal | null;
     },
   ) {
     if (!this.isPostingEligible(invoice)) return;
@@ -88,16 +92,33 @@ export class InvoicesService {
     if (invoice.total.lte(0) || revenueAmount.lt(0)) {
       throw new BadRequestException('Invoice accounting amounts must be positive');
     }
+    if (!invoice.total.equals(revenueAmount.add(invoice.taxAmount))) {
+      throw new BadRequestException('Invoice total must equal net revenue plus tax');
+    }
+
+    const fx = await this.currencyAccounting.resolveRateInTransaction(
+      tx,
+      tenantId,
+      invoice.currency || 'SAR',
+      invoice.issueDate,
+      invoice.exchangeRate ?? undefined,
+    );
+    const baseTotal = this.currencyAccounting.convert(invoice.total, fx.exchangeRate);
+    const baseTax = this.currencyAccounting.convert(invoice.taxAmount, fx.exchangeRate);
+    const baseRevenue = baseTotal.sub(baseTax);
 
     const lines: Array<{
       accountId: string;
       debitAmount?: Prisma.Decimal;
       creditAmount?: Prisma.Decimal;
+      foreignDebitAmount?: Prisma.Decimal;
+      foreignCreditAmount?: Prisma.Decimal;
       description: string;
     }> = [
       {
         accountId: accounts.ACCOUNTS_RECEIVABLE.id,
-        debitAmount: invoice.total,
+        debitAmount: baseTotal,
+        foreignDebitAmount: invoice.total,
         description: `Accounts receivable - ${invoice.invoiceNumber}`,
       },
     ];
@@ -105,14 +126,16 @@ export class InvoicesService {
     if (revenueAmount.gt(0)) {
       lines.push({
         accountId: accounts.SALES_REVENUE.id,
-        creditAmount: revenueAmount,
+        creditAmount: baseRevenue,
+        foreignCreditAmount: revenueAmount,
         description: `Sales revenue - ${invoice.invoiceNumber}`,
       });
     }
     if (invoice.taxAmount.gt(0)) {
       lines.push({
         accountId: accounts.VAT_PAYABLE.id,
-        creditAmount: invoice.taxAmount,
+        creditAmount: baseTax,
+        foreignCreditAmount: invoice.taxAmount,
         description: `VAT payable - ${invoice.invoiceNumber}`,
       });
     }
@@ -125,6 +148,8 @@ export class InvoicesService {
       reference: invoice.invoiceNumber,
       sourceType: 'INVOICE',
       sourceId: invoice.id,
+      transactionCurrency: fx.transactionCurrency,
+      exchangeRate: fx.exchangeRate,
       lines,
     });
   }
@@ -163,10 +188,22 @@ export class InvoicesService {
     retentionUntil.setFullYear(retentionUntil.getFullYear() + this.RETENTION_YEARS);
 
     return prisma.$transaction(async tx => {
+      const fx = await this.currencyAccounting.resolveRateInTransaction(
+        tx,
+        tenantId,
+        lockedData.currency || 'SAR',
+        lockedData.issueDate,
+        lockedData.exchangeRate,
+      );
+      const baseTotal = this.currencyAccounting.convert(lockedData.total, fx.exchangeRate);
+
       const invoice = await tx.invoice.create({
         data: {
           ...lockedData,
           tenantId,
+          currency: fx.transactionCurrency,
+          exchangeRate: fx.exchangeRate,
+          baseTotal,
           retentionUntil,
           items: items?.length ? { create: items.map((item: any) => ({ ...item, tenantId })) } : undefined,
         },
@@ -203,6 +240,8 @@ export class InvoicesService {
         'discount',
         'total',
         'currency',
+        'exchangeRate',
+        'baseTotal',
       ];
       const changedLockedField = lockedFields.find(field =>
         Object.prototype.hasOwnProperty.call(data, field),
