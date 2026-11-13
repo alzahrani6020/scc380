@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { CalendarSync, Pause, Play, Plus, RotateCcw, Trash2 } from 'lucide-react';
+import { CalendarRange, Pause, Play, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import api from '@/lib/api';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -141,7 +141,7 @@ export default function AccountingSchedulesPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <CalendarSync className="h-6 w-6 text-primary-400" />
+            <CalendarRange className="h-6 w-6 text-primary-400" />
             القيود الدورية والاستحقاقات والمقدمات
           </h1>
           <p className="text-slate-400 text-sm mt-1">
