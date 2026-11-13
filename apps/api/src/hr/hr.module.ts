@@ -22,6 +22,7 @@ import { LeaveBalancesService } from './leave-balances.service';
 import { PayrollRunsController } from './payroll-runs.controller';
 import { PayrollRunsService } from './payroll-runs.service';
 import { AccountingCoreModule } from '../accounting-core/accounting-core.module';
+import { AuthModule } from '../auth/auth.module';
 import { EmployeeDocumentsController } from './employee-documents.controller';
 import { EmployeeDocumentsService } from './employee-documents.service';
 import { EmployeeLoansController } from './employee-loans.controller';
@@ -44,7 +45,7 @@ import { TrainingController } from './training.controller';
 import { TrainingService } from './training.service';
 
 @Module({
-  imports: [AccountingCoreModule],
+  imports: [AccountingCoreModule, AuthModule],
   controllers: [
     EmployeesController,
     DepartmentsController,
