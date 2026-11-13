@@ -3251,7 +3251,7 @@ model FixedAsset {
   tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   name          String
-  code          String?   @unique
+  code          String?
   categoryId    String
   category      FixedAssetCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   
@@ -3276,6 +3276,7 @@ model FixedAsset {
   entries       DepreciationEntry[]
   custodyAssignments AssetCustodyAssignment[]
 
+  @@unique([tenantId, code])
   @@index([tenantId])
   @@index([categoryId])
   @@map("fixed_assets")
@@ -3296,6 +3297,7 @@ model DepreciationEntry {
   
   postedAt      DateTime  @default(now())
 
+  @@unique([assetId, period])
   @@index([tenantId])
   @@index([assetId])
   @@index([period])
