@@ -52,8 +52,10 @@ export class AuthService {
       maxRetriesPerRequest: 1,
       connectTimeout: 2000,
       enableOfflineQueue: false,
+      lazyConnect: true,
     });
     try {
+      await redis.connect();
       const key = 'auth:2fa:challenge:' + this.hashToken(nonce);
       if (action === 'issue') return (await redis.set(key, 'pending', 'EX', 300, 'NX')) === 'OK';
       return (await redis.getdel(key)) === 'pending';
