@@ -43,6 +43,8 @@ import { PerformanceController } from './performance.controller';
 import { PerformanceService } from './performance.service';
 import { TrainingController } from './training.controller';
 import { TrainingService } from './training.service';
+import { HrGovernanceController } from './hr-governance.controller';
+import { HrGovernanceService } from './hr-governance.service';
 
 @Module({
   imports: [AccountingCoreModule, AuthModule],
@@ -70,6 +72,7 @@ import { TrainingService } from './training.service';
     RecruitmentController,
     PerformanceController,
     TrainingController,
+    HrGovernanceController,
   ],
   providers: [
     EmployeesService,
@@ -93,6 +96,7 @@ import { TrainingService } from './training.service';
     RecruitmentService,
     PerformanceService,
     TrainingService,
+    HrGovernanceService,
   ],
 })
 export class HrModule {}
