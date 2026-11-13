@@ -13,12 +13,13 @@ const methods=[{value:'BANK_TRANSFER',label:'تحويل بنكي'},{value:'CASH'
 export default function RentPaymentsPage(){
  const [items,setItems]=useState<any[]>([]);
  const [loading,setLoading]=useState(true);
+ const [loadError,setLoadError]=useState(false);
  const [recording,setRecording]=useState<any>(null);
  const [saving,setSaving]=useState(false);
  const [form,setForm]=useState<any>({paymentMethod:'BANK_TRANSFER',paidDate:new Date().toISOString().split('T')[0]});
  const [overdueOnly,setOverdueOnly]=useState(false);
 
- const load=()=>api.get('/real-estate/payments'+(overdueOnly?'?overdue=true':'')).then(r=>setItems(r.data.data||[])).finally(()=>setLoading(false));
+ const load=()=>api.get('/real-estate/payments'+(overdueOnly?'?overdue=true':'')).then(r=>{setItems(r.data.data||[]);setLoadError(false)}).catch(err=>{setLoadError(true);throw err}).finally(()=>setLoading(false));
  useEffect(()=>{setLoading(true);load().catch(console.error)},[overdueOnly]);
 
  const openRecord=(x:any)=>{setRecording(x);setForm({amount:String(x.amount),paymentMethod:'BANK_TRANSFER',paidDate:new Date().toISOString().split('T')[0]})};
@@ -31,7 +32,7 @@ export default function RentPaymentsPage(){
    <div><h1 className="text-2xl font-bold text-white flex items-center gap-2"><Banknote className="h-6 w-6 text-primary-400"/>دفعات الإيجار</h1><p className="text-slate-400 text-sm mt-1">{items.length} دفعة · المعلق {totalPending.toLocaleString()} ر.س</p></div>
    <Button variant={overdueOnly?'primary':'ghost'} onClick={()=>setOverdueOnly(v=>!v)}>{overdueOnly?'عرض الكل':'المتأخرات فقط'}</Button>
   </div>
-  {loading?<div className="h-64 flex items-center justify-center"><RefreshCw className="h-8 w-8 animate-spin text-primary-400"/></div>:<div className="space-y-3">{items.map(x=><div key={x.id} className="scc-card-hover flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+  {loading?<div className="h-64 flex items-center justify-center"><RefreshCw className="h-8 w-8 animate-spin text-primary-400"/></div>:loadError?<div role="alert" className="rounded-lg border border-red-800 p-4 text-red-200">تعذر تحميل الاستحقاقات. تحقق من الاتصال والصلاحيات ثم أعد تحميل الصفحة.</div>:<div className="space-y-3">{items.map(x=><div key={x.id} className="scc-card-hover flex flex-col md:flex-row md:items-center md:justify-between gap-3">
    <div><p className="text-white font-medium">{x.contract?.lesseeName||'—'}</p><p className="text-slate-500 text-xs">استحقاق {new Date(x.dueDate).toLocaleDateString('ar-SA')} · {x.status}</p></div>
    <div className="flex items-center gap-3"><p className="text-primary-400 font-bold">{Number(x.amount).toLocaleString()} ر.س</p>{x.status==='PENDING'&&<button onClick={()=>openRecord(x)} className="inline-flex items-center gap-1 text-emerald-400 text-sm"><CheckCircle2 className="h-4 w-4"/>تسجيل سداد</button>}</div>
   </div>)}</div>}
