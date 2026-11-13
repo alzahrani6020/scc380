@@ -46,6 +46,9 @@ async function refreshAccessToken(): Promise<string | null> {
   const legacyToken = getRefreshToken();
   refreshPromise = (async () => {
     try {
+      // Serialize refreshes across same-origin tabs where Web Locks is
+      // available. API rotation remains atomic when Web Locks is unsupported.
+      const rotate = async (): Promise<string | null> => {
       let res: any;
       // One-time migration for existing signed-in users. Rotate the old
       // credential server-side, then remove it from browser storage.
@@ -63,6 +66,11 @@ async function refreshAccessToken(): Promise<string | null> {
         user: { email: res.user.email },
       }, remember);
       return res.accessToken as string;
+      };
+      if (typeof navigator !== 'undefined' && navigator.locks?.request) {
+        return await navigator.locks.request('scc380-refresh-token', { mode: 'exclusive' }, rotate);
+      }
+      return await rotate();
     } catch {
       return null;
     } finally {
