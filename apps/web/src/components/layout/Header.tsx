@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { navigation } from './Sidebar';
 import Link from 'next/link';
 import { Bell, Search, Shield, Crown, Wifi, WifiOff, Store, ChevronDown } from 'lucide-react';
 import { cn } from '@scc/utils';
@@ -21,6 +22,8 @@ interface Branch {
 export default function Header({ user }: HeaderProps) {
   const { connected } = useSocket();
   const [unreadCount, setUnreadCount] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchFocused, setSearchFocused] = useState(false);
   const [alertCount, setAlertCount] = useState(0);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
@@ -75,18 +78,46 @@ export default function Header({ user }: HeaderProps) {
   };
 
   const totalNotifications = unreadCount + alertCount;
+  const searchText = searchQuery.trim().toLocaleLowerCase('ar');
+  const searchResults = searchText ? navigation
+    .filter((entry): entry is Extract<typeof entry, { href: string }> => 'href' in entry)
+    .filter(entry => entry.name.toLocaleLowerCase('ar').includes(searchText))
+    .slice(0, 8) : [];
 
   return (
     <header className="h-20 bg-slate-900/60 backdrop-blur-xl border-b border-slate-800 flex items-center justify-between px-8 sticky top-0 z-40">
       {/* Search */}
       <div className="flex items-center flex-1 max-w-xl gap-4">
         <div className="relative w-full">
-          <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-500" />
+          <Search className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
           <input
-            type="text"
-            placeholder="البحث في النظام..."
-            className="w-full bg-slate-800/60 border border-slate-700 rounded-xl pr-10 pl-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 transition-all"
+            type="search"
+            aria-label="البحث عن صفحة في النظام"
+            aria-expanded={searchFocused && !!searchText}
+            value={searchQuery}
+            onChange={e => { setSearchQuery(e.target.value); setSearchFocused(true); }}
+            onFocus={() => setSearchFocused(true)}
+            onBlur={() => window.setTimeout(() => setSearchFocused(false), 150)}
+            onKeyDown={e => {
+              if (e.key === 'Escape') { setSearchFocused(false); setSearchQuery(''); }
+              if (e.key === 'Enter' && searchResults.length) {
+                window.location.assign(searchResults[0].href);
+              }
+            }}
+            placeholder="ابحث عن صفحة في النظام..."
+            className="w-full rounded-xl border border-slate-700 bg-slate-800/60 py-2.5 pr-10 pl-4 text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-400"
           />
+          {searchFocused && searchText && (
+            <div role="listbox" aria-label="نتائج البحث عن الصفحات" className="absolute inset-x-0 top-full z-50 mt-2 max-h-64 overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 p-2 shadow-xl">
+              {searchResults.length ? searchResults.map(entry => (
+                <Link key={entry.href} href={entry.href}
+                  onClick={() => { setSearchQuery(''); setSearchFocused(false); }}
+                  className="block rounded-lg px-3 py-2 text-sm text-slate-200 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400">
+                  {entry.name}
+                </Link>
+              )) : <p className="px-3 py-2 text-sm text-slate-400">لا توجد صفحة مطابقة</p>}
+            </div>
+          )}
         </div>
       </div>
 
