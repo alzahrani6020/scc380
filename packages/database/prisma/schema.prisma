@@ -2941,7 +2941,7 @@ model Warehouse {
   tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   name          String
-  code          String?   @unique
+  code          String?
   location      String?
   isActive      Boolean   @default(true)
   isDefault     Boolean   @default(false)
@@ -3423,6 +3423,7 @@ model CostCenter {
 
   journalEntryLines JournalEntryLine[]
 
+  @@unique([tenantId, code])
   @@index([tenantId])
   @@map("cost_centers")
 }
