@@ -2,7 +2,7 @@
 
 export interface AuthData {
   accessToken: string;
-  refreshToken: string;
+  refreshToken?: string;
   role: string;
   tenantSlug?: string | null;
   tenantId?: string | null;
@@ -34,11 +34,8 @@ export function getRefreshToken(): string | null {
 }
 
 export function getRememberPreference(): boolean {
-  try {
-    return !!localStorage.getItem('refreshToken');
-  } catch {
-    return false;
-  }
+  try { return localStorage.getItem('scc_remember') === '1' || !!localStorage.getItem('refreshToken'); }
+  catch { return false; }
 }
 
 export function getTenantSlug(): string | null {
@@ -66,7 +63,9 @@ export function setAuth(data: AuthData, remember: boolean = true) {
   const clear = remember ? SS : LS;
 
   store.set('accessToken', data.accessToken);
-  store.set('refreshToken', data.refreshToken);
+  // Never write newly-issued refresh credentials to browser storage.
+  store.remove('refreshToken');
+  try { if (remember) localStorage.setItem('scc_remember', '1'); else localStorage.removeItem('scc_remember'); } catch {}
   store.set('role', data.role);
   if (data.tenantSlug) store.set('tenantSlug', data.tenantSlug);
   if (data.tenantId) store.set('tenantId', data.tenantId);
@@ -97,6 +96,7 @@ export function clearAuth() {
     LS.remove(k);
     SS.remove(k);
   });
+  LS.remove('scc_remember');
   try {
     if (typeof document !== 'undefined') document.cookie = 'accessToken=; path=/; max-age=0';
   } catch {}

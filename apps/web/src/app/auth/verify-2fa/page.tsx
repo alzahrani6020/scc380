@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
+import { sessionAuth } from '@/lib/session-auth';
 import { setAuth } from '@/lib/auth';
 import { Shield, ArrowRight, Loader2 } from 'lucide-react';
 import Link from 'next/link';
@@ -27,24 +28,24 @@ function Verify2FAForm() {
     if (!tempToken) return;
     setLoading(true); setError('');
     try {
-      const res = await api.post('/auth/verify-2fa-login', { tempToken, code });
+      const initial = await api.post('/auth/verify-2fa-login', { tempToken, code });
+      const data = await sessionAuth('migrate', { refreshToken: initial.data.refreshToken, remember: true });
       const authData = {
-        accessToken: res.data.accessToken,
-        refreshToken: res.data.refreshToken,
-        role: res.data.user.role,
-        tenantSlug: res.data.user?.tenantSlug || null,
-        tenantId: res.data.user?.tenantId || null,
+        accessToken: data.accessToken,
+        role: data.user.role,
+        tenantSlug: data.user?.tenantSlug || null,
+        tenantId: data.user?.tenantId || null,
         user: {
-          email: res.data.user.email,
-          firstName: res.data.user.firstName,
-          lastName: res.data.user.lastName,
+          email: data.user.email,
+          firstName: data.user.firstName,
+          lastName: data.user.lastName,
         },
       };
       setAuth(authData, true);
       sessionStorage.removeItem('scc_2fa_temp_token');
       router.push('/dashboard');
     } catch (err: any) {
-      setError(err.response?.data?.message || 'كود التحقق غير صحيح');
+      setError(err.response?.data?.message || err.message || 'كود التحقق غير صحيح');
     } finally { setLoading(false); }
   };
 

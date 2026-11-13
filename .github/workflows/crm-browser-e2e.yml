@@ -23,6 +23,7 @@ jobs:
     timeout-minutes: 15
     env:
       NEXT_PUBLIC_API_URL: /api
+      API_INTERNAL_URL: http://127.0.0.1:3001
     steps:
       - uses: actions/checkout@v4
 
@@ -70,6 +71,9 @@ jobs:
 
       - name: Run CRM browser E2E
         run: node apps/web/e2e/crm-ui.mjs
+
+      - name: Verify secure refresh cookie HTTP exchange
+        run: node apps/web/e2e/auth-cookie.mjs
 
       - name: Print web log on failure
         if: failure()

@@ -224,7 +224,8 @@ test('web API refreshes once and retries the failed request without recursive re
 
   assert.match(source, /let refreshPromise:/);
   assert.match(source, /if \(refreshPromise\) return refreshPromise/);
-  assert.match(source, /\/auth\/refresh/);
+  assert.match(source, /sessionAuth\('refresh'/);
+  assert.match(source, /sessionAuth\('migrate'/);
   assert.match(source, /!original\?\._retry/);
   assert.match(source, /original\._retry = true/);
   assert.match(source, /return api\(original\)/);
@@ -262,7 +263,7 @@ test('sidebar logout revokes the refresh session before clearing local auth', ()
   );
 
   assert.match(source, /getRefreshToken\(\)/);
-  assert.match(source, /api\.post\('\/auth\/logout', \{ refreshToken \}\)/);
+  assert.match(source, /sessionAuth\('logout'/);
   assert.match(source, /finally\s*\{[\s\S]*clearAuth\(\)/);
   assert.match(source, /onClick=\{handleLogout\}/);
 });

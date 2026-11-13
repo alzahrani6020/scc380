@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import api from '@/lib/api';
+import { sessionAuth } from '@/lib/session-auth';
+import { clearAuth, getRefreshToken } from '@/lib/auth';
 import { Shield, Key, LogOut, Globe, Clock, Plus, X, Copy, Check } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
 import Input from '@/components/ui/Input';
@@ -65,6 +67,8 @@ export default function SecurityPage() {
     setError('');
     try {
       await api.post('/security/sessions/revoke-all');
+      try { await sessionAuth('logout', { refreshToken: getRefreshToken() || undefined }); } catch {}
+      clearAuth();
       window.location.href = '/auth/login';
     } catch {
       setError('تعذر إنهاء الجلسات. لم يتم تأكيد أي تغيير.');

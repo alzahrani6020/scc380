@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import api from '@/lib/api';
 import { clearAuth, getRefreshToken } from '@/lib/auth';
+import { sessionAuth } from '@/lib/session-auth';
 import { cn } from '@scc/utils';
 import {
   LayoutDashboard, Users, FileText, Briefcase, Truck, Activity,
@@ -161,9 +162,8 @@ export default function Sidebar({
   }, [pathname]);
 
   const handleLogout = async () => {
-    const refreshToken = getRefreshToken();
     try {
-      if (refreshToken) await api.post('/auth/logout', { refreshToken });
+      await sessionAuth('logout', { refreshToken: getRefreshToken() || undefined });
     } catch {
       // A stale session must not prevent local logout.
     } finally {

@@ -211,3 +211,34 @@ test('2FA temp login challenge is Redis-backed and single-use', () => {
   assert.match(auth, /'EX', 300, 'NX'/);
   assert.match(auth, /challenge store unavailable/);
 });
+
+test('Next auth session proxy protects refresh cookie and enforces same-origin CSRF', () => {
+  const route = src('../web/src/app/api/auth/session/route.ts');
+  const auth = src('../web/src/lib/auth.ts');
+  const client = src('../web/src/lib/api.ts');
+  const sessionClient = src('../web/src/lib/session-auth.ts');
+  const login = src('../web/src/app/auth/login/page.tsx');
+  const twoFactor = src('../web/src/app/auth/verify-2fa/page.tsx');
+  const sidebar = src('../web/src/components/layout/Sidebar.tsx');
+  const middleware = src('../web/src/middleware.ts');
+  assert.match(route, /httpOnly: true/);
+  assert.match(route, /sameSite: 'strict'/);
+  assert.match(route, /'__Host-scc_refresh'/);
+  assert.match(route, /if \(!sameOrigin\(request\)/);
+  assert.match(route, /x-scc-auth-intent/);
+  assert.match(route, /delete responseBody\.refreshToken/);
+  assert.match(route, /cache: 'no-store'/);
+  assert.match(client, /sessionAuth\('migrate'/);
+  assert.match(client, /sessionAuth\('refresh'/);
+  assert.match(auth, /store\.remove\('refreshToken'\)/);
+  assert.doesNotMatch(auth, /store\.set\('refreshToken'/);
+  assert.match(sessionClient, /credentials: 'same-origin'/);
+  assert.match(login, /api\.post\('\/auth\/login'/);
+  assert.match(login, /sessionAuth\('migrate'/);
+  assert.match(login, /api\.post\('\/auth\/google'/);
+  assert.match(twoFactor, /api\.post\('\/auth\/verify-2fa-login'/);
+  assert.match(twoFactor, /sessionAuth\('migrate'/);
+  assert.match(sidebar, /sessionAuth\('logout'/);
+  assert.match(middleware, /const mayRefresh = !!request\.cookies\.get\(refreshCookieName\)/);
+  assert.match(middleware, /if \(!sessionValid && !mayRefresh\)/);
+});

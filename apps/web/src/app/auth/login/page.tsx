@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
+import { sessionAuth } from '@/lib/session-auth';
 import { clearAuth, getToken, setAuth } from '@/lib/auth';
 import { GoogleLogin, googleLogout } from '@react-oauth/google';
 import {
@@ -42,24 +43,25 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true); setError('');
     try {
-      const res = await api.post('/auth/login', { email, password });
+      const initial = await api.post('/auth/login', { email, password });
+      const loginResult = initial.data;
 
-      if (res.data.requires2FA) {
-        sessionStorage.setItem('scc_2fa_temp_token', res.data.tempToken);
+      if (loginResult.requires2FA) {
+        sessionStorage.setItem('scc_2fa_temp_token', loginResult.tempToken);
         window.location.href = '/auth/verify-2fa';
         return;
       }
 
+      const data = await sessionAuth('migrate', { refreshToken: loginResult.refreshToken, remember: rememberMe });
       const authData = {
-        accessToken: res.data.accessToken,
-        refreshToken: res.data.refreshToken,
-        role: res.data.user.role,
-        tenantSlug: res.data.user?.tenantSlug || null,
-        tenantId: res.data.user?.tenantId || null,
+        accessToken: data.accessToken,
+        role: data.user.role,
+        tenantSlug: data.user?.tenantSlug || null,
+        tenantId: data.user?.tenantId || null,
         user: {
-          email: res.data.user.email,
-          firstName: res.data.user.firstName,
-          lastName: res.data.user.lastName,
+          email: data.user.email,
+          firstName: data.user.firstName,
+          lastName: data.user.lastName,
         },
       };
       setAuth(authData, rememberMe);
@@ -73,26 +75,31 @@ export default function LoginPage() {
       // to save/fill the credentials on the next visit
       window.location.href = '/dashboard';
     } catch (err: any) {
-      setError(err.response?.data?.message || 'فشل تسجيل الدخول');
+      setError(err.response?.data?.message || err.message || 'فشل تسجيل الدخول');
     } finally { setLoading(false); }
   };
 
   const handleGoogleSuccess = async (credentialResponse: any) => {
     setLoading(true); setError('');
     try {
-      const res = await api.post('/auth/google', { credential: credentialResponse.credential });
+      const initial = await api.post('/auth/google', { credential: credentialResponse.credential });
+      if (initial.data.requires2FA) {
+        sessionStorage.setItem('scc_2fa_temp_token', initial.data.tempToken);
+        window.location.href = '/auth/verify-2fa';
+        return;
+      }
+      const data = await sessionAuth('migrate', { refreshToken: initial.data.refreshToken, remember: true });
       const authData = {
-        accessToken: res.data.accessToken,
-        refreshToken: res.data.refreshToken,
-        role: res.data.user.role,
-        tenantSlug: res.data.user?.tenantSlug || null,
-        tenantId: res.data.user?.tenantId || null,
-        user: { email: res.data.user.email, firstName: res.data.user.firstName, lastName: res.data.user.lastName },
+        accessToken: data.accessToken,
+        role: data.user.role,
+        tenantSlug: data.user?.tenantSlug || null,
+        tenantId: data.user?.tenantId || null,
+        user: { email: data.user.email, firstName: data.user.firstName, lastName: data.user.lastName },
       };
       setAuth(authData, true);
       router.push('/dashboard');
     } catch (err: any) {
-      setError(err.response?.data?.message || 'فشل تسجيل الدخول بـ Google');
+      setError(err.response?.data?.message || err.message || 'فشل تسجيل الدخول بـ Google');
       googleLogout();
     } finally { setLoading(false); }
   };
