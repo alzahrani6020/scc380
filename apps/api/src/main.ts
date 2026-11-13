@@ -1,11 +1,14 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
+import { json } from 'express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.getHttpAdapter().getInstance().set('trust proxy', 1);
+  // Only evidence uploads may exceed the default JSON limit (5MB binary = ~7MB base64).
+  app.use('/hr/governance/:id/evidence', json({ limit: '7mb' }));
   
   const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:3000')
     .split(',').map(o => o.trim()).filter(Boolean);
