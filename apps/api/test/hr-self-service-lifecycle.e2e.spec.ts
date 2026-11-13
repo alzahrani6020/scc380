@@ -6,6 +6,7 @@ import { HrSelfService } from '../src/hr/self-service.service';
 import { HrRequestsService } from '../src/hr/hr-requests.service';
 import { HrLifecycleService } from '../src/hr/hr-lifecycle.service';
 import { ContractsService } from '../src/hr/contracts.service';
+import { PerformanceService } from '../src/hr/performance.service';
 
 test(
   'HR self-service lifecycle: explicit user link -> self profile -> request -> onboarding tasks',
@@ -26,6 +27,7 @@ test(
     const requests = new HrRequestsService();
     const lifecycle = new HrLifecycleService();
     const contracts = new ContractsService();
+    const performance = new PerformanceService();
     const adminReq: any = { user: { tenantId: tenantA.id, userId: `admin-${run}`, role: 'ADMIN' } };
     const selfReq: any = { user: { tenantId: tenantA.id, userId: userA.id, role: 'USER' } };
 
@@ -101,6 +103,26 @@ test(
 
       const completed = await lifecycle.complete(adminReq, onboarding.id);
       assert.equal(completed.status, 'COMPLETED');
+
+      const review = await performance.create(adminReq, {
+        employeeId: employee.id,
+        periodStart: '2026-01-01T00:00:00.000Z',
+        periodEnd: '2026-12-31T00:00:00.000Z',
+      });
+      await performance.update(adminReq, review.id, { overallScore: 4.3 });
+      await performance.submit(adminReq, review.id);
+
+      const selfReviews = await selfService.getPerformanceReviews(selfReq);
+      assert.equal(selfReviews.length, 1);
+      assert.equal(selfReviews[0].status, 'SUBMITTED');
+      const acknowledged = await selfService.acknowledgePerformanceReview(selfReq, review.id, 'تم الاطلاع');
+      assert.equal(acknowledged.status, 'ACKNOWLEDGED');
+      assert.equal(acknowledged.employeeComments, 'تم الاطلاع');
+
+      await assert.rejects(
+        () => selfService.acknowledgePerformanceReview({ user: { tenantId: tenantB.id, userId: userB.id } }, review.id, 'forbidden'),
+        /User is not linked to an employee profile|Performance review not found/,
+      );
 
       const selfRequests = await requests.listSelf(selfReq);
       assert.equal(selfRequests.length, 1);
