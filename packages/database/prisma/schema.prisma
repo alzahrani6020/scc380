@@ -737,6 +737,7 @@ model YearEndClose {
   tenantId                  String
   tenant                    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   year                      Int
+  version                   Int      @default(1)
   startDate                 DateTime
   endDate                   DateTime
   retainedEarningsAccountId String
@@ -754,7 +755,8 @@ model YearEndClose {
   createdAt                 DateTime @default(now())
   updatedAt                 DateTime @updatedAt
 
-  @@unique([tenantId, year])
+  @@unique([tenantId, year, version])
+  @@index([tenantId, year])
   @@index([tenantId])
   @@index([status])
   @@index([retainedEarningsAccountId])
