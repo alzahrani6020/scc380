@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { prisma, withTenant } from '@scc/database';
 
 @Injectable()
@@ -49,7 +49,28 @@ export class LeaseContractsService {
     return contract;
   }
 
+  private async assertPropertyUnit(tenantId: string, propertyId: string, unitId: string) {
+    const [property, unit] = await Promise.all([
+      prisma.property.findFirst({ where: withTenant({ id: propertyId }, tenantId), select: { id: true } }),
+      prisma.unit.findFirst({ where: withTenant({ id: unitId, propertyId }, tenantId), select: { id: true } }),
+    ]);
+    if (!property || !unit) throw new NotFoundException('Property/unit relation not found in this tenant');
+  }
+
+  private assertLeaseDates(startRaw: string, endRaw: string) {
+    const start = new Date(startRaw);
+    const end = new Date(endRaw);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
+      throw new BadRequestException('Contract end date must be after start date');
+    }
+  }
+
   async create(tenantId: string, dto: any) {
+    await this.assertPropertyUnit(tenantId, dto.propertyId, dto.unitId);
+    this.assertLeaseDates(dto.startDate, dto.endDate);
+    if (!Number.isFinite(Number(dto.rentAmount)) || Number(dto.rentAmount) <= 0) {
+      throw new BadRequestException('Rent amount must be positive');
+    }
     const data = {
       ...dto,
       tenantId,
@@ -77,6 +98,25 @@ export class LeaseContractsService {
   async update(tenantId: string, id: string, dto: any) {
     const existing = await prisma.leaseContract.findFirst({ where: withTenant({ id }, tenantId) });
     if (!existing) throw new NotFoundException('Contract not found');
+    await this.assertPropertyUnit(tenantId, dto.propertyId || existing.propertyId, dto.unitId || existing.unitId);
+    if (dto.startDate || dto.endDate) {
+      this.assertLeaseDates(dto.startDate || existing.startDate.toISOString(), dto.endDate || existing.endDate.toISOString());
+    }
+    if (dto.rentAmount !== undefined && (!Number.isFinite(Number(dto.rentAmount)) || Number(dto.rentAmount) <= 0)) {
+      throw new BadRequestException('Rent amount must be positive');
+    }
+    const financialFields = ['propertyId', 'unitId', 'startDate', 'endDate', 'rentAmount', 'paymentFrequency'];
+    const changedTerms = financialFields.some((field) => {
+      if (dto[field] === undefined) return false;
+      const prior = (existing as any)[field];
+      if (field === 'startDate' || field === 'endDate') return new Date(dto[field]).getTime() !== prior.getTime();
+      if (field === 'rentAmount') return Number(dto[field]) !== Number(prior);
+      return dto[field] !== prior;
+    });
+    if (changedTerms) {
+      const scheduled = await prisma.rentPayment.count({ where: withTenant({ contractId: id }, tenantId) });
+      if (scheduled) throw new ConflictException('Contract financial terms cannot change after instalments are scheduled');
+    }
     const data = { ...dto };
     if (dto.startDate) data.startDate = new Date(dto.startDate);
     if (dto.endDate) data.endDate = new Date(dto.endDate);
