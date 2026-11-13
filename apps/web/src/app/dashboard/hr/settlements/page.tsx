@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import api from '@/lib/api';
-import { Calculator, CheckCircle2, ReceiptText, WalletCards, X } from 'lucide-react';
+import { Calculator, CheckCircle2, ReceiptText, WalletCards, X, Landmark } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Modal from '@/components/ui/Modal';
@@ -27,6 +27,11 @@ export default function EndServiceSettlementsPage() {
   const [preview, setPreview] = useState<any>(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [accounts, setAccounts] = useState<any[]>([]);
+  const [accountingItem, setAccountingItem] = useState<any>(null);
+  const [accountingData, setAccountingData] = useState<any>({});
+  const [paymentItem, setPaymentItem] = useState<any>(null);
+  const [paymentData, setPaymentData] = useState<any>({});
   const [form, setForm] = useState<any>({
     reason: 'RESIGNATION', initiatedBy: 'EMPLOYEE',
     lastWorkingDate: new Date().toISOString().split('T')[0],
@@ -83,6 +88,87 @@ export default function EndServiceSettlementsPage() {
     await load();
   };
 
+  const loadAccounts = async () => {
+    const r = await api.get('/finance/chart-of-accounts');
+    const active = (r.data?.data || []).filter((account: any) => account.isActive !== false);
+    setAccounts(active);
+    return active;
+  };
+
+  const openAccounting = async (item: any) => {
+    setBusy(true);
+    try {
+      await loadAccounts();
+      setAccountingData({});
+      setAccountingItem(item);
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'تعذر تحميل دليل الحسابات');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const postAccounting = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!accountingItem) return;
+
+    const dto: any = {
+      settlementPayableAccountId: accountingData.settlementPayableAccountId,
+    };
+    if (Number(accountingItem.eosAward || 0) > 0) dto.eosExpenseAccountId = accountingData.eosExpenseAccountId;
+    if (Number(accountingItem.leaveEncashment || 0) > 0) dto.leaveEncashmentAccountId = accountingData.leaveEncashmentAccountId;
+    if (Number(accountingItem.unpaidSalary || 0) > 0) dto.unpaidSalaryAccountId = accountingData.unpaidSalaryAccountId;
+    if (Number(accountingItem.otherEntitlements || 0) > 0) dto.otherEntitlementsAccountId = accountingData.otherEntitlementsAccountId;
+    if (Number(accountingItem.compensation || 0) > 0) dto.compensationAccountId = accountingData.compensationAccountId;
+    if (Number(accountingItem.loanDeduction || 0) > 0) dto.loanReceivableAccountId = accountingData.loanReceivableAccountId;
+    if (Number(accountingItem.otherDeductions || 0) > 0) dto.otherDeductionAccountId = accountingData.otherDeductionAccountId;
+
+    setBusy(true);
+    try {
+      await api.post(`/hr/end-service-settlements/${accountingItem.id}/post-accounting`, dto);
+      setAccountingItem(null);
+      alert('تم ترحيل استحقاق المخالصة إلى المحاسبة بنجاح');
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'تعذر ترحيل استحقاق المخالصة');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openPaymentAccounting = async (item: any) => {
+    setBusy(true);
+    try {
+      await loadAccounts();
+      setPaymentData({});
+      setPaymentItem(item);
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'تعذر تحميل دليل الحسابات');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const postPaymentAccounting = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!paymentItem) return;
+    setBusy(true);
+    try {
+      await api.post(`/hr/end-service-settlements/${paymentItem.id}/post-payment-accounting`, {
+        cashAccountId: paymentData.cashAccountId,
+      });
+      setPaymentItem(null);
+      alert('تم ترحيل سداد المخالصة إلى المحاسبة بنجاح');
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'تعذر ترحيل سداد المخالصة');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const accountOptions = (type: string) => accounts
+    .filter((account: any) => account.type === type)
+    .map((account: any) => ({ value: account.id, label: `${account.code} — ${account.name}` }));
+
   return (
     <div className="space-y-6 animate-fade-in-up">
       <div className="flex items-center justify-between gap-4">
@@ -106,6 +192,16 @@ export default function EndServiceSettlementsPage() {
                 <span className="px-2 py-1 rounded-full bg-slate-800 text-slate-300 text-xs">{item.status}</span>
                 {item.status === 'DRAFT' && <Button size="sm" onClick={() => transition(item.id,'approve')}><CheckCircle2 className="h-3 w-3" /> اعتماد</Button>}
                 {item.status === 'APPROVED' && <Button size="sm" onClick={() => transition(item.id,'pay')}><WalletCards className="h-3 w-3" /> دفع وإنهاء</Button>}
+                {['APPROVED','PAID'].includes(item.status) && (
+                  <Button size="sm" variant="ghost" onClick={() => openAccounting(item)} isLoading={busy}>
+                    <Landmark className="h-3 w-3" /> ترحيل الاستحقاق
+                  </Button>
+                )}
+                {item.status === 'PAID' && (
+                  <Button size="sm" variant="ghost" onClick={() => openPaymentAccounting(item)} isLoading={busy}>
+                    <WalletCards className="h-3 w-3" /> ترحيل السداد
+                  </Button>
+                )}
               </div>
             </div>
           ))}
@@ -149,6 +245,110 @@ export default function EndServiceSettlementsPage() {
           </div>
         </div>
       </Modal>
+
+      <Modal isOpen={!!accountingItem} onClose={() => setAccountingItem(null)} title="ترحيل استحقاق المخالصة إلى المحاسبة" size="xl">
+        <form onSubmit={postAccounting} className="space-y-4">
+          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 text-sm text-slate-300">
+            ينشئ النظام قيد استحقاق متوازن للمخالصة. يمنع النظام تكرار ترحيل نفس المخالصة.
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Select
+              label="حساب المخالصة المستحقة"
+              required
+              options={accountOptions('LIABILITY')}
+              value={accountingData.settlementPayableAccountId || ''}
+              onChange={e => setAccountingData({ ...accountingData, settlementPayableAccountId: e.target.value })}
+            />
+            {Number(accountingItem?.eosAward || 0) > 0 && (
+              <Select
+                label="حساب مصروف مكافأة نهاية الخدمة"
+                required
+                options={accountOptions('EXPENSE')}
+                value={accountingData.eosExpenseAccountId || ''}
+                onChange={e => setAccountingData({ ...accountingData, eosExpenseAccountId: e.target.value })}
+              />
+            )}
+            {Number(accountingItem?.leaveEncashment || 0) > 0 && (
+              <Select
+                label="حساب بدل رصيد الإجازة"
+                required
+                options={accountOptions('EXPENSE')}
+                value={accountingData.leaveEncashmentAccountId || ''}
+                onChange={e => setAccountingData({ ...accountingData, leaveEncashmentAccountId: e.target.value })}
+              />
+            )}
+            {Number(accountingItem?.unpaidSalary || 0) > 0 && (
+              <Select
+                label="حساب الراتب غير المدفوع"
+                required
+                options={accountOptions('EXPENSE')}
+                value={accountingData.unpaidSalaryAccountId || ''}
+                onChange={e => setAccountingData({ ...accountingData, unpaidSalaryAccountId: e.target.value })}
+              />
+            )}
+            {Number(accountingItem?.otherEntitlements || 0) > 0 && (
+              <Select
+                label="حساب الاستحقاقات الأخرى"
+                required
+                options={accountOptions('EXPENSE')}
+                value={accountingData.otherEntitlementsAccountId || ''}
+                onChange={e => setAccountingData({ ...accountingData, otherEntitlementsAccountId: e.target.value })}
+              />
+            )}
+            {Number(accountingItem?.compensation || 0) > 0 && (
+              <Select
+                label="حساب التعويضات"
+                required
+                options={accountOptions('EXPENSE')}
+                value={accountingData.compensationAccountId || ''}
+                onChange={e => setAccountingData({ ...accountingData, compensationAccountId: e.target.value })}
+              />
+            )}
+            {Number(accountingItem?.loanDeduction || 0) > 0 && (
+              <Select
+                label="حساب سلف وقروض الموظفين"
+                required
+                options={accountOptions('ASSET')}
+                value={accountingData.loanReceivableAccountId || ''}
+                onChange={e => setAccountingData({ ...accountingData, loanReceivableAccountId: e.target.value })}
+              />
+            )}
+            {Number(accountingItem?.otherDeductions || 0) > 0 && (
+              <Select
+                label="حساب الخصومات الأخرى المستحقة"
+                required
+                options={accountOptions('LIABILITY')}
+                value={accountingData.otherDeductionAccountId || ''}
+                onChange={e => setAccountingData({ ...accountingData, otherDeductionAccountId: e.target.value })}
+              />
+            )}
+          </div>
+          <div className="flex justify-end gap-3">
+            <Button type="button" variant="ghost" onClick={() => setAccountingItem(null)}><X className="h-4 w-4" /> إلغاء</Button>
+            <Button type="submit" isLoading={busy}><Landmark className="h-4 w-4" /> ترحيل الاستحقاق</Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal isOpen={!!paymentItem} onClose={() => setPaymentItem(null)} title="ترحيل سداد المخالصة إلى المحاسبة" size="lg">
+        <form onSubmit={postPaymentAccounting} className="space-y-4">
+          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 text-sm text-slate-300">
+            يستخرج النظام حساب المخالصة المستحقة تلقائيًا من قيد الاستحقاق نفسه، ثم يصفّيه مقابل حساب البنك أو الصندوق. يشترط أن تكون المخالصة مدفوعة وأن يكون قيد الاستحقاق موجودًا.
+          </div>
+          <Select
+            label="حساب البنك / الصندوق"
+            required
+            options={accountOptions('ASSET')}
+            value={paymentData.cashAccountId || ''}
+            onChange={e => setPaymentData({ ...paymentData, cashAccountId: e.target.value })}
+          />
+          <div className="flex justify-end gap-3">
+            <Button type="button" variant="ghost" onClick={() => setPaymentItem(null)}><X className="h-4 w-4" /> إلغاء</Button>
+            <Button type="submit" isLoading={busy}><WalletCards className="h-4 w-4" /> ترحيل السداد</Button>
+          </div>
+        </form>
+      </Modal>
+
     </div>
   );
 }
