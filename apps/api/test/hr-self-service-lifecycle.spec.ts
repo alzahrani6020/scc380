@@ -20,6 +20,7 @@ test('automatic self-service provisioning does not take over an admin account wi
   assert.match(provision, /existing\.role === 'ADMIN' \|\| existing\.role === 'SUPER_ADMIN'/);
   assert.match(provision, /Admin accounts cannot be automatically provisioned/);
   assert.match(provision, /existing\.tenantId !== tenantId/);
+  assert.match(provision, /linkedUser\.role === 'ADMIN' \|\| linkedUser\.role === 'SUPER_ADMIN'/);
 });
 
 test('legacy approvals my-requests no longer guesses employee from email contains user id', () => {
