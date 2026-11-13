@@ -41,18 +41,37 @@ export class RentPaymentsService {
   }
 
   async create(tenantId: string, dto: any) {
-    const data = { ...dto, tenantId };
+    const contract = await prisma.leaseContract.findFirst({
+      where: withTenant({ id: dto.contractId }, tenantId),
+      select: { propertyId: true, unitId: true },
+    });
+    if (!contract) throw new NotFoundException('Contract not found in this tenant');
+    if (contract.propertyId !== dto.propertyId || contract.unitId !== dto.unitId) {
+      throw new BadRequestException('Rent payment must match the contract property and unit');
+    }
+    if (dto.status && dto.status !== PaymentStatus.PENDING || dto.paidDate) {
+      throw new BadRequestException('New rent receivables must start pending; use recordPayment for settlement');
+    }
+    if (!Number.isFinite(Number(dto.amount)) || Number(dto.amount) <= 0) {
+      throw new BadRequestException('Rent receivable amount must be positive');
+    }
+    const data = { ...dto, tenantId, status: PaymentStatus.PENDING };
     if (dto.dueDate) data.dueDate = new Date(dto.dueDate);
-    if (dto.paidDate) data.paidDate = new Date(dto.paidDate);
     return prisma.rentPayment.create({ data });
   }
 
   async update(tenantId: string, id: string, dto: any) {
     const existing = await prisma.rentPayment.findFirst({ where: withTenant({ id }, tenantId) });
     if (!existing) throw new NotFoundException('Payment not found');
+    if (existing.status !== PaymentStatus.PENDING) {
+      throw new ConflictException('Settled rent receivables cannot be edited');
+    }
+    const immutable = ['contractId', 'propertyId', 'unitId', 'amount', 'status', 'paidDate', 'invoiceId', 'ejarPaymentRef'];
+    if (immutable.some((key) => dto[key] !== undefined)) {
+      throw new BadRequestException('Cannot edit rent receivable identity, amount or settlement state');
+    }
     const data = { ...dto };
     if (dto.dueDate) data.dueDate = new Date(dto.dueDate);
-    if (dto.paidDate) data.paidDate = new Date(dto.paidDate);
     return prisma.rentPayment.update({ where: { id }, data });
   }
 
