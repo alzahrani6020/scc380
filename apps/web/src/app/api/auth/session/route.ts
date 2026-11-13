@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 
 const COOKIE = process.env.NODE_ENV === 'production' ? '__Host-scc_refresh' : 'scc_refresh';
-const ALLOWED = ['refresh', 'logout', 'migrate'] as const;
+const ALLOWED = ['refresh', 'logout', 'migrate', 'clear'] as const;
 type Action = typeof ALLOWED[number];
 
 function jsonError(message: string, status: number) {
@@ -26,7 +26,18 @@ function sameOrigin(request: NextRequest) {
   } catch { return false; }
 }
 
-function apiUrl(action: Action) {
+function clearRefreshCookie(response: NextResponse) {
+  response.cookies.set(COOKIE, '', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    path: '/',
+    maxAge: 0,
+  });
+  return response;
+}
+
+function apiUrl(action: Exclude<Action, 'clear'>) {
   const raw = process.env.API_INTERNAL_URL || process.env.NEXT_PUBLIC_API_URL;
   if (!raw || !/^https?:\/\//.test(raw)) return null;
   const base = raw.replace(/\/+$/, '');
@@ -52,6 +63,14 @@ export async function POST(request: NextRequest) {
   const action = body.action;
   if (!ALLOWED.includes(action as Action)) return jsonError('Invalid auth operation', 400);
   const name = action as Action;
+  // Local cookie cleanup is intentionally separate from server-side revocation.
+  // It remains available even when the API is down or a session was revoked.
+  if (name === 'clear') {
+    return clearRefreshCookie(NextResponse.json(
+      { cleared: true, revoked: false },
+      { headers: { 'Cache-Control': 'no-store' } },
+    ));
+  }
   const upstreamAction = name === 'migrate' ? 'refresh' : name;
   const url = apiUrl(upstreamAction);
   if (!url) return jsonError('Auth API not configured', 503);
@@ -84,8 +103,14 @@ export async function POST(request: NextRequest) {
   catch { return jsonError('Invalid authentication response', 502); }
 
   if (!upstream.ok) {
-    // Do not forward upstream cookies, headers, or secrets.
-    return jsonError(typeof result.message === 'string' ? result.message : 'Authentication failed', upstream.status);
+    // A revoked/expired logout credential cannot be revoked again, but the
+    // browser still needs its stale cookie removed. Preserve the failure status
+    // so the caller does not mistake local cleanup for server-side revocation.
+    const failure = jsonError(
+      typeof result.message === 'string' ? result.message : 'Authentication failed',
+      upstream.status,
+    );
+    return name === 'logout' ? clearRefreshCookie(failure) : failure;
   }
 
   const responseBody = { ...result };
@@ -93,8 +118,7 @@ export async function POST(request: NextRequest) {
   delete responseBody.token;
   const response = NextResponse.json(responseBody, { headers: { 'Cache-Control': 'no-store' } });
   if (name === 'logout') {
-    response.cookies.set(COOKIE, '', { httpOnly: true, secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict', path: '/', maxAge: 0 });
+    return clearRefreshCookie(response);
   } else if (typeof result.refreshToken === 'string') {
     const remember = body.remember !== false;
     response.cookies.set(COOKIE, result.refreshToken, {
