@@ -94,7 +94,11 @@ export class HrSelfService {
   async getPerformanceReviews(req: any) {
     const employee = await this.resolveEmployee(req);
     return prisma.performanceReview.findMany({
-      where: { ...tenantWhere(req.user.tenantId), employeeId: employee.id },
+      where: {
+        ...tenantWhere(req.user.tenantId),
+        employeeId: employee.id,
+        status: { in: ['SUBMITTED', 'ACKNOWLEDGED'] },
+      },
       select: {
         id: true, periodStart: true, periodEnd: true, status: true, goalsScore: true,
         competenciesScore: true, overallScore: true, strengths: true, improvements: true,
