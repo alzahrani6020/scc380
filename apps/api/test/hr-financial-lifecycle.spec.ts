@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { calculateEndService } from '../src/hr/end-service-calculator';
+import { PayrollsService } from '../src/hr/payrolls.service';
 
 const src = (p: string) => readFileSync(join(process.cwd(), p), 'utf8');
 
@@ -63,4 +64,29 @@ test('loans/settlement migration is additive and has amount constraints', () => 
   assert.doesNotMatch(migration, /(^|\n)\s*DROP\s+/i);
   assert.doesNotMatch(migration, /(^|\n)\s*TRUNCATE\s+/i);
   assert.doesNotMatch(migration, /(^|\n)\s*DELETE\s+FROM\s+/i);
+});
+
+test('payroll net integrity rejects inconsistent or invalid amounts using integer cents', () => {
+  const payroll = new PayrollsService() as any;
+  const values = { basicSalary: 10000, housingAllowance: 1500.25, transportAllowance: 300.1,
+    otherAllowances: 0, gosiDeduction: 950, taxDeduction: 0, otherDeductions: 50.35, loanDeductions: 0 };
+  const correctNet = 10700;
+  assert.equal(payroll.verifyAmounts(values, correctNet), correctNet);
+  assert.throws(() => payroll.verifyAmounts(values, correctNet + 0.01), /does not match/);
+  assert.throws(() => payroll.verifyAmounts({ ...values, basicSalary: -1 }, 0), /non-negative/);
+  assert.throws(() => payroll.verifyAmounts({ ...values, basicSalary: Number.NaN }, 0), /non-negative/);
+  assert.throws(() => payroll.verifyAmounts({ ...values, housingAllowance: 1.001 }, 0), /two decimal places/);
+  assert.throws(() => payroll.verifyAmounts({ ...values, gosiDeduction: 20000 }, -100), /cannot be negative/);
+});
+
+test('individual payroll state locks, tenant checks and run ownership are enforced in service', () => {
+  const source = src('src/hr/payrolls.service.ts');
+  const page = src('../web/src/app/dashboard/hr/payroll/page.tsx');
+  assert.match(source, /Only standalone draft payrolls can be deleted/);
+  assert.match(source, /existing\.payrollRunId \|\| existing\.status !== 'DRAFT'/);
+  assert.match(source, /status: 'DRAFT', payrollRunId: null/);
+  assert.match(source, /where: \{ \.\.\.scope, status: 'APPROVED', payrollRunId: null \}/);
+  assert.match(source, /Payroll status changed concurrently/);
+  assert.match(source, /netSalary: computed/);
+  assert.match(page, /p\.status === 'DRAFT' && <button onClick=\{\(\) => handleDelete\(p\.id\)/);
 });
