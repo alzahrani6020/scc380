@@ -88,6 +88,12 @@ export class EmployeesController {
     return this.employeesService.update(req.user.tenantId, id, body);
   }
 
+  @Post(':id/provision-self-service')
+  @RequirePermissions('hr:employees:write', 'user:write')
+  provisionSelfService(@Request() req, @Param('id') id: string) {
+    return this.employeesService.provisionSelfService(req.user.tenantId, id);
+  }
+
   @Post(':id/link-user')
   @RequirePermissions('hr:employees:write')
   linkUser(@Request() req, @Param('id') id: string, @Body() body: LinkEmployeeUserDto) {
