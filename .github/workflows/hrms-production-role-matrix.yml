@@ -2,6 +2,12 @@ name: HRMS Production Image Role Matrix
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "render.yaml"
+      - "scripts/hrms-production-role-matrix-smoke.cjs"
+      - ".github/workflows/hrms-production-role-matrix.yml"
 
 permissions:
   contents: read
@@ -126,7 +132,7 @@ jobs:
         env:
           SMOKE_BASE_URL: http://127.0.0.1:3101
           SMOKE_PASSWORD: ${{ env.SMOKE_PASSWORD }}
-        run: node apps/api/scripts/production-role-matrix-smoke.cjs
+        run: node scripts/hrms-production-role-matrix-smoke.cjs
 
       - name: Diagnostics on failure
         if: failure()
