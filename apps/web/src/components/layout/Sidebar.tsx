@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import api from '@/lib/api';
-import { clearAuth } from '@/lib/auth';
+import { clearAuth, getRefreshToken } from '@/lib/auth';
 import { sessionAuth } from '@/lib/session-auth';
 import { cn } from '@scc/utils';
 import {
@@ -163,7 +163,7 @@ export default function Sidebar({
 
   const handleLogout = async () => {
     try {
-      await sessionAuth('logout');
+      await sessionAuth('logout', { refreshToken: getRefreshToken() || undefined });
     } catch {
       // A stale session must not prevent local logout.
     } finally {
