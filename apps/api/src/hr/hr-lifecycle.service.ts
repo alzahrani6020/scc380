@@ -120,14 +120,14 @@ export class HrLifecycleService {
     if (!lifecycle) throw new NotFoundException('HR lifecycle case not found');
     const incomplete = lifecycle.tasks.filter((task) => !['DONE','SKIPPED'].includes(task.status));
     if (incomplete.length) throw new ConflictException('All lifecycle tasks must be done or skipped');
+
     if (lifecycle.type === 'OFFBOARDING') {
-      const activeCustody = await prisma.assetCustodyAssignment.count({
-        where: { ...tenantWhere(tenantId), employeeId: lifecycle.employeeId, status: 'ACTIVE' },
-      });
-      if (activeCustody > 0) {
-        throw new ConflictException('Employee still has active asset custody assignments');
+      const readiness = await this.getOffboardingReadiness(tenantId, lifecycle.employeeId);
+      if (!readiness.ready) {
+        throw new ConflictException(readiness.reason);
       }
     }
+
     return prisma.hrLifecycleCase.update({
       where: { id },
       data: { status: 'COMPLETED', completedAt: lifecycle.completedAt || new Date() },
@@ -146,24 +146,59 @@ export class HrLifecycleService {
     const allClosed = tasks.length > 0 && tasks.every((task) => ['DONE','SKIPPED'].includes(task.status));
     const anyStarted = tasks.some((task) => task.status !== 'TODO');
     let canComplete = allClosed;
+
     if (allClosed) {
       const lifecycle = await prisma.hrLifecycleCase.findFirst({
         where: { ...tenantWhere(tenantId), id: caseId },
         select: { type: true, employeeId: true },
       });
       if (lifecycle?.type === 'OFFBOARDING') {
-        const activeCustody = await prisma.assetCustodyAssignment.count({
-          where: { ...tenantWhere(tenantId), employeeId: lifecycle.employeeId, status: 'ACTIVE' },
-        });
-        canComplete = activeCustody === 0;
+        const readiness = await this.getOffboardingReadiness(tenantId, lifecycle.employeeId);
+        canComplete = readiness.ready;
       }
     }
+
     await prisma.hrLifecycleCase.update({
       where: { id: caseId },
       data: canComplete
         ? { status: 'COMPLETED', completedAt: new Date() }
         : { status: anyStarted ? 'IN_PROGRESS' : 'OPEN', completedAt: null },
     });
+  }
+
+  private async getOffboardingReadiness(tenantId: string, employeeId: string) {
+    const [activeCustody, employee, activeContracts, paidSettlement] = await Promise.all([
+      prisma.assetCustodyAssignment.count({
+        where: { ...tenantWhere(tenantId), employeeId, status: 'ACTIVE' },
+      }),
+      prisma.employee.findFirst({
+        where: { ...tenantWhere(tenantId), id: employeeId },
+        select: { status: true, terminationDate: true },
+      }),
+      prisma.employeeContract.count({
+        where: { tenantId, employeeId, status: 'ACTIVE' },
+      }),
+      prisma.endServiceSettlement.findFirst({
+        where: { ...tenantWhere(tenantId), employeeId, status: 'PAID' },
+        orderBy: { paidAt: 'desc' },
+        select: { id: true, paidAt: true },
+      }),
+    ]);
+
+    if (activeCustody > 0) {
+      return { ready: false, reason: 'Employee still has active asset custody assignments' };
+    }
+    if (!paidSettlement) {
+      return { ready: false, reason: 'Paid end-service settlement is required before offboarding completion' };
+    }
+    if (!employee || employee.status !== 'TERMINATED' || !employee.terminationDate) {
+      return { ready: false, reason: 'Employee must be terminated before offboarding completion' };
+    }
+    if (activeContracts > 0) {
+      return { ready: false, reason: 'Active employment contracts must be terminated before offboarding completion' };
+    }
+
+    return { ready: true, reason: '' };
   }
 
   private async assertAssignedUser(tenantId: string, userId?: string) {

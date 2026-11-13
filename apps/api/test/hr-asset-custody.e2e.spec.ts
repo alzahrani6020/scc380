@@ -6,7 +6,7 @@ import { HrAssetCustodyService } from '../src/hr/asset-custody.service';
 import { HrLifecycleService } from '../src/hr/hr-lifecycle.service';
 
 test(
-  'HR custody lifecycle: assign -> offboarding blocked -> return -> offboarding completes',
+  'HR custody lifecycle: assign -> offboarding blocked -> return -> paid settlement -> offboarding completes',
   { skip: process.env.CRM_DB_E2E !== '1' ? 'CRM_DB_E2E=1 is required' : false },
   async () => {
     const run = `${process.pid}-${Date.now()}`;
@@ -77,6 +77,43 @@ test(
         conditionIn: 'GOOD',
       });
       assert.equal(returned.status, 'RETURNED');
+
+      await assert.rejects(
+        () => lifecycle.complete(reqA, offboarding.id),
+        /Paid end-service settlement is required/,
+      );
+
+      const lastWorkingDate = new Date('2026-11-13T00:00:00.000Z');
+      await prisma.employee.update({
+        where: { id: employee.id },
+        data: { status: 'TERMINATED', terminationDate: lastWorkingDate },
+      });
+      await prisma.endServiceSettlement.create({
+        data: {
+          tenantId: tenantA.id,
+          employeeId: employee.id,
+          reason: 'TEST',
+          initiatedBy: 'EMPLOYER',
+          lastWorkingDate,
+          dueDate: lastWorkingDate,
+          hireDateSnapshot: new Date('2026-11-01T00:00:00.000Z'),
+          serviceDays: 12,
+          lastWage: 8000,
+          baseAward: 0,
+          awardFactor: 1,
+          eosAward: 0,
+          leaveEncashment: 0,
+          unpaidSalary: 0,
+          otherEntitlements: 0,
+          compensation: 0,
+          outstandingLoanBalance: 0,
+          loanDeduction: 0,
+          otherDeductions: 0,
+          netSettlement: 0,
+          status: 'PAID',
+          paidAt: new Date(),
+        },
+      });
 
       const completed = await lifecycle.complete(reqA, offboarding.id);
       assert.equal(completed.status, 'COMPLETED');
