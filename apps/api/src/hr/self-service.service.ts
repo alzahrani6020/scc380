@@ -87,6 +87,39 @@ export class HrSelfService {
     return doc;
   }
 
+  async getPerformanceReviews(req: any) {
+    const employee = await this.resolveEmployee(req);
+    return prisma.performanceReview.findMany({
+      where: { ...tenantWhere(req.user.tenantId), employeeId: employee.id },
+      select: {
+        id: true, periodStart: true, periodEnd: true, status: true, goalsScore: true,
+        competenciesScore: true, overallScore: true, strengths: true, improvements: true,
+        goals: true, summary: true, employeeComments: true, submittedAt: true, acknowledgedAt: true,
+      },
+      orderBy: { periodEnd: 'desc' },
+      take: 20,
+    });
+  }
+
+  async acknowledgePerformanceReview(req: any, id: string, employeeComments?: string) {
+    const employee = await this.resolveEmployee(req);
+    const review = await prisma.performanceReview.findFirst({
+      where: { ...tenantWhere(req.user.tenantId), id, employeeId: employee.id },
+    });
+    if (!review) throw new NotFoundException('Performance review not found');
+    if (review.status !== 'SUBMITTED') {
+      throw new BadRequestException('Only submitted reviews can be acknowledged');
+    }
+    return prisma.performanceReview.update({
+      where: { id },
+      data: {
+        status: 'ACKNOWLEDGED',
+        acknowledgedAt: new Date(),
+        employeeComments: employeeComments || null,
+      },
+    });
+  }
+
   async resolveEmployee(req: any) {
     const tenantId = req.user?.tenantId;
     const userId = req.user?.userId || req.user?.id;
