@@ -53,6 +53,12 @@ export class LeaseContractsController {
     return this.service.renew(req.user.tenantId, id, body);
   }
 
+  @Post(':id/activate')
+  @RequirePermissions('real-estate:write')
+  activate(@Request() req, @Param('id') id: string) {
+    return this.service.activate(req.user.tenantId, id);
+  }
+
   @Post(':id/terminate')
   @RequirePermissions('real-estate:write')
   terminate(@Request() req, @Param('id') id: string) {
