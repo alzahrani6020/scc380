@@ -34,9 +34,9 @@ test(
       };
       await assert.rejects(() => leases.create(b.id, terms), /Property\/unit relation not found/);
       await assert.rejects(() => leases.create(a.id, { ...terms, endDate: terms.startDate }), /end date/);
-      const contract = await leases.create(a.id, terms);
+      const contract = await leases.create(a.id, { ...terms, status: 'ACTIVE' });
       assert.equal(contract.tenantId, a.id);
-      assert.equal(contract.status, 'DRAFT');
+      assert.equal(contract.status, 'ACTIVE');
       const readBack = await leases.findOne(a.id, contract.id);
       assert.equal(readBack.unitId, unit.id);
       assert.ok(readBack.payments.length > 0);
