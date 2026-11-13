@@ -20,7 +20,9 @@ function sameOrigin(request: NextRequest) {
   if (!origin || !host || (site && !['same-origin', 'none'].includes(site))) return false;
   try {
     const url = new URL(origin);
-    return url.host === host && url.protocol === (process.env.NODE_ENV === 'production' ? 'https:' : request.nextUrl.protocol);
+    const local = url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]';
+    return url.host === host && url.protocol === request.nextUrl.protocol
+      && (process.env.NODE_ENV !== 'production' || url.protocol === 'https:' || local);
   } catch { return false; }
 }
 
