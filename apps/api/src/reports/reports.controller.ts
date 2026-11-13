@@ -48,6 +48,30 @@ export class ReportsController {
     return this.service.getVatReport(req.user.tenantId, req.user.role, from, to);
   }
 
+  @Get('receivables-aging')
+  getReceivablesAging(
+    @Request() req: any,
+    @Query('asOfDate') asOfDate?: string,
+  ) {
+    return this.service.getReceivablesAging(
+      req.user.tenantId,
+      req.user.role,
+      asOfDate,
+    );
+  }
+
+  @Get('payables-aging')
+  getPayablesAging(
+    @Request() req: any,
+    @Query('asOfDate') asOfDate?: string,
+  ) {
+    return this.service.getPayablesAging(
+      req.user.tenantId,
+      req.user.role,
+      asOfDate,
+    );
+  }
+
   @Get('cash-flow')
   getCashFlow(@Request() req: any) {
     return this.service.getCashFlow(req.user.tenantId, req.user.role);

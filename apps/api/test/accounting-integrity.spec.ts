@@ -265,3 +265,21 @@ test('bank reconciliation schema is additive and startup-gated', () => {
   assert.match(service, /startsWith:\s*'LEG-'/);
 });
 
+test('AR/AP aging is historical, tenant-aware, and payment-cutoff based', () => {
+  const reports = src('src/reports/reports.service.ts');
+  const controller = src('src/reports/reports.controller.ts');
+
+  assert.match(reports, /async getReceivablesAging/);
+  assert.match(reports, /async getPayablesAging/);
+  assert.match(reports, /paidAt:\s*\{\s*lte:\s*asOf\s*\}/);
+  assert.match(reports, /paymentDate:\s*\{\s*lte:\s*asOf\s*\}/);
+  assert.match(reports, /issueDate:\s*\{\s*lte:\s*asOf\s*\}/);
+  assert.match(reports, /\.\.\.tenant,\s*invoiceId:/);
+  assert.match(reports, /\.\.\.tenant,\s*supplierInvoiceId:/);
+  assert.match(reports, /days91plus/);
+  assert.match(reports, /Math\.max\(0, Number\(invoice\.total\)/);
+
+  assert.match(controller, /@Get\('receivables-aging'\)/);
+  assert.match(controller, /@Get\('payables-aging'\)/);
+});
+

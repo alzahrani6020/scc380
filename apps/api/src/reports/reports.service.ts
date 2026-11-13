@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { prisma, tenantWhere } from '@scc/database';
 
 type UnifiedLedgerRow = {
@@ -317,6 +317,262 @@ export class ReportsService {
       netVatPayable: netVat > 0 ? netVat : 0,
       netVatReceivable: netVat < 0 ? Math.abs(netVat) : 0,
     };
+  }
+
+  private normalizeAgingDate(asOfDate?: string) {
+    const date = asOfDate ? new Date(asOfDate) : new Date();
+    if (Number.isNaN(date.getTime())) {
+      throw new BadRequestException('Invalid asOfDate');
+    }
+    date.setUTCHours(23, 59, 59, 999);
+    return date;
+  }
+
+  private overdueDays(dueDate: Date | null, asOf: Date) {
+    if (!dueDate) return 0;
+    const due = Date.UTC(
+      dueDate.getUTCFullYear(),
+      dueDate.getUTCMonth(),
+      dueDate.getUTCDate(),
+    );
+    const at = Date.UTC(
+      asOf.getUTCFullYear(),
+      asOf.getUTCMonth(),
+      asOf.getUTCDate(),
+    );
+    return Math.max(0, Math.floor((at - due) / 86400000));
+  }
+
+  private agingBucket(days: number, dueDate: Date | null, asOf: Date) {
+    if (!dueDate || dueDate.getTime() > asOf.getTime() || days === 0) return 'current';
+    if (days <= 30) return 'days1to30';
+    if (days <= 60) return 'days31to60';
+    if (days <= 90) return 'days61to90';
+    return 'days91plus';
+  }
+
+  private summarizeAging(rows: Array<any>) {
+    const buckets = {
+      current: 0,
+      days1to30: 0,
+      days31to60: 0,
+      days61to90: 0,
+      days91plus: 0,
+    };
+    const parties = new Map<string, any>();
+
+    for (const row of rows) {
+      buckets[row.bucket as keyof typeof buckets] += row.outstanding;
+      const key = row.partyId || 'UNKNOWN';
+      const party = parties.get(key) || {
+        partyId: row.partyId,
+        partyName: row.partyName,
+        invoiceCount: 0,
+        outstanding: 0,
+        buckets: {
+          current: 0,
+          days1to30: 0,
+          days31to60: 0,
+          days61to90: 0,
+          days91plus: 0,
+        },
+      };
+      party.invoiceCount += 1;
+      party.outstanding += row.outstanding;
+      party.buckets[row.bucket] += row.outstanding;
+      parties.set(key, party);
+    }
+
+    return {
+      totalOutstanding: rows.reduce((sum, row) => sum + row.outstanding, 0),
+      buckets,
+      parties: [...parties.values()].sort(
+        (a, b) => b.outstanding - a.outstanding || a.partyName.localeCompare(b.partyName),
+      ),
+      invoices: rows.sort(
+        (a, b) =>
+          b.overdueDays - a.overdueDays ||
+          String(a.dueDate || '').localeCompare(String(b.dueDate || '')),
+      ),
+    };
+  }
+
+  async getReceivablesAging(
+    tenantId: string | undefined,
+    userRole: string,
+    asOfDate?: string,
+  ) {
+    const asOf = this.normalizeAgingDate(asOfDate);
+    const tenant = this.tenantFilter(tenantId, userRole);
+
+    const invoices = await prisma.invoice.findMany({
+      where: {
+        ...tenant,
+        type: 'STANDARD',
+        status: { notIn: ['DRAFT', 'CANCELLED'] },
+        issueDate: { lte: asOf },
+      },
+      select: {
+        id: true,
+        tenantId: true,
+        invoiceNumber: true,
+        contactId: true,
+        issueDate: true,
+        dueDate: true,
+        total: true,
+        currency: true,
+      },
+      orderBy: [{ dueDate: 'asc' }, { invoiceNumber: 'asc' }],
+    });
+
+    if (invoices.length === 0) {
+      return {
+        asOfDate: asOf.toISOString(),
+        totalOutstanding: 0,
+        buckets: { current: 0, days1to30: 0, days31to60: 0, days61to90: 0, days91plus: 0 },
+        parties: [],
+        invoices: [],
+      };
+    }
+
+    const invoiceIds = invoices.map((invoice) => invoice.id);
+    const contactIds = [...new Set(invoices.map((invoice) => invoice.contactId))];
+    const [payments, contacts] = await Promise.all([
+      prisma.payment.groupBy({
+        by: ['invoiceId'],
+        where: {
+          ...tenant,
+          invoiceId: { in: invoiceIds },
+          status: 'COMPLETED',
+          paidAt: { lte: asOf },
+        },
+        _sum: { amount: true },
+      }),
+      prisma.contact.findMany({
+        where: {
+          ...tenant,
+          id: { in: contactIds },
+        },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          companyName: true,
+        },
+      }),
+    ]);
+
+    const paid = new Map(
+      payments
+        .filter((row) => row.invoiceId)
+        .map((row) => [row.invoiceId!, Number(row._sum.amount || 0)]),
+    );
+    const contactNames = new Map(
+      contacts.map((contact) => [
+        contact.id,
+        contact.companyName ||
+          [contact.firstName, contact.lastName].filter(Boolean).join(' ') ||
+          contact.id,
+      ]),
+    );
+
+    const rows = invoices.flatMap((invoice) => {
+      const outstanding = Math.max(0, Number(invoice.total) - (paid.get(invoice.id) || 0));
+      if (outstanding < 0.005) return [];
+      const overdueDays = this.overdueDays(invoice.dueDate, asOf);
+      return [{
+        id: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+        partyId: invoice.contactId,
+        partyName: contactNames.get(invoice.contactId) || invoice.contactId,
+        issueDate: invoice.issueDate.toISOString(),
+        dueDate: invoice.dueDate.toISOString(),
+        currency: invoice.currency || 'SAR',
+        originalAmount: Number(invoice.total),
+        paidAmount: paid.get(invoice.id) || 0,
+        outstanding,
+        overdueDays,
+        bucket: this.agingBucket(overdueDays, invoice.dueDate, asOf),
+      }];
+    });
+
+    return { asOfDate: asOf.toISOString(), ...this.summarizeAging(rows) };
+  }
+
+  async getPayablesAging(
+    tenantId: string | undefined,
+    userRole: string,
+    asOfDate?: string,
+  ) {
+    const asOf = this.normalizeAgingDate(asOfDate);
+    const tenant = this.tenantFilter(tenantId, userRole);
+
+    const invoices = await prisma.supplierInvoice.findMany({
+      where: {
+        ...tenant,
+        status: { not: 'CANCELLED' },
+        issueDate: { lte: asOf },
+      },
+      select: {
+        id: true,
+        tenantId: true,
+        invoiceNumber: true,
+        supplierId: true,
+        issueDate: true,
+        dueDate: true,
+        total: true,
+        supplier: { select: { id: true, name: true, nameAr: true } },
+      },
+      orderBy: [{ dueDate: 'asc' }, { invoiceNumber: 'asc' }],
+    });
+
+    if (invoices.length === 0) {
+      return {
+        asOfDate: asOf.toISOString(),
+        totalOutstanding: 0,
+        buckets: { current: 0, days1to30: 0, days31to60: 0, days61to90: 0, days91plus: 0 },
+        parties: [],
+        invoices: [],
+      };
+    }
+
+    const invoiceIds = invoices.map((invoice) => invoice.id);
+    const payments = await prisma.supplierPayment.groupBy({
+      by: ['supplierInvoiceId'],
+      where: {
+        ...tenant,
+        supplierInvoiceId: { in: invoiceIds },
+        paymentDate: { lte: asOf },
+      },
+      _sum: { amount: true },
+    });
+    const paid = new Map(
+      payments
+        .filter((row) => row.supplierInvoiceId)
+        .map((row) => [row.supplierInvoiceId!, Number(row._sum.amount || 0)]),
+    );
+
+    const rows = invoices.flatMap((invoice) => {
+      const outstanding = Math.max(0, Number(invoice.total) - (paid.get(invoice.id) || 0));
+      if (outstanding < 0.005) return [];
+      const overdueDays = this.overdueDays(invoice.dueDate, asOf);
+      return [{
+        id: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+        partyId: invoice.supplierId,
+        partyName: invoice.supplier.nameAr || invoice.supplier.name,
+        issueDate: invoice.issueDate.toISOString(),
+        dueDate: invoice.dueDate ? invoice.dueDate.toISOString() : null,
+        currency: 'SAR',
+        originalAmount: Number(invoice.total),
+        paidAmount: paid.get(invoice.id) || 0,
+        outstanding,
+        overdueDays,
+        bucket: this.agingBucket(overdueDays, invoice.dueDate, asOf),
+      }];
+    });
+
+    return { asOfDate: asOf.toISOString(), ...this.summarizeAging(rows) };
   }
 
   async getCashFlow(tenantId: string | undefined, userRole: string) {
