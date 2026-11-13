@@ -399,6 +399,60 @@ export class PayrollRunsService {
     });
   }
 
+  async postPaymentAccounting(req: any, id: string, dto: any) {
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) throw new BadRequestException('Tenant is required');
+
+    const run = await prisma.payrollRun.findFirst({
+      where: { ...tenantWhere(tenantId), id },
+    });
+    if (!run) throw new NotFoundException('Payroll run not found');
+    if (run.status !== 'PAID') {
+      throw new ConflictException('Payroll run must be paid before payment accounting posting');
+    }
+
+    const net = money(run.netTotal);
+    if (net <= 0) throw new BadRequestException('Payroll run net total must be positive');
+    if (!dto.netPayableAccountId || !dto.cashAccountId) {
+      throw new BadRequestException('Net salaries payable and bank/cash accounts are required');
+    }
+
+    const accrual = await prisma.journalEntryHeader.findFirst({
+      where: {
+        tenantId,
+        sourceType: 'PAYROLL_RUN',
+        sourceId: run.id,
+      },
+      select: { id: true },
+    });
+    if (!accrual) {
+      throw new ConflictException('Payroll accrual must be posted before payment accounting');
+    }
+
+    const period = `${run.year}${String(run.month).padStart(2, '0')}`;
+    return this.accountingPosting.post({
+      tenantId,
+      date: run.paidAt || new Date(),
+      entryNumber: `PAY-SETTLE-${period}-${run.id.slice(-8)}`,
+      description: `Payroll payment ${run.year}-${String(run.month).padStart(2, '0')}`,
+      reference: `PAYROLL-PAYMENT-${run.year}-${String(run.month).padStart(2, '0')}`,
+      sourceType: 'PAYROLL_PAYMENT',
+      sourceId: run.id,
+      lines: [
+        {
+          accountId: dto.netPayableAccountId,
+          debitAmount: net,
+          description: 'Clear net salaries payable',
+        },
+        {
+          accountId: dto.cashAccountId,
+          creditAmount: net,
+          description: 'Payroll payment from bank/cash',
+        },
+      ],
+    });
+  }
+
   async removeDraft(req: any, id: string) {
     const run = await prisma.payrollRun.findFirst({
       where: { ...tenantWhere(req.user?.tenantId), id },
