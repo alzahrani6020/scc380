@@ -14,6 +14,7 @@ export default function RentPaymentsPage(){
  const [items,setItems]=useState<any[]>([]);
  const [loading,setLoading]=useState(true);
  const [loadError,setLoadError]=useState(false);
+ const [formError,setFormError]=useState(false);
  const [recording,setRecording]=useState<any>(null);
  const [saving,setSaving]=useState(false);
  const [form,setForm]=useState<any>({paymentMethod:'BANK_TRANSFER',paidDate:new Date().toISOString().split('T')[0]});
@@ -22,8 +23,8 @@ export default function RentPaymentsPage(){
  const load=()=>api.get('/real-estate/payments'+(overdueOnly?'?overdue=true':'')).then(r=>{setItems(r.data.data||[]);setLoadError(false)}).catch(err=>{setLoadError(true);throw err}).finally(()=>setLoading(false));
  useEffect(()=>{setLoading(true);load().catch(console.error)},[overdueOnly]);
 
- const openRecord=(x:any)=>{setRecording(x);setForm({amount:String(x.amount),paymentMethod:'BANK_TRANSFER',paidDate:new Date().toISOString().split('T')[0]})};
- const submit=async(e:React.FormEvent)=>{e.preventDefault();if(!recording)return;setSaving(true);try{await api.post('/real-estate/payments/'+recording.id+'/record',{...form,amount:String(form.amount)});setRecording(null);await load()}finally{setSaving(false)}};
+ const openRecord=(x:any)=>{setFormError(false);setRecording(x);setForm({amount:String(x.amount),paymentMethod:'BANK_TRANSFER',paidDate:new Date().toISOString().split('T')[0]})};
+ const submit=async(e:React.FormEvent)=>{e.preventDefault();if(!recording)return;setSaving(true);setFormError(false);try{await api.post('/real-estate/payments/'+recording.id+'/record',{...form,amount:String(form.amount)});setRecording(null);await load()}catch(err){console.error(err);setFormError(true)}finally{setSaving(false)}};
 
  const totalPending=items.filter(x=>x.status==='PENDING').reduce((s,x)=>s+Number(x.amount||0),0);
 
@@ -36,7 +37,7 @@ export default function RentPaymentsPage(){
    <div><p className="text-white font-medium">{x.contract?.lesseeName||'—'}</p><p className="text-slate-500 text-xs">استحقاق {new Date(x.dueDate).toLocaleDateString('ar-SA')} · {x.status}</p></div>
    <div className="flex items-center gap-3"><p className="text-primary-400 font-bold">{Number(x.amount).toLocaleString()} ر.س</p>{x.status==='PENDING'&&<button onClick={()=>openRecord(x)} className="inline-flex items-center gap-1 text-emerald-400 text-sm"><CheckCircle2 className="h-4 w-4"/>تسجيل سداد</button>}</div>
   </div>)}</div>}
-  <Modal isOpen={!!recording} onClose={()=>setRecording(null)} title="تسجيل سداد"><form onSubmit={submit} className="space-y-4">
+  <Modal isOpen={!!recording} onClose={()=>setRecording(null)} title="تسجيل سداد"><form onSubmit={submit} className="space-y-4">{formError&&<div role="alert" className="rounded-lg border border-red-800 p-4 text-red-200">تعذر تأكيد تسجيل السداد. تحقق من المبلغ وحالة الاستحقاق، وراجع سجل الدفعات قبل إعادة المحاولة.</div>}
    <Input label="المبلغ المدفوع" type="number" required value={form.amount||''} onChange={e=>setForm({...form,amount:e.target.value})}/>
    <Input label="تاريخ السداد" type="date" required value={form.paidDate||''} onChange={e=>setForm({...form,paidDate:e.target.value})}/>
    <Select label="طريقة السداد" options={methods} value={form.paymentMethod||'BANK_TRANSFER'} onChange={e=>setForm({...form,paymentMethod:e.target.value})}/>
