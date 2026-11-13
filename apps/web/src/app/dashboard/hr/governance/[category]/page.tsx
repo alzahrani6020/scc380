@@ -23,6 +23,7 @@ export default function GovernanceWorkspace() {
   const space = SPACES[key];
   const [records,setRecords] = useState<any[]>([]);
   const [employees,setEmployees] = useState<any[]>([]);
+  const [contracts,setContracts] = useState<any[]>([]);
   const [selected,setSelected] = useState<any>(null);
   const [form,setForm] = useState({ employeeId:'',contractId:'',title:'',description:'',priority:'NORMAL' });
   const [note,setNote] = useState('');
@@ -45,6 +46,13 @@ export default function GovernanceWorkspace() {
     finally { setBusy(false); }
   };
   useEffect(()=>{setSelected(null);void load();},[key]);
+  useEffect(()=>{
+    setContracts([]);
+    if(!form.employeeId) return;
+    api.get('/hr/contracts?employeeId='+encodeURIComponent(form.employeeId))
+      .then(r=>setContracts(r.data?.data||[]))
+      .catch(()=>setContracts([]));
+  },[form.employeeId]);
 
   const submit = async (e:React.FormEvent) => {
     e.preventDefault();setSaving(true);setError('');
@@ -96,8 +104,11 @@ export default function GovernanceWorkspace() {
             {employees.map(x=><option key={x.id} value={x.id}>{x.employeeCode} — {x.firstName} {x.lastName}</option>)}
           </select>
         </label>
-        <label className="block text-sm text-slate-300">معرّف العقد (اختياري؛ يتحقق الخادم من تبعيته للموظف)
-          <input className={input} value={form.contractId} onChange={e=>setForm({...form,contractId:e.target.value})}/>
+        <label className="block text-sm text-slate-300">العقد المرتبط (اختياري)
+          <select className={input} value={form.contractId} onChange={e=>setForm({...form,contractId:e.target.value})}>
+            <option value="">دون عقد محدد</option>
+            {contracts.map(x=><option key={x.id} value={x.id}>{x.contractNumber} — {x.status}</option>)}
+          </select>
         </label>
         <label className="block text-sm text-slate-300">عنوان القضية
           <input required minLength={5} maxLength={180} className={input} value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/>
@@ -127,6 +138,7 @@ export default function GovernanceWorkspace() {
       <h2 className="text-lg font-bold text-white">{selected.title}</h2>
       <p className="text-slate-300 whitespace-pre-wrap">{selected.description}</p>
       <p className="text-xs text-slate-400">الحالة: {selected.status} · رقم الملف: {selected.id} · الموظف: {selected.employeeId}</p>
+      <div className="flex flex-wrap gap-3 text-sm text-primary-400"><Link href={'/dashboard/hr/employees/'+selected.employeeId}>ملف الموظف</Link><Link href="/dashboard/hr/contracts">العقود</Link><Link href="/dashboard/hr/assets">العهد</Link><Link href="/dashboard/hr/settlements">المخالصات</Link></div>
       <div className="space-y-2"><h3 className="text-white font-semibold">سجل الإجراءات</h3>
         {(selected.events||[]).map((event:any)=><div key={event.id} className="border-t border-slate-700 p-2 text-slate-300 text-sm">
           <div>{event.action} — {event.details}</div>
