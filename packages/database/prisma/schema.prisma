@@ -3005,7 +3005,7 @@ model StockTransfer {
   tenantId      String
   tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  transferNumber String   @unique
+  transferNumber String
   fromBranchId  String
   toBranchId    String
   
@@ -3022,6 +3022,7 @@ model StockTransfer {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
+  @@unique([tenantId, transferNumber])
   @@index([tenantId])
   @@index([status])
   @@map("stock_transfers")
