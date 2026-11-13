@@ -191,8 +191,9 @@ test(
       );
 
       const selfRequests = await requests.listSelf(selfReq);
-      assert.equal(selfRequests.length, 1);
-      assert.equal(selfRequests[0].status, 'APPROVED');
+      assert.equal(selfRequests.length, 2);
+      assert.equal(selfRequests.find((item) => item.id === request.id)?.status, 'APPROVED');
+      assert.equal(selfRequests.find((item) => item.id === racingRequest.id)?.status, raceResult.status);
     } finally {
       await prisma.user.deleteMany({
         where: { id: { in: [userA.id, userB.id, ...(invitedUserId ? [invitedUserId] : [])] } },
