@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, Req } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PermissionsGuard, RequirePermissions } from '../auth/guards/permissions.guard';
 import { UsersService } from './users.service';
 import { IsString, IsOptional } from 'class-validator';
 
@@ -15,23 +16,26 @@ class UpdateUserDto {
 
 @ApiTags('Users')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('users')
 export class UsersController {
   constructor(private readonly service: UsersService) {}
 
   @Get()
+  @RequirePermissions('user:read')
   findAll(@Req() req: any, @Query() query: any) { return this.service.findAll(req, query); }
 
   @Get('me')
   getMe(@Req() req: any) { return this.service.findOne(req, req.user?.userId); }
 
   @Get(':id')
+  @RequirePermissions('user:read')
   findOne(@Req() req: any, @Param('id') id: string) { return this.service.findOne(req, id); }
 
   @Patch(':id')
   update(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateUserDto) { return this.service.update(req, id, dto); }
 
   @Delete(':id')
+  @RequirePermissions('user:write')
   remove(@Req() req: any, @Param('id') id: string) { return this.service.remove(req, id); }
 }

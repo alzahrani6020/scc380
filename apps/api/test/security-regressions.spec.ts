@@ -106,3 +106,24 @@ test('CRM relationship selectors are async and not capped to first 100 records',
   assert.match(activitiesService, /contact:\s*\{\s*select:/);
   assert.match(activitiesService, /deal:\s*\{\s*select:/);
 });
+
+
+test('users and tenants enforce RBAC and block privilege escalation', () => {
+  const usersController = src('src/users/users.controller.ts');
+  const usersService = src('src/users/users.service.ts');
+  const tenantController = src('src/tenant/tenant.controller.ts');
+  const tenantService = src('src/tenant/tenant.service.ts');
+
+  assert.match(usersController, /UseGuards\(JwtAuthGuard, PermissionsGuard\)/);
+  assert.match(usersController, /RequirePermissions\('user:read'\)/);
+  assert.match(usersController, /RequirePermissions\('user:write'\)/);
+  assert.match(usersService, /Only super admin can change role or status/);
+  assert.doesNotMatch(usersService, /req\.user\?\.role !== 'SUPER_ADMIN' && req\.user\?\.role !== 'ADMIN'/);
+
+  assert.match(tenantController, /UseGuards\(JwtAuthGuard, PermissionsGuard\)/);
+  assert.match(tenantController, /RequirePermissions\('tenant:read'\)/);
+  assert.match(tenantController, /RequirePermissions\('tenant:write'\)/);
+  assert.match(tenantService, /user\.role !== 'SUPER_ADMIN' && user\.tenantId !== id/);
+  assert.match(tenantService, /Protected tenant fields require super admin/);
+  assert.match(tenantService, /Super admin only/);
+});

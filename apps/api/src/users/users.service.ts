@@ -54,14 +54,22 @@ export class UsersService {
 
   async update(req: any, id: string, dto: any) {
     const where: any = { id };
-    if (req.user?.role !== 'SUPER_ADMIN' && id !== req.user?.userId) {
-      throw new ForbiddenException('Not authorized');
-    }
     const existing = await prisma.user.findFirst({ where });
     if (!existing) throw new NotFoundException('User not found');
-    if (dto.role && req.user?.role !== 'SUPER_ADMIN' && req.user?.role !== 'ADMIN') {
-      delete dto.role;
+    const actorRole = req.user?.role;
+    const isSelf = id === req.user?.userId;
+
+    if (!isSelf && actorRole !== 'SUPER_ADMIN') {
+      throw new ForbiddenException('Not authorized');
     }
+
+    // Role and account-status changes are privileged security operations.
+    // Tenant ADMINs may edit their own profile, but can never elevate themselves
+    // (or alter another user's role/status) to bypass RBAC.
+    if ((dto.role !== undefined || dto.status !== undefined) && actorRole !== 'SUPER_ADMIN') {
+      throw new ForbiddenException('Only super admin can change role or status');
+    }
+
     const data: any = { ...dto };
     if (dto.preferences) data.preferences = JSON.parse(dto.preferences);
     return prisma.user.update({ where: { id }, data });
