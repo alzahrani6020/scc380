@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ReportsController } from './reports.controller';
 import { ReportsService } from './reports.service';
+import { AccountingCoreModule } from '../accounting-core/accounting-core.module';
 
 @Module({
+  imports: [AccountingCoreModule],
   controllers: [ReportsController],
   providers: [ReportsService],
   exports: [ReportsService],

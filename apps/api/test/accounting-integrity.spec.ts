@@ -34,11 +34,18 @@ test('financial statements consume posted journals and expose period filters', (
   assert.match(controller, /@Query\('asOfDate'\)/);
 });
 
-test('VAT input comes from supplier invoices instead of synthetic expense VAT', () => {
-  const service = src('src/reports/reports.service.ts');
-  assert.match(service, /prisma\.supplierInvoice\.aggregate/);
-  assert.doesNotMatch(service, /prisma\.expense\.aggregate/);
-  assert.doesNotMatch(service, /\*\s*0\.15/);
+test('VAT report is ledger-based in base currency and excludes settlement journals', () => {
+  const reports = src('src/reports/reports.service.ts');
+  const ledger = src('src/accounting-core/vat-ledger.service.ts');
+  assert.match(reports, /VatLedgerService/);
+  assert.match(reports, /POSTED_LEDGER_BASE_CURRENCY/);
+  assert.doesNotMatch(reports, /prisma\.expense\.aggregate/);
+  assert.doesNotMatch(reports, /\*\s*0\.15/);
+  assert.match(ledger, /VAT_PAYABLE/);
+  assert.match(ledger, /VAT_RECEIVABLE/);
+  assert.match(ledger, /VAT_SETTLEMENT/);
+  assert.match(ledger, /VAT_SETTLEMENT_REVERSAL/);
+  assert.match(ledger, /journalEntryLine\.groupBy/);
 });
 
 test('supplier invoices preserve explicit zero VAT and block overpayment', () => {
