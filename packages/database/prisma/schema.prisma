@@ -3614,6 +3614,7 @@ model AccountingSchedule {
   startDate        DateTime
   endDate          DateTime?
   nextRunDate      DateTime
+  anchorDay        Int
   autoReverse      Boolean                     @default(false)
   reverseAfterDays Int                         @default(1)
   entryPrefix      String
