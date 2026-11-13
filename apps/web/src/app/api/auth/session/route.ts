@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 
 const COOKIE = process.env.NODE_ENV === 'production' ? '__Host-scc_refresh' : 'scc_refresh';
-const ALLOWED = ['login', 'google', 'verify-2fa-login', 'refresh', 'logout', 'migrate'] as const;
+const ALLOWED = ['refresh', 'logout', 'migrate'] as const;
 type Action = typeof ALLOWED[number];
 
 function jsonError(message: string, status: number) {
@@ -26,7 +26,7 @@ function sameOrigin(request: NextRequest) {
 
 function apiUrl(action: Action) {
   const raw = process.env.API_INTERNAL_URL || process.env.NEXT_PUBLIC_API_URL;
-  if (!raw) return null;
+  if (!raw || !/^https?:\/\//.test(raw)) return null;
   const base = raw.replace(/\/+$/, '');
   return base.endsWith('/api') ? `${base}/auth/${action}` : `${base}/api/auth/${action}`;
 }
@@ -55,36 +55,20 @@ export async function POST(request: NextRequest) {
   if (!url) return jsonError('Auth API not configured', 503);
 
   const legacy = typeof body.refreshToken === 'string' ? body.refreshToken : undefined;
-  const refreshToken = request.cookies.get(COOKIE)?.value || legacy;
-  if (['refresh', 'logout', 'migrate'].includes(name) && !refreshToken) {
-    return jsonError('No refresh session', 401);
-  }
-  if (name === 'migrate' && !legacy) return jsonError('Legacy token required', 400);
-  const payload: Record<string, unknown> = {};
-  if (name === 'login') {
-    if (typeof body.email !== 'string' || typeof body.password !== 'string') return jsonError('Invalid login', 400);
-    payload.email = body.email;
-    payload.password = body.password;
-  } else if (name === 'google') {
-    if (typeof body.credential !== 'string') return jsonError('Missing Google credential', 400);
-    payload.credential = body.credential;
-  } else if (name === 'verify-2fa-login') {
-    if (typeof body.tempToken !== 'string' || typeof body.code !== 'string') return jsonError('Missing 2FA proof', 400);
-    payload.tempToken = body.tempToken;
-    payload.code = body.code;
-  } else {
-    payload.refreshToken = name === 'migrate' ? legacy : refreshToken;
-  }
+  // Refresh always reads the HttpOnly cookie; only the explicit one-time
+  // migration may supply an old browser-stored credential.
+  const cookieToken = request.cookies.get(COOKIE)?.value;
+  const refreshToken = name === 'migrate' ? legacy
+    : name === 'logout' ? (cookieToken || legacy) : cookieToken;
+  if (!refreshToken) return jsonError('No refresh session', 401);
+  const payload = { refreshToken };
+
 
   let upstream: Response;
   try {
     upstream = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(name === 'login' && typeof body.tenantSlug === 'string'
-          ? { 'x-tenant-slug': body.tenantSlug } : {}),
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       cache: 'no-store',
       signal: AbortSignal.timeout(10000),
