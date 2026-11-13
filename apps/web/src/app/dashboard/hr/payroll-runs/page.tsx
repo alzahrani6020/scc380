@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import api from '@/lib/api';
-import { Wallet, Plus, CheckCircle2, CreditCard, Pencil, Trash2, X } from 'lucide-react';
+import { Wallet, Plus, CheckCircle2, CreditCard, Pencil, Trash2, X, Landmark } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
 import Input from '@/components/ui/Input';
+import Select from '@/components/ui/Select';
 import Button from '@/components/ui/Button';
 
 export default function PayrollRunsPage() {
@@ -16,6 +17,10 @@ export default function PayrollRunsPage() {
   const [createData, setCreateData] = useState<any>({ year: now.getFullYear(), month: now.getMonth() + 1, notes: '' });
   const [editingItem, setEditingItem] = useState<any>(null);
   const [itemData, setItemData] = useState<any>({});
+  const [accountingOpen, setAccountingOpen] = useState(false);
+  const [accounts, setAccounts] = useState<any[]>([]);
+  const [accountingLoading, setAccountingLoading] = useState(false);
+  const [accountingData, setAccountingData] = useState<any>({});
 
   useEffect(() => { refresh(); }, []);
 
@@ -119,7 +124,65 @@ export default function PayrollRunsPage() {
     await refresh();
   };
 
+  const openAccounting = async () => {
+    if (!selected) return;
+    setAccountingLoading(true);
+    try {
+      const r = await api.get('/finance/chart-of-accounts');
+      const activeAccounts = (r.data?.data || []).filter((account: any) => account.isActive !== false);
+      setAccounts(activeAccounts);
+      setAccountingData({});
+      setAccountingOpen(true);
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'تعذر تحميل دليل الحسابات');
+    } finally {
+      setAccountingLoading(false);
+    }
+  };
+
+  const postAccounting = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selected) return;
+
+    const items = selected.items || [];
+    const gosi = items.reduce((sum: number, item: any) => sum + Number(item.gosiDeduction || 0), 0);
+    const tax = items.reduce((sum: number, item: any) => sum + Number(item.taxDeduction || 0), 0);
+    const other = items.reduce((sum: number, item: any) => sum + Number(item.otherDeductions || 0), 0);
+    const loans = items.reduce((sum: number, item: any) => sum + Number(item.loanDeductionsTotal || 0), 0);
+
+    const payload: any = {
+      expenseAccountId: accountingData.expenseAccountId,
+      netPayableAccountId: accountingData.netPayableAccountId,
+    };
+    if (gosi > 0) payload.gosiPayableAccountId = accountingData.gosiPayableAccountId;
+    if (tax > 0) payload.taxPayableAccountId = accountingData.taxPayableAccountId;
+    if (other > 0) payload.otherDeductionAccountId = accountingData.otherDeductionAccountId;
+    if (loans > 0) payload.loanReceivableAccountId = accountingData.loanReceivableAccountId;
+
+    setAccountingLoading(true);
+    try {
+      await api.post(`/hr/payroll-runs/${selected.id}/post-accounting`, payload);
+      setAccountingOpen(false);
+      alert('تم ترحيل قيد الرواتب إلى المحاسبة بنجاح');
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'تعذر ترحيل قيد الرواتب');
+    } finally {
+      setAccountingLoading(false);
+    }
+  };
+
   const money = (v: any) => Number(v || 0).toLocaleString('ar-SA');
+
+  const accountOptions = (type: string) => accounts
+    .filter((account: any) => account.type === type)
+    .map((account: any) => ({ value: account.id, label: `${account.code} — ${account.name}` }));
+
+  const accountingTotals = selected ? {
+    gosi: (selected.items || []).reduce((sum: number, item: any) => sum + Number(item.gosiDeduction || 0), 0),
+    tax: (selected.items || []).reduce((sum: number, item: any) => sum + Number(item.taxDeduction || 0), 0),
+    other: (selected.items || []).reduce((sum: number, item: any) => sum + Number(item.otherDeductions || 0), 0),
+    loans: (selected.items || []).reduce((sum: number, item: any) => sum + Number(item.loanDeductionsTotal || 0), 0),
+  } : { gosi: 0, tax: 0, other: 0, loans: 0 };
 
   return (
     <div className="space-y-6 animate-fade-in-up">
@@ -160,6 +223,11 @@ export default function PayrollRunsPage() {
                 <div className="flex gap-2">
                   {selected.status === 'DRAFT' && <Button onClick={approve}><CheckCircle2 className="h-4 w-4" /> اعتماد</Button>}
                   {selected.status === 'APPROVED' && <Button onClick={pay}><CreditCard className="h-4 w-4" /> تسجيل الدفع</Button>}
+                  {['APPROVED', 'PAID'].includes(selected.status) && (
+                    <Button onClick={openAccounting} isLoading={accountingLoading}>
+                      <Landmark className="h-4 w-4" /> ترحيل محاسبي
+                    </Button>
+                  )}
                 </div>
               </div>
 
@@ -218,6 +286,70 @@ export default function PayrollRunsPage() {
             <Input label="ملاحظات" value={itemData.notes || ''} onChange={e => setItemData({ ...itemData, notes: e.target.value })} />
           </div>
           <div className="flex justify-end gap-3"><Button type="button" variant="ghost" onClick={() => setEditingItem(null)}><X className="h-4 w-4" /> إلغاء</Button><Button type="submit">حفظ</Button></div>
+        </form>
+      </Modal>
+
+      <Modal isOpen={accountingOpen} onClose={() => setAccountingOpen(false)} title="ترحيل مسير الرواتب إلى المحاسبة" size="lg">
+        <form onSubmit={postAccounting} className="space-y-4">
+          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 text-sm text-slate-300">
+            سيتم إنشاء قيد محاسبي مرحّل ومتوازن لهذا المسير. يمنع النظام تكرار الترحيل لنفس المسير.
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Select
+              label="حساب مصروف الرواتب"
+              required
+              options={accountOptions('EXPENSE')}
+              value={accountingData.expenseAccountId || ''}
+              onChange={e => setAccountingData({ ...accountingData, expenseAccountId: e.target.value })}
+            />
+            <Select
+              label="حساب صافي الرواتب المستحقة"
+              required
+              options={accountOptions('LIABILITY')}
+              value={accountingData.netPayableAccountId || ''}
+              onChange={e => setAccountingData({ ...accountingData, netPayableAccountId: e.target.value })}
+            />
+            {accountingTotals.gosi > 0 && (
+              <Select
+                label="حساب التأمينات المستحقة"
+                required
+                options={accountOptions('LIABILITY')}
+                value={accountingData.gosiPayableAccountId || ''}
+                onChange={e => setAccountingData({ ...accountingData, gosiPayableAccountId: e.target.value })}
+              />
+            )}
+            {accountingTotals.tax > 0 && (
+              <Select
+                label="حساب الضريبة المستحقة"
+                required
+                options={accountOptions('LIABILITY')}
+                value={accountingData.taxPayableAccountId || ''}
+                onChange={e => setAccountingData({ ...accountingData, taxPayableAccountId: e.target.value })}
+              />
+            )}
+            {accountingTotals.other > 0 && (
+              <Select
+                label="حساب الخصومات الأخرى المستحقة"
+                required
+                options={accountOptions('LIABILITY')}
+                value={accountingData.otherDeductionAccountId || ''}
+                onChange={e => setAccountingData({ ...accountingData, otherDeductionAccountId: e.target.value })}
+              />
+            )}
+            {accountingTotals.loans > 0 && (
+              <Select
+                label="حساب سلف وقروض الموظفين"
+                required
+                options={accountOptions('ASSET')}
+                value={accountingData.loanReceivableAccountId || ''}
+                onChange={e => setAccountingData({ ...accountingData, loanReceivableAccountId: e.target.value })}
+              />
+            )}
+          </div>
+          <div className="flex justify-end gap-3">
+            <Button type="button" variant="ghost" onClick={() => setAccountingOpen(false)}><X className="h-4 w-4" /> إلغاء</Button>
+            <Button type="submit" isLoading={accountingLoading}><Landmark className="h-4 w-4" /> ترحيل القيد</Button>
+          </div>
         </form>
       </Modal>
     </div>
