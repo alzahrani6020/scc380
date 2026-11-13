@@ -685,14 +685,13 @@ export class AuthService {
       (storedCode) => storedCode === backupCodeHash || storedCode === code,
     );
     if (matchedBackupCode) {
-      await prisma.user.update({
-        where: { id: userId },
-        data: {
-          twoFactorBackupCodes: {
-            set: user.twoFactorBackupCodes.filter((storedCode) => storedCode !== matchedBackupCode),
-          },
-        },
-      });
+      // Atomic claim: concurrent requests cannot spend the same backup code twice.
+      const consumed = await prisma.$executeRaw`
+        UPDATE "users"
+        SET "twoFactorBackupCodes" = array_remove("twoFactorBackupCodes", ${matchedBackupCode})
+        WHERE "id" = ${userId} AND ${matchedBackupCode} = ANY("twoFactorBackupCodes")
+      `;
+      if (consumed !== 1) throw new UnauthorizedException('2FA backup code already used');
       return { verified: true, usedBackupCode: true };
     }
 
