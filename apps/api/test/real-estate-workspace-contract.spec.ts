@@ -36,14 +36,17 @@ test('unit form enum strings match Prisma schema and guard vacancy states', () =
   const schema = readFileSync(join(__dirname, '../../../packages/database/prisma/schema.prisma'), 'utf8');
   const units = readFileSync(join(__dirname, '../../web/src/app/dashboard/real-estate/units/page.tsx'), 'utf8');
   const enumValues = (name: string) => {
-    const match = schema.match(new RegExp(`enum ${name} \\\\{([^}]*)\\\\}`));
-    assert.ok(match, `${name} missing`);
-    return new Set(match[1].split('\\n').map(line => line.trim()).filter(Boolean));
+    const prefix = 'enum ' + name + ' {';
+    const start = schema.indexOf(prefix);
+    assert.ok(start >= 0, name + ' missing');
+    const end = schema.indexOf('}', start + prefix.length);
+    assert.ok(end > start, name + ' not terminated');
+    return new Set(schema.slice(start + prefix.length, end).split('\n').map(line => line.trim()).filter(Boolean));
   };
   const types = enumValues('UnitType');
   const statuses = enumValues('UnitStatus');
-  const typeLine = units.split('\\n').find(line => line.startsWith('const unitTypes=')) || '';
-  const statusLine = units.split('\\n').find(line => line.startsWith('const statuses=')) || '';
+  const typeLine = units.split('\n').find(line => line.startsWith('const unitTypes=')) || '';
+  const statusLine = units.split('\n').find(line => line.startsWith('const statuses=')) || '';
   for (const match of typeLine.matchAll(/value:'([^']+)'/g)) assert.ok(types.has(match[1]), `invalid UnitType ${match[1]}`);
   for (const match of statusLine.matchAll(/value:'([^']+)'/g)) assert.ok(statuses.has(match[1]), `invalid UnitStatus ${match[1]}`);
   assert.ok(typeLine.includes("value:'LAND_PLOT'"));
