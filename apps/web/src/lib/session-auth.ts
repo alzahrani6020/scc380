@@ -1,4 +1,4 @@
-export async function sessionAuth(action: 'login' | 'google' | 'verify-2fa-login' | 'refresh' | 'logout' | 'migrate', payload: Record<string, unknown> = {}) {
+export async function sessionAuth(action: 'refresh' | 'logout' | 'migrate', payload: Record<string, unknown> = {}) {
   const response = await fetch('/api/auth/session', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-scc-auth-intent': '1' },
