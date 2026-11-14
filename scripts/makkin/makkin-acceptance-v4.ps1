@@ -28,11 +28,11 @@ $state=[ordered]@{engine='Makkin Acceptance v4';status='BLOCKED';commit=$null;
 # A temporary PATH-first shim pins all nested pnpm invocations to Corepack's
 # repository-required pnpm version, without changing user/global installation.
 $originalPath=$env:PATH
-if([System.IO.Path]::DirectorySeparatorChar -eq '\\'){
+if([System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT){
   $shimDir=Join-Path $EvidenceRoot 'pnpm-shim'
   New-Item -ItemType Directory -Path $shimDir -Force | Out-Null
   $shimFile=Join-Path $shimDir 'pnpm.cmd'
-  [System.IO.File]::WriteAllText($shimFile, "@echo off\r\ncorepack pnpm %*\r\n", [System.Text.Encoding]::ASCII)
+  [System.IO.File]::WriteAllText($shimFile, "@echo off`r`ncorepack pnpm %*`r`n", [System.Text.Encoding]::ASCII)
   $env:PATH="$shimDir;$originalPath"
 }
 $oldEnv=@{}
