@@ -71,6 +71,21 @@ async function exchange(body, opts = {}) {
 
 try {
   await listen();
+  // Acceptance for the reported screenshot: browser /api/* must reach
+  // the Nest root /auth/* instead of returning Cannot POST /api/auth/refresh.
+  const proxiedLogin = await fetch(origin + '/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: 'user@example.test', password: 'test-only-pass' }),
+  });
+  assert.equal(proxiedLogin.status, 200, '/api/auth/login must proxy to Nest /auth/login');
+  const proxiedRefresh = await fetch(origin + '/api/auth/refresh', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refreshToken: 'invalid-test-token' }),
+  });
+  assert.equal(proxiedRefresh.status, 401, '/api/auth/refresh must reach Nest and reject an invalid token, not 404');
+
   const crossSite = await exchange({ action: 'migrate', refreshToken: 'legacy-token' }, {
     origin: 'https://attacker.example.test',
   });
