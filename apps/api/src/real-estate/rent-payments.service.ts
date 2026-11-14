@@ -133,7 +133,7 @@ export class RentPaymentsService {
     if (!dto.idempotencyKey || dto.idempotencyKey.length > 128 || !/^[A-Za-z0-9_-]+$/.test(dto.idempotencyKey)) {
       throw new BadRequestException('A stable idempotency key is required');
     }
-    if (!/^\\d+(\\.\\d{1,2})?$/.test(dto.amount)) {
+    if (!/^\d+(\.\d{1,2})?$/.test(dto.amount)) {
       throw new BadRequestException('Payment amount must have no more than two decimal places');
     }
     const amount = new Prisma.Decimal(dto.amount);
