@@ -7,13 +7,13 @@ const path = require('path');
 const apiOrigin = (
   process.env.API_INTERNAL_URL?.match(/^https?:\/\//)?.[0] && process.env.API_INTERNAL_URL
   || (process.env.NEXT_PUBLIC_API_URL?.match(/^https?:\/\//)?.[0] && process.env.NEXT_PUBLIC_API_URL)
-  || 'https://scc380-api.onrender.com'
+  || (process.env.NODE_ENV === 'production' ? 'https://scc380-api.onrender.com' : 'http://localhost:3001')
 ).replace(/\/+$/, '').replace(/\/api$/, '');
 
 const nextConfig = {
   async rewrites() {
     // afterFiles rewrites preserve the local /api/auth/session handler.
-    return [{ source: '/api/:path*', destination: `${apiOrigin}/:path*` }];
+    return { afterFiles: [{ source: '/api/:path*', destination: `${apiOrigin}/:path*` }] };
   },
   transpilePackages: ['@scc/ui', '@scc/utils'],
   // Next.js 14: monorepo tracing remains experimental.
@@ -26,7 +26,7 @@ const nextConfig = {
     unoptimized: true,
   },
   env: {
-    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || (process.env.NODE_ENV === 'production' ? '/api' : 'http://localhost:3001'),
+    NEXT_PUBLIC_API_URL: process.env.NODE_ENV === 'production' ? '/api' : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'),
   },
 };
 
