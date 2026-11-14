@@ -27,7 +27,7 @@ try {
   if($LASTEXITCODE -ne 0){throw 'PostgreSQL container creation failed'}
   $ready=$false
   for($i=0;$i -lt $TimeoutSeconds;$i++){
-    & docker exec $container pg_isready -U makkin_restore -d restore_test *> $null
+    & docker exec $container pg_isready -h 127.0.0.1 -U makkin_restore -d restore_test *> $null
     if($LASTEXITCODE -eq 0){$ready=$true;break}
     Start-Sleep -Seconds 1
   }
