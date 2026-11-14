@@ -31,14 +31,14 @@ function Check([string]$name,[string]$status,[string]$message=''){
   $script:state.checks+=@{name=$name;status=$status;message=$message}
   Write-Host "[$status] $name $message"
 }
-function Run([string]$name,[string]$exe,[string[]]$args,[string]$cwd,[bool]$required=$true){
+function Run([string]$name,[string]$exe,[string[]]$argumentList,[string]$cwd,[bool]$required=$true){
   $log=Join-Path $EvidenceRoot "$name.log"
   Push-Location $cwd
   try {
     $pref=$ErrorActionPreference
     try {
       $ErrorActionPreference='Continue'
-      & $exe @args 2>&1 | Out-File -FilePath $log -Encoding utf8
+      & $exe @argumentList 2>&1 | Out-File -FilePath $log -Encoding utf8
       $exit=$LASTEXITCODE
     } finally {$ErrorActionPreference=$pref}
   } finally {Pop-Location}
