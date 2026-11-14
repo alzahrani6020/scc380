@@ -10,16 +10,18 @@ export default function RealEstatePage() {
   const [contracts,setContracts]=useState<any[]>([]);
   const [overdue,setOverdue]=useState<any>({count:0,totalOverdue:0});
   const [loading,setLoading]=useState(true);
+  const [error,setError]=useState(false);
 
   useEffect(()=>{
     Promise.all([
       api.get('/real-estate/properties/summary').then(r=>setSummary(r.data)),
       api.get('/real-estate/contracts?expiryDays=60').then(r=>setContracts(r.data.data||[])),
       api.get('/real-estate/payments/overdue').then(r=>setOverdue(r.data)),
-    ]).catch(console.error).finally(()=>setLoading(false));
+    ]).catch((err)=>{console.error(err);setError(true)}).finally(()=>setLoading(false));
   },[]);
 
   if(loading) return <div className="h-72 flex items-center justify-center"><RefreshCw className="h-8 w-8 animate-spin text-primary-400"/></div>;
+  if(error) return <div role="alert" className="rounded-lg border border-red-800 bg-red-950/30 p-5 text-red-200">تعذر تحميل بيانات العقار. يرجى تحديث الصفحة أو التحقق من صلاحيات الوصول والاتصال بالخادم.</div>;
 
   const cards=[
     {href:'/dashboard/real-estate/properties',label:'العقارات',value:summary?.total||0,sub:`${summary?.active||0} نشط`,icon:Building2},

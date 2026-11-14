@@ -1,0 +1,87 @@
+name: Draft Lease DB Acceptance
+
+on:
+  pull_request:
+    paths:
+      - 'apps/api/src/real-estate/lease-contracts.service.ts'
+      - 'apps/api/test/real-estate-draft-lifecycle.e2e.spec.ts'
+      - 'packages/database/**'
+      - '.github/workflows/draft-lease-db-acceptance.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  draft-lease-db-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: scc
+          POSTGRES_PASSWORD: scc
+          POSTGRES_DB: scc_draft_lease_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U scc -d scc_draft_lease_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://scc:scc@127.0.0.1:5432/scc_draft_lease_test
+      DIRECT_URL: postgresql://scc:scc@127.0.0.1:5432/scc_draft_lease_test
+      REAL_ESTATE_DB_E2E: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: corepack enable && corepack prepare pnpm@8.15.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @scc/database db:generate
+      - run: pnpm --filter @scc/database build
+      - name: Apply existing migrations to disposable DB
+        run: pnpm --filter @scc/database exec prisma migrate deploy --schema prisma/schema.prisma
+      # Acceptance must exercise the migration history as deployed; db push would mask missing DDL.
+      - name: Assert real-estate migration objects exist (read-only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          PGPASSWORD=scc psql -h 127.0.0.1 -U scc -d "${DATABASE_URL##*/}" -X -v ON_ERROR_STOP=1 <<'SQL'
+          DO $audit$
+          DECLARE missing text;
+          BEGIN
+            SELECT string_agg(required.object_name, ', ' ORDER BY required.object_name)
+            INTO missing
+            FROM (VALUES
+              ('properties'), ('units'), ('lease_contracts'),
+              ('rent_payments'), ('rent_collections'),
+              ('contract_documents'), ('property_expenses')
+            ) required(object_name)
+            WHERE to_regclass('public.' || required.object_name) IS NULL;
+            IF missing IS NOT NULL THEN
+              RAISE EXCEPTION 'Real-estate tables missing after migrations: %', missing;
+            END IF;
+            IF NOT EXISTS (
+              SELECT 1 FROM pg_constraint
+              WHERE conname = 'rent_collections_rentPaymentId_tenantId_fkey' AND contype = 'f'
+            ) THEN
+              RAISE EXCEPTION 'Tenant-consistent rent collection FK missing';
+            END IF;
+            IF NOT EXISTS (
+              SELECT 1 FROM pg_indexes
+              WHERE schemaname = 'public' AND indexname = 'rent_collections_tenantId_idempotencyKey_key'
+            ) THEN
+              RAISE EXCEPTION 'Rent collection idempotency unique index missing';
+            END IF;
+          END $audit$;
+          SQL
+      - name: Validate draft and active lease behavior
+        run: pnpm --filter @scc/api exec tsx --test test/real-estate-draft-lifecycle.e2e.spec.ts
+      - name: Detect schema drift after migrations (no db push)
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm --filter @scc/database exec prisma migrate diff --from-url "$DIRECT_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
