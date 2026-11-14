@@ -18,6 +18,7 @@ export default function HrLifecyclePage() {
   const [exitReason,setExitReason] = useState('');
   const [exitDate,setExitDate] = useState(new Date().toISOString().slice(0,10));
   const [exitBusy,setExitBusy] = useState(false);
+  const [completionBusy,setCompletionBusy]=useState<string>('');
   const [form, setForm] = useState<any>({ type: 'ONBOARDING' });
 
   const load = () => {
@@ -42,6 +43,16 @@ export default function HrLifecyclePage() {
   const setTask = async (caseId: string, taskId: string, status: string) => {
     await api.patch(`/hr/lifecycle/${caseId}/tasks/${taskId}`, { status });
     load();
+  };
+
+  const completeExistingExit=async(caseId:string)=>{
+    if(!confirm('إكمال إخلاء الطرف الإداري بعد التحقق من انتهاء العمل والعقود والعهد والصلاحيات؟ لا يعني هذا إثبات دفع المستحقات.'))return;
+    setCompletionBusy(caseId);
+    try{
+      await api.post('/hr/lifecycle/'+caseId+'/complete',{});
+      await load();
+    }catch(e:any){alert(e.response?.data?.message||'لم تجتز حالة المغادرة شروط الإكمال');}
+    finally{setCompletionBusy('');}
   };
 
   const finalizeExit=async()=>{
@@ -75,16 +86,21 @@ export default function HrLifecyclePage() {
         </div>
         <div className="space-y-2">{(c.tasks||[]).map((t:any)=><div key={t.id} className="flex items-center justify-between gap-3 border-t border-slate-800 pt-2">
           <div className="flex items-start gap-2">{t.status==='DONE'?<CheckCircle2 className="h-4 w-4 text-emerald-400 mt-0.5" />:<Circle className="h-4 w-4 text-slate-500 mt-0.5" />}<div><div className="text-white text-sm">{t.title}</div><div className="text-xs text-slate-500">{t.description}</div></div></div>
-          {!['DONE','SKIPPED'].includes(t.status) && <div className="flex gap-1"><button onClick={()=>setTask(c.id,t.id,'DONE')} className="text-emerald-400 p-1" title="إكمال"><CheckCircle2 className="h-4 w-4" /></button><button onClick={()=>setTask(c.id,t.id,'SKIPPED')} className="text-amber-400 p-1" title="تجاوز"><SkipForward className="h-4 w-4" /></button></div>}
+          {!['DONE','SKIPPED'].includes(t.status) && <div className="flex gap-1"><button onClick={()=>setTask(c.id,t.id,'DONE')} className="text-emerald-400 p-1" title="إكمال"><CheckCircle2 className="h-4 w-4" /></button>{c.type!=='OFFBOARDING'&&<button onClick={()=>setTask(c.id,t.id,'SKIPPED')}
+                className="text-amber-400 p-1" title="تجاوز"><SkipForward className="h-4 w-4" /></button>}</div>}
         </div>)}</div>
         {c.type==='OFFBOARDING'&&!['COMPLETED','CANCELLED'].includes(c.status)&&
           ['ADMIN','SUPER_ADMIN'].includes(getRole()||'')&&
           <div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-700 pt-3">
             <span className="text-xs text-amber-300">يتطلب إقفال المغادرة إنجاز جميع المهام واسترداد العهد؛ صرف المستحقات مسار منفصل.</span>
-            <Button size="sm" disabled={!(c.tasks||[]).length||(c.tasks||[]).some((t:any)=>t.status!=='DONE')}
-              onClick={()=>{setExitCase(c);setExitReason('');}}>
-              إقفال المغادرة وإلغاء الوصول
-            </Button>
+            {c.employee?.status==='TERMINATED'
+              ? <Button size="sm" isLoading={completionBusy===c.id}
+                  disabled={!(c.tasks||[]).length||(c.tasks||[]).some((t:any)=>t.status!=='DONE')}
+                  onClick={()=>completeExistingExit(c.id)}>إكمال الإخلاء بعد التحقق</Button>
+              : <Button size="sm" disabled={!(c.tasks||[]).length||(c.tasks||[]).some((t:any)=>t.status!=='DONE')}
+                  onClick={()=>{setExitCase(c);setExitReason('');}}>
+                  إقفال المغادرة وإلغاء الوصول
+                </Button>}
           </div>}
       </div>;
     })}</div>
