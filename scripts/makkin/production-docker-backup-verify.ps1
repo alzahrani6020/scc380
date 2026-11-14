@@ -52,6 +52,8 @@ ROLLBACK;
   $sh = @'
 set -eu
 IFS= read -r PGPASSWORD
+# Windows PowerShell native stdin may use CRLF; remove only the terminal CR.
+PGPASSWORD="${PGPASSWORD%$(printf '\r')}"
 export PGPASSWORD
 export PGHOST='dpg-dboalnjrjlhs73asosf0-a.frankfurt-postgres.render.com'
 export PGPORT=5432 PGDATABASE='scc_main_qbf1' PGUSER='scc_app'
