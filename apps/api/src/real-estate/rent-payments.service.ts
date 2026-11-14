@@ -116,9 +116,27 @@ export class RentPaymentsService {
     if (immutable.some((key) => dto[key] !== undefined)) {
       throw new BadRequestException('Cannot edit rent receivable identity, amount or settlement state');
     }
+    if (dto.dueDate !== undefined) {
+      const proposed = new Date(dto.dueDate);
+      if (Number.isNaN(proposed.getTime())) throw new BadRequestException('Invalid due date');
+      if (proposed.getTime() !== existing.dueDate.getTime()) {
+        const [receiptCount, accrualCount] = await Promise.all([
+          prisma.rentCollection.count({ where: { tenantId, rentPaymentId: id } }),
+          prisma.journalEntryHeader.count({
+            where: { tenantId, sourceType: 'RENT_RECEIVABLE', sourceId: id },
+          }),
+        ]);
+        if (receiptCount > 0 || accrualCount > 0) {
+          throw new ConflictException('Cannot reschedule a receivable after collection or accounting posting');
+        }
+      }
+    }
     const data = { ...dto };
     if (dto.dueDate) data.dueDate = new Date(dto.dueDate);
-    return prisma.rentPayment.update({ where: { id }, data });
+    return prisma.rentPayment.update({
+      where: { id, tenantId, status: PaymentStatus.PENDING },
+      data,
+    });
   }
 
   async delete(tenantId: string, id: string) {
