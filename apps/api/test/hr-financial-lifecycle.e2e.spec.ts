@@ -98,12 +98,24 @@ test(
       assert.equal(foreignSettlements.count, 0);
 
       await settlements.approve(reqA, settlement.id);
-      const paid = await settlements.pay(reqA, settlement.id);
+      await assert.rejects(()=>settlements.pay(reqA, settlement.id,{} as any),/payment reference/);
+      await assert.rejects(()=>settlements.pay(reqA, settlement.id,{
+        paymentReference:'test-payment-001',paymentMethod:'INVALID',
+      }),/payment method/);
+      const paid = await settlements.pay(reqA, settlement.id,{
+        paymentReference:'test-payment-001',paymentMethod:'BANK_TRANSFER',
+      });
       assert.equal(paid.status, 'PAID');
+      assert.equal(paid.paymentReference,'test-payment-001');
+      assert.equal(paid.paymentMethod,'BANK_TRANSFER');
+      assert.equal(paid.paymentRecordedById,reqA.user.userId);
+      await assert.rejects(()=>settlements.pay(reqA, settlement.id,{
+        paymentReference:'test-payment-001',paymentMethod:'BANK_TRANSFER',
+      }),/Only approved settlements can be paid/);
 
       const finalEmployee = await prisma.employee.findUniqueOrThrow({ where: { id: employee.id } });
-      assert.equal(finalEmployee.status, 'TERMINATED');
-      assert.equal(finalEmployee.terminationDate?.toISOString().slice(0, 10), '2027-01-31');
+      assert.equal(finalEmployee.status, 'ACTIVE');
+      assert.equal(finalEmployee.terminationDate,null);
 
       const finalLoan = await prisma.employeeLoan.findUniqueOrThrow({ where: { id: draftLoan.id } });
       assert.equal(Number(finalLoan.balance), 0);

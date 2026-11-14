@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsBoolean, IsIn, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsNumber, IsOptional, IsString, Min, MinLength, MaxLength } from 'class-validator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard, RequirePermissions } from '../auth/guards/permissions.guard';
 import { END_SERVICE_REASONS, SETTLEMENT_INITIATORS } from './end-service-calculator';
@@ -32,6 +32,11 @@ class PostSettlementAccountingDto {
   @IsString() @IsOptional() compensationAccountId?: string;
   @IsString() @IsOptional() loanReceivableAccountId?: string;
   @IsString() @IsOptional() otherDeductionAccountId?: string;
+}
+
+class RecordSettlementPaymentDto {
+  @IsString() @MinLength(6) @MaxLength(160) paymentReference: string;
+  @IsIn(['BANK_TRANSFER','CASH','CHEQUE','OTHER']) paymentMethod: string;
 }
 
 class PostSettlementPaymentAccountingDto {
@@ -79,7 +84,9 @@ export class EndServiceSettlementsController {
 
   @Post(':id/pay')
   @RequirePermissions('hr:settlements:write')
-  pay(@Req() req: any, @Param('id') id: string) { return this.service.pay(req, id); }
+  pay(@Req() req: any, @Param('id') id: string, @Body() dto: RecordSettlementPaymentDto) {
+    return this.service.pay(req, id, dto);
+  }
 
   @Post(':id/cancel')
   @RequirePermissions('hr:settlements:write')

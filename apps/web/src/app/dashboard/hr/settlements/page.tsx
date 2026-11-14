@@ -32,6 +32,8 @@ export default function EndServiceSettlementsPage() {
   const [accountingData, setAccountingData] = useState<any>({});
   const [paymentItem, setPaymentItem] = useState<any>(null);
   const [paymentData, setPaymentData] = useState<any>({});
+  const [paymentRecordItem,setPaymentRecordItem] = useState<any>(null);
+  const [paymentRecord,setPaymentRecord] = useState({paymentReference:'',paymentMethod:'BANK_TRANSFER'});
   const [form, setForm] = useState<any>({
     reason: 'RESIGNATION', initiatedBy: 'EMPLOYEE',
     lastWorkingDate: new Date().toISOString().split('T')[0],
@@ -81,11 +83,31 @@ export default function EndServiceSettlementsPage() {
       alert(err?.response?.data?.message || 'تعذر إنشاء المخالصة');
     } finally { setBusy(false); }
   };
-  const transition = async (id: string, action: 'approve'|'pay') => {
-    const msg = action === 'approve' ? 'اعتماد المخالصة وقفل مبالغها؟' : 'تأكيد دفع المخالصة وإنهاء خدمة الموظف وتسوية القرض المحسوم؟';
-    if (!confirm(msg)) return;
-    await api.post(`/hr/end-service-settlements/${id}/${action}`, {});
-    await load();
+  const transition = async (id:string) => {
+    if (!confirm('اعتماد المخالصة وقفل مبالغها؟')) return;
+    setBusy(true);
+    try {
+      await api.post(`/hr/end-service-settlements/${id}/approve`,{});
+      await load();
+    } catch(e:any) { alert(e.response?.data?.message||'تعذر اعتماد المخالصة'); }
+    finally { setBusy(false); }
+  };
+
+  const recordSettlementPayment = async (e:React.FormEvent) => {
+    e.preventDefault();
+    if(!paymentRecordItem||paymentRecord.paymentReference.trim().length<6)return;
+    if(!confirm('أؤكد توفر إثبات دفع حقيقي مطابق لمرجع العملية المدخل. تسجيل الصرف لا ينهي خدمة الموظف.'))return;
+    setBusy(true);
+    try {
+      await api.post(`/hr/end-service-settlements/${paymentRecordItem.id}/pay`,{
+        paymentReference:paymentRecord.paymentReference.trim(),
+        paymentMethod:paymentRecord.paymentMethod,
+      });
+      setPaymentRecordItem(null);
+      setPaymentRecord({paymentReference:'',paymentMethod:'BANK_TRANSFER'});
+      await load();
+    } catch(e:any){ alert(e.response?.data?.message||'تعذر توثيق دفع المخالصة'); }
+    finally { setBusy(false); }
   };
 
   const loadAccounts = async () => {
@@ -190,8 +212,11 @@ export default function EndServiceSettlementsPage() {
               </div>
               <div className="flex items-center gap-2">
                 <span className="px-2 py-1 rounded-full bg-slate-800 text-slate-300 text-xs">{item.status}</span>
-                {item.status === 'DRAFT' && <Button size="sm" onClick={() => transition(item.id,'approve')}><CheckCircle2 className="h-3 w-3" /> اعتماد</Button>}
-                {item.status === 'APPROVED' && <Button size="sm" onClick={() => transition(item.id,'pay')}><WalletCards className="h-3 w-3" /> دفع وإنهاء</Button>}
+                {item.status === 'DRAFT' && <Button size="sm" onClick={() => transition(item.id)}><CheckCircle2 className="h-3 w-3" /> اعتماد</Button>}
+                {item.status === 'APPROVED' && <Button size="sm" onClick={() => {
+                  setPaymentRecordItem(item);
+                  setPaymentRecord({paymentReference:'',paymentMethod:'BANK_TRANSFER'});
+                }}><WalletCards className="h-3 w-3" /> توثيق السداد</Button>}
                 {['APPROVED','PAID'].includes(item.status) && (
                   <Button size="sm" variant="ghost" onClick={() => openAccounting(item)} isLoading={busy}>
                     <Landmark className="h-3 w-3" /> ترحيل الاستحقاق
@@ -326,6 +351,29 @@ export default function EndServiceSettlementsPage() {
           <div className="flex justify-end gap-3">
             <Button type="button" variant="ghost" onClick={() => setAccountingItem(null)}><X className="h-4 w-4" /> إلغاء</Button>
             <Button type="submit" isLoading={busy}><Landmark className="h-4 w-4" /> ترحيل الاستحقاق</Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal isOpen={!!paymentRecordItem} onClose={() => setPaymentRecordItem(null)} title="توثيق سداد مخالصة نهاية الخدمة" size="lg">
+        <form onSubmit={recordSettlementPayment} className="space-y-4">
+          <div className="rounded-lg border border-amber-500/40 p-3 text-sm text-amber-200">
+            يتطلب تسجيل السداد مرجع عملية دفع حقيقية. هذا إجراء توثيقي وليس تنفيذ تحويل بنكي أو إنهاء خدمة الموظف.
+          </div>
+          <p className="text-sm text-slate-300">صافي المخالصة: {Number(paymentRecordItem?.netSettlement||0).toLocaleString('ar-SA')} ر.س</p>
+          <Input label="مرجع الدفع البنكي أو رقم سند الصرف" required
+            value={paymentRecord.paymentReference} maxLength={160}
+            onChange={e=>setPaymentRecord({...paymentRecord,paymentReference:e.target.value})}/>
+          <Select label="طريقة الدفع" required options={[
+            {value:'BANK_TRANSFER',label:'تحويل بنكي'},
+            {value:'CASH',label:'نقدًا'},
+            {value:'CHEQUE',label:'شيك'},
+            {value:'OTHER',label:'طريقة أخرى موثقة'},
+          ]} value={paymentRecord.paymentMethod}
+            onChange={e=>setPaymentRecord({...paymentRecord,paymentMethod:e.target.value})}/>
+          <div className="flex justify-end gap-3">
+            <Button type="button" variant="ghost" onClick={()=>setPaymentRecordItem(null)}>إلغاء</Button>
+            <Button type="submit" isLoading={busy} disabled={paymentRecord.paymentReference.trim().length<6}>تسجيل مرجع السداد</Button>
           </div>
         </form>
       </Modal>
