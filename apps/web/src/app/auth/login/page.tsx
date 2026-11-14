@@ -21,6 +21,7 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [retrySeconds, setRetrySeconds] = useState(0);
+  const [diagnosticId, setDiagnosticId] = useState('');
 
   // Prefill the remembered email when the user chose "تذكرني" previously
   useEffect(() => {
@@ -58,7 +59,7 @@ export default function LoginPage() {
       setError('يرجى إدخال البريد الإلكتروني وكلمة المرور.');
       return;
     }
-    setLoading(true); setError('');
+    setLoading(true); setError(''); setDiagnosticId('');
     try {
       const initial = await api.post('/auth/login', { email: submittedEmail, password: submittedPassword });
       const loginResult = initial.data;
@@ -92,12 +93,25 @@ export default function LoginPage() {
       // to save/fill the credentials on the next visit
       window.location.href = '/dashboard';
     } catch (err: any) {
+      const traceId = err?.response?.headers?.['x-scc-auth-request-id'];
+      if (typeof traceId === 'string' && /^[0-9a-f-]{36}$/i.test(traceId)) {
+        setDiagnosticId(traceId);
+      }
       if (err?.response?.status === 429) {
         const serverDelay = Number(err.response?.data?.retryAfter ?? err.response?.headers?.['retry-after']);
-        if (Number.isFinite(serverDelay) && serverDelay > 0) {
-          setRetrySeconds(Math.min(Math.ceil(serverDelay), 3600));
-        }
-        setError('تم تقييد محاولات تسجيل الدخول مؤقتًا لحماية الحساب. انتظر قبل إعادة المحاولة.');
+        const seconds = Number.isFinite(serverDelay) && serverDelay > 0
+          ? Math.min(Math.ceil(serverDelay), 3600) : 0;
+        setRetrySeconds(seconds);
+        const source = err.response?.headers?.['x-scc-auth-origin'];
+        const reason = err.response?.data?.errorCode || err.response?.headers?.['x-scc-auth-error-code'];
+        const details = source === 'nest-api'
+          ? reason === 'LOGIN_CONCURRENT_LIMIT' ? 'حدّ المحاولات المتزامنة في خدمة المصادقة.'
+          : reason === 'LOGIN_FAILED_ATTEMPTS' ? 'حدّ المحاولات الفاشلة في خدمة المصادقة.'
+          : 'رفض صادر من خدمة المصادقة.'
+          : 'لم تؤكد الخدمة مصدر التقييد؛ قد تكون الاستجابة من طبقة وسيطة.';
+        setError(`تعذر تسجيل الدخول (429). ${details} ${seconds > 0
+          ? `مدة الانتظار الواردة من الخادم: ${Math.floor(seconds / 60)} دقيقة و${seconds % 60} ثانية.`
+          : 'لم يرسل الخادم مدة انتظار قابلة للتحقق.'}`);
       } else if (err?.response?.status === 401) {
         setError('البريد الإلكتروني أو كلمة المرور غير صحيحة.');
       } else {
@@ -162,7 +176,8 @@ export default function LoginPage() {
           {error && (
             <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm text-center">
               {error}
-              {retrySeconds > 0 && <p className="mt-2" role="status">يمكن إعادة المحاولة بعد {Math.ceil(retrySeconds / 60)} دقيقة تقريبًا.</p>}
+              {retrySeconds > 0 && <p className="mt-2" role="status">يمكن إعادة المحاولة بعد {Math.floor(retrySeconds / 60)} دقيقة و{retrySeconds % 60} ثانية.</p>}
+              {diagnosticId && <p className="mt-2 text-xs select-all" dir="ltr">Request ID: {diagnosticId}</p>}
             </div>
           )}
 
