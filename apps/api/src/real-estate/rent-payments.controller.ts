@@ -31,6 +31,12 @@ export class RentPaymentsController {
     });
   }
 
+  @Get('collection-summary')
+  @RequirePermissions('real-estate:read')
+  collectionSummary(@Request() req) {
+    return this.service.collectionSummary(req.user.tenantId);
+  }
+
   @Get('overdue')
   @RequirePermissions('real-estate:read')
   overdueReport(@Request() req) {
