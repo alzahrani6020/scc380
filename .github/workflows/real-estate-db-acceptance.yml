@@ -6,6 +6,8 @@ on:
       - 'apps/api/src/real-estate/**'
       - 'apps/api/test/real-estate-db-acceptance.e2e.spec.ts'
       - 'apps/api/test/real-estate-lease-guards.e2e.spec.ts'
+      - 'apps/api/test/real-estate-rent-accounting.e2e.spec.ts'
+      - 'apps/api/src/accounting-core/account-mapping.service.ts'
       - 'apps/web/src/app/dashboard/real-estate/**'
       - 'packages/database/**'
       - '.github/workflows/real-estate-db-acceptance.yml'
@@ -52,3 +54,5 @@ jobs:
         run: pnpm --filter @scc/api exec tsx --test test/real-estate-db-acceptance.e2e.spec.ts
       - name: Exercise lease and receivable guardrails in isolated database
         run: pnpm --filter @scc/api exec tsx --test test/real-estate-lease-guards.e2e.spec.ts
+      - name: Verify balanced real-estate accounting postings
+        run: pnpm --filter @scc/api exec tsx --test test/real-estate-rent-accounting.e2e.spec.ts
