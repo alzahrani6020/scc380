@@ -82,7 +82,7 @@ test(
       }), /Idempotency key/);
       assert.equal(await prisma.rentCollection.count({ where: { tenantId: a.id, rentPaymentId: scheduled.id } }), 1);
       await assert.rejects(() => receivables.recordPayment(a.id, scheduled.id, {
-        paidDate: '2026-01-02T00:00:00.000Z', amount: '400.00',
+        paidDate: '2026-01-02T00:00:00.000Z', amount: '700.00',
         idempotencyKey: 'other-'+run,
       }), /exceeds outstanding/);
 
