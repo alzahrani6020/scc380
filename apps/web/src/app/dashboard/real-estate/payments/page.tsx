@@ -12,6 +12,7 @@ const methods=[{value:'BANK_TRANSFER',label:'تحويل بنكي'},{value:'CASH'
 
 export default function RentPaymentsPage(){
  const [items,setItems]=useState<any[]>([]);
+ const [summary,setSummary]=useState<any>(null);
  const [loading,setLoading]=useState(true);
  const [loadError,setLoadError]=useState(false);
  const [formError,setFormError]=useState(false);
@@ -20,19 +21,27 @@ export default function RentPaymentsPage(){
  const [form,setForm]=useState<any>({paymentMethod:'BANK_TRANSFER',paidDate:new Date().toISOString().split('T')[0]});
  const [overdueOnly,setOverdueOnly]=useState(false);
 
- const load=()=>api.get('/real-estate/payments'+(overdueOnly?'?overdue=true':'')).then(r=>{setItems(r.data.data||[]);setLoadError(false)}).catch(err=>{setLoadError(true);throw err}).finally(()=>setLoading(false));
+ const load=()=>Promise.all([
+   api.get('/real-estate/payments'+(overdueOnly?'?overdue=true':'')),
+   api.get('/real-estate/payments/collection-summary'),
+ ]).then(([itemsResponse,summaryResponse])=>{setItems(itemsResponse.data.data||[]);setSummary(summaryResponse.data);setLoadError(false)}).catch(err=>{setLoadError(true);setSummary(null);throw err}).finally(()=>setLoading(false));
  useEffect(()=>{setLoading(true);load().catch(console.error)},[overdueOnly]);
 
  const openRecord=(x:any)=>{setFormError(false);setRecording(x);setForm({amount:String(x.amount),paymentMethod:'BANK_TRANSFER',paidDate:new Date().toISOString().split('T')[0]})};
  const submit=async(e:React.FormEvent)=>{e.preventDefault();if(!recording)return;setSaving(true);setFormError(false);try{await api.post('/real-estate/payments/'+recording.id+'/record',{...form,amount:String(form.amount)});setRecording(null);await load()}catch(err){console.error(err);setFormError(true)}finally{setSaving(false)}};
 
- const totalPending=items.filter(x=>x.status==='PENDING').reduce((s,x)=>s+Number(x.amount||0),0);
 
  return <div className="space-y-6 animate-fade-in-up">
   <div className="flex items-center justify-between flex-wrap gap-3">
-   <div><h1 className="text-2xl font-bold text-white flex items-center gap-2"><Banknote className="h-6 w-6 text-primary-400"/>دفعات الإيجار</h1><p className="text-slate-400 text-sm mt-1">{items.length} دفعة · المعلق {totalPending.toLocaleString()} ر.س</p></div>
+   <div><h1 className="text-2xl font-bold text-white flex items-center gap-2"><Banknote className="h-6 w-6 text-primary-400"/>دفعات الإيجار</h1><p className="text-slate-400 text-sm mt-1">{items.length} دفعة في القائمة</p></div>
    <Button variant={overdueOnly?'primary':'ghost'} onClick={()=>setOverdueOnly(v=>!v)}>{overdueOnly?'عرض الكل':'المتأخرات فقط'}</Button>
   </div>
+  {!loading&&!loadError&&summary&&<div className="grid grid-cols-1 md:grid-cols-3 gap-3" role="region" aria-label="ملخص تحصيل الإيجارات">
+    <div className="scc-card-hover"><p className="text-slate-400 text-sm">إجمالي المستحق غير المسدد</p><p className="font-bold text-white">{Number(summary.pendingAmount).toLocaleString()} ر.س</p><p className="text-xs text-slate-400">{summary.pendingCount} استحقاق</p></div>
+    <div className="scc-card-hover"><p className="text-slate-400 text-sm">إجمالي المسدد بالكامل</p><p className="font-bold text-emerald-400">{Number(summary.completedAmount).toLocaleString()} ر.س</p><p className="text-xs text-slate-400">{summary.completedCount} دفعة</p></div>
+    <div className="scc-card-hover"><p className="text-slate-400 text-sm">المستحقات المتأخرة غير المسددة</p><p className="font-bold text-amber-400">{Number(summary.overdueAmount).toLocaleString()} ر.س</p><p className="text-xs text-slate-400">{summary.overdueCount} استحقاق</p></div>
+    <p className="text-slate-400 text-xs md:col-span-3">هذه الأرقام من الاستحقاقات المسجلة ولا تشمل تحصيلًا جزئيًا أو قيودًا محاسبية. لا تتغير بتفعيل فلتر عرض المتأخرات.</p>
+  </div>}
   {loading?<div className="h-64 flex items-center justify-center"><RefreshCw className="h-8 w-8 animate-spin text-primary-400"/></div>:loadError?<div role="alert" className="rounded-lg border border-red-800 p-4 text-red-200">تعذر تحميل الاستحقاقات. تحقق من الاتصال والصلاحيات ثم أعد تحميل الصفحة.</div>:<div className="space-y-3">{items.map(x=><div key={x.id} className="scc-card-hover flex flex-col md:flex-row md:items-center md:justify-between gap-3">
    <div><p className="text-white font-medium">{x.contract?.lesseeName||'—'}</p><p className="text-slate-500 text-xs">استحقاق {new Date(x.dueDate).toLocaleDateString('ar-SA')} · {x.status}</p></div>
    <div className="flex items-center gap-3"><p className="text-primary-400 font-bold">{Number(x.amount).toLocaleString()} ر.س</p>{x.status==='PENDING'&&<button onClick={()=>openRecord(x)} className="inline-flex items-center gap-1 text-emerald-400 text-sm"><CheckCircle2 className="h-4 w-4"/>تسجيل سداد</button>}</div>
