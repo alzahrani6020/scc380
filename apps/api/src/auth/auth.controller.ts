@@ -1,8 +1,9 @@
-import { Controller, Post, Body, UseGuards, Request, Get, Headers, BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Request, Get, Headers, BadRequestException, UnauthorizedException, UseFilters } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { AuthRateLimitGuard } from './guards/auth-rate-limit.guard';
+import { LoginDiagnosticFilter } from './filters/login-diagnostic.filter';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 
@@ -12,6 +13,7 @@ export class AuthController {
   constructor(private authService: AuthService, private authRateLimit: AuthRateLimitGuard) {}
 
   @UseGuards(AuthRateLimitGuard)
+  @UseFilters(LoginDiagnosticFilter)
   @Post('login')
   async login(@Body() body: LoginDto, @Request() req: any, @Headers('x-tenant-slug') tenantSlug?: string) {
     const release = await this.authRateLimit.beginLogin(req, body.email);

@@ -7,6 +7,7 @@ import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { LocalStrategy } from './strategies/local.strategy';
 import { AuthRateLimitGuard } from './guards/auth-rate-limit.guard';
+import { LoginDiagnosticFilter } from './filters/login-diagnostic.filter';
 
 @Module({
   imports: [
@@ -25,7 +26,7 @@ import { AuthRateLimitGuard } from './guards/auth-rate-limit.guard';
       },
     }),
   ],
-  providers: [AuthService, JwtStrategy, LocalStrategy, AuthRateLimitGuard],
+  providers: [AuthService, JwtStrategy, LocalStrategy, AuthRateLimitGuard, LoginDiagnosticFilter],
   controllers: [AuthController],
   exports: [AuthService, JwtModule],
 })

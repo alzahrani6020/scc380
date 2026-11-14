@@ -64,7 +64,7 @@ export class AuthRateLimitGuard implements CanActivate {
     // Short-lived concurrency limiting is separate from account lockout;
     // it bounds hashing load while allowing genuine login after the slot frees.
     if ((active.get(identityKey) || 0) >= 3 || (active.get(sourceKey) || 0) >= 20) {
-      this.reject(1);
+      this.reject(1, 'LOGIN_CONCURRENT_LIMIT');
     }
     active.set(identityKey, (active.get(identityKey) || 0) + 1);
     active.set(sourceKey, (active.get(sourceKey) || 0) + 1);
@@ -119,7 +119,7 @@ export class AuthRateLimitGuard implements CanActivate {
     });
     this.cleanup();
     const exceeded = updated.find(({ bucket, limit }) => bucket.count >= limit);
-    if (exceeded) this.reject(Math.max(1, Math.ceil((exceeded.bucket.resetAt - now) / 1000)));
+    if (exceeded) this.reject(Math.max(1, Math.ceil((exceeded.bucket.resetAt - now) / 1000)), 'LOGIN_FAILED_ATTEMPTS');
   }
 
   clearSuccessfulLogin(email: unknown): void {
@@ -128,12 +128,13 @@ export class AuthRateLimitGuard implements CanActivate {
     AuthRateLimitGuard.failedLogins.delete(`auth:failed:identity:${hash}`);
   }
 
-  private reject(retryAfter: number): never {
+  private reject(retryAfter: number, errorCode = 'LOGIN_RATE_LIMITED'): never {
     throw new HttpException(
       {
         statusCode: HttpStatus.TOO_MANY_REQUESTS,
         error: 'Too Many Requests',
         message: 'Too many failed authentication attempts. Please try again later.',
+        errorCode,
         retryAfter,
       },
       HttpStatus.TOO_MANY_REQUESTS,
