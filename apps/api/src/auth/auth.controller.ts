@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UseGuards, Request, Get, Headers, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Request, Get, Headers, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -14,7 +14,15 @@ export class AuthController {
   @UseGuards(AuthRateLimitGuard)
   @Post('login')
   async login(@Body() body: LoginDto, @Request() req: any, @Headers('x-tenant-slug') tenantSlug?: string) {
-    const user = await this.authService.authenticate(body.email, body.password, tenantSlug);
+    let user: Awaited<ReturnType<AuthService['authenticate']>>;
+    try {
+      user = await this.authService.authenticate(body.email, body.password, tenantSlug);
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        await this.authService.recordFailedLogin(req, 'INVALID_CREDENTIALS');
+      }
+      throw error;
+    }
     return this.authService.login(
       user.id,
       user.email,
@@ -86,7 +94,14 @@ export class AuthController {
   @Post('google')
   async googleAuth(@Body('credential') credential: string, @Request() req: any) {
     if (!credential) throw new BadRequestException('Google credential is required');
-    return this.authService.googleAuth(credential, req);
+    try {
+      return await this.authService.googleAuth(credential, req);
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        await this.authService.recordFailedLogin(req, 'INVALID_GOOGLE_CREDENTIAL');
+      }
+      throw error;
+    }
   }
 
   // ─── 2FA ───────────────────────────────────────────────────────────
@@ -113,7 +128,14 @@ export class AuthController {
     @Request() req: any,
   ) {
     if (!tempToken || !code) throw new BadRequestException('tempToken and code are required');
-    return this.authService.verify2FALoginAndIssueToken(tempToken, code, req);
+    try {
+      return await this.authService.verify2FALoginAndIssueToken(tempToken, code, req);
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        await this.authService.recordFailedLogin(req, 'INVALID_2FA');
+      }
+      throw error;
+    }
   }
 
   @UseGuards(JwtAuthGuard)
