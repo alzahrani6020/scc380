@@ -5,6 +5,18 @@ import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import api from '@/lib/api';
 
+const WORKFLOW_ACTIONS: Record<string, {code:string;label:string}[]> = {
+  VIOLATIONS: [{code:'REPORT_DETAIL',label:'تفاصيل البلاغ'},{code:'EMPLOYEE_RESPONSE',label:'رد الموظف'},{code:'REVIEW_FINDING',label:'نتيجة المراجعة'}],
+  INVESTIGATIONS: [{code:'INVESTIGATOR_ASSIGNED',label:'تكليف المحقق'},{code:'INTERVIEW',label:'محضر استماع'},{code:'FACT_FINDING',label:'نتيجة التحقيق'}],
+  EVIDENCE: [{code:'EVIDENCE_REVIEW',label:'فحص دليل'},{code:'CHAIN_OF_CUSTODY',label:'سلسلة حيازة الدليل'}],
+  DISCIPLINE: [{code:'NOTICE_PROPOSED',label:'إشعار مقترح'},{code:'EMPLOYEE_RESPONSE',label:'إفادة الموظف'},{code:'FINAL_REVIEW',label:'مراجعة مستقلة'},{code:'APPEAL_SUBMITTED',label:'تقديم تظلم'},{code:'APPEAL_REVIEWED',label:'مراجعة التظلم'}],
+  CONFLICTS: [{code:'DISCLOSURE',label:'إفصاح'},{code:'MITIGATION_PLAN',label:'خطة معالجة'},{code:'MITIGATION_REVIEW',label:'تقييم المعالجة'}],
+  CLAIMS: [{code:'CLAIM_PROPOSED',label:'مطالبة مقترحة'},{code:'EMPLOYEE_RESPONSE',label:'رد الطرف المعني'},{code:'CLAIM_REVIEWED',label:'مراجعة مستقلة'},{code:'SETTLEMENT_OFFER',label:'عرض تسوية'},{code:'SETTLEMENT_ACCEPTANCE',label:'توثيق قبول التسوية'}],
+  LEGAL: [{code:'CASE_REFERENCE',label:'مرجع القضية'},{code:'HEARING',label:'جلسة قضائية'},{code:'JUDGMENT_RECORDED',label:'القرار القضائي'}],
+  OFFBOARDING: [{code:'HANDOVER',label:'تسليم الأعمال'},{code:'ASSET_RETURN_CHECK',label:'فحص العهد'},{code:'ACCESS_REVOKED_CONFIRMED',label:'مراجعة صلاحيات الوصول'}],
+  COMPLIANCE: [{code:'CONTROL_FINDING',label:'ملاحظة رقابية'},{code:'CORRECTIVE_ACTION',label:'إجراء تصحيحي'},{code:'CONTROL_VERIFIED',label:'تحقق من المعالجة'}],
+};
+
 const SPACES: Record<string, {label: string;category:string}> = {
   violations: {label:'البلاغات والمخالفات',category:'VIOLATIONS'},
   investigations: {label:'التحقيقات الإدارية والمالية',category:'INVESTIGATIONS'},
@@ -25,8 +37,13 @@ export default function GovernanceWorkspace() {
   const [employees,setEmployees] = useState<any[]>([]);
   const [contracts,setContracts] = useState<any[]>([]);
   const [selected,setSelected] = useState<any>(null);
+  const [related,setRelated] = useState<any>(null);
   const [form,setForm] = useState({ employeeId:'',contractId:'',title:'',description:'',priority:'NORMAL' });
   const [note,setNote] = useState('');
+  const [actionCode,setActionCode] = useState('');
+  const [actionNarrative,setActionNarrative] = useState('');
+  const [actionAmount,setActionAmount] = useState('');
+  const [actionDate,setActionDate] = useState('');
   const [evidence,setEvidence] = useState<any[]>([]);
   const [file,setFile] = useState<File|null>(null);
   const [evidenceDescription,setEvidenceDescription] = useState('');
@@ -68,8 +85,13 @@ export default function GovernanceWorkspace() {
   };
   const openCase=async(id:string)=>{
     try{
-      const [r,files]=await Promise.all([api.get('/hr/governance/'+id),api.get('/hr/governance/'+id+'/evidence')]);
-      setSelected(r.data);setEvidence(files.data||[]);setResolution('');setNote('');setFile(null);
+      const [r,files,linked]=await Promise.all([
+        api.get('/hr/governance/'+id),
+        api.get('/hr/governance/'+id+'/evidence'),
+        api.get('/hr/governance/'+id+'/context'),
+      ]);
+      setRelated(linked.data);setSelected(r.data);setEvidence(files.data||[]);setResolution('');setNote('');setFile(null);
+      setActionCode('');setActionNarrative('');setActionAmount('');setActionDate('');
     }
     catch(e:any){setError(e.response?.data?.message||'تعذر فتح القضية');}
   };
@@ -102,6 +124,19 @@ export default function GovernanceWorkspace() {
       const a=document.createElement('a');a.href=url;a.download=name;a.click();
       URL.revokeObjectURL(url);
     }catch(e:any){setError(e.response?.data?.message||'تعذر تنزيل الدليل');}
+  };
+  const addWorkflowAction=async()=>{
+    if(!selected || !actionCode || actionNarrative.trim().length < 10) return;
+    setSaving(true);setError('');
+    try {
+      const body:any={code:actionCode,narrative:actionNarrative.trim()};
+      if(actionAmount.trim())body.amount=Number(actionAmount);
+      if(actionDate)body.dueDate=actionDate;
+      const r=await api.post('/hr/governance/'+selected.id+'/actions',body);
+      setSelected(r.data);setActionCode('');setActionNarrative('');setActionAmount('');setActionDate('');
+      await load();
+    }catch(e:any){setError(e.response?.data?.message||'تعذر حفظ الإجراء المتخصص');}
+    finally{setSaving(false);}
   };
   const addNote=async()=>{
     if(!selected||!note.trim())return;
@@ -175,6 +210,26 @@ export default function GovernanceWorkspace() {
       <p className="text-slate-300 whitespace-pre-wrap">{selected.description}</p>
       <p className="text-xs text-slate-400">الحالة: {selected.status} · رقم الملف: {selected.id} · الموظف: {selected.employeeId}</p>
       <div className="flex flex-wrap gap-3 text-sm text-primary-400"><Link href={'/dashboard/hr/employees/'+selected.employeeId}>ملف الموظف</Link><Link href="/dashboard/hr/contracts">العقود</Link><Link href="/dashboard/hr/assets">العهد</Link><Link href="/dashboard/hr/settlements">المخالصات</Link></div>
+      {related&&<section className="rounded-lg border border-slate-700 p-3 space-y-2">
+        <h3 className="text-white font-semibold">الربط الحي بمساحات عمل الموظف</h3>
+        <p className="text-sm text-slate-300">ملف الموظف: {related.employee?.employeeCode} — {related.employee?.firstName} {related.employee?.lastName} ({related.employee?.status})</p>
+        <p className="text-sm text-slate-300">العقود: {related.contracts?.length||0} · العهد المسجلة: {related.custody?.length||0} · المخالصات: {related.settlements?.length||0} · حالات الانضمام والمغادرة: {related.lifecycle?.length||0}</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          {(related.contracts||[]).map((c:any)=><div key={c.id} className="text-sm text-slate-300">
+            عقد: {c.contractNumber} — {c.status} {c.id===related.linkedContractId?'(مرتبط بالقضية)':''}
+          </div>)}
+          {(related.custody||[]).map((a:any)=><div key={a.id} className="text-sm text-slate-300">
+            عهدة: {a.asset?.name} — {a.status}
+          </div>)}
+          {(related.settlements||[]).map((p:any)=><div key={p.id} className="text-sm text-slate-300">
+            مخالصة: {p.status}
+          </div>)}
+          {(related.lifecycle||[]).map((p:any)=><div key={p.id} className="text-sm text-slate-300">
+            {p.type==='OFFBOARDING'?'مغادرة':'انضمام'} — {p.status}
+          </div>)}
+        </div>
+        <p className="text-xs text-slate-500">البيانات مرجعية من النظام وليست اعتمادًا أو تنفيذًا ماليًا؛ قوائم الربط محددة بعدد سجلات.</p>
+      </section>}
       <div className="space-y-2"><h3 className="text-white font-semibold">سجل الإجراءات</h3>
         {(selected.events||[]).map((event:any)=><div key={event.id} className="border-t border-slate-700 p-2 text-slate-300 text-sm">
           <div>{event.action} — {event.details}</div>
@@ -200,6 +255,30 @@ export default function GovernanceWorkspace() {
           <button type="button" onClick={uploadEvidence} disabled={saving||!file} className="rounded-lg border border-slate-600 px-3 py-2 text-white disabled:opacity-50">رفع وحفظ الدليل</button>
         </>}
       </section>
+      {selected.status!=='CLOSED'&&<section className="rounded-lg border border-slate-700 p-3 space-y-3">
+        <h3 className="font-semibold text-white">الإجراءات المتخصصة — {space.label}</h3>
+        <label className="block text-sm text-slate-300">نوع الإجراء
+          <select value={actionCode} onChange={e=>setActionCode(e.target.value)} className={input}>
+            <option value="">اختر نوع الإجراء</option>
+            {(WORKFLOW_ACTIONS[space.category]||[]).map(item=><option key={item.code} value={item.code}>{item.label}</option>)}
+          </select>
+        </label>
+        <label className="block text-sm text-slate-300">المحضر أو التفاصيل
+          <textarea value={actionNarrative} maxLength={4000} minLength={10}
+            onChange={e=>setActionNarrative(e.target.value)} rows={4} className={input}/>
+        </label>
+        {(space.category==='CLAIMS'||space.category==='LEGAL')&&<label className="block text-sm text-slate-300">المبلغ المرجعي (اختياري، لا يترتب عليه خصم)
+          <input type="number" min="0" max="1000000000" step="0.01" value={actionAmount}
+            onChange={e=>setActionAmount(e.target.value)} className={input}/>
+        </label>}
+        {(space.category==='LEGAL'||space.category==='OFFBOARDING'||space.category==='COMPLIANCE')&&
+          <label className="block text-sm text-slate-300">تاريخ مرتبط بالإجراء (اختياري)
+            <input type="date" value={actionDate} onChange={e=>setActionDate(e.target.value)} className={input}/>
+          </label>}
+        <button type="button" onClick={addWorkflowAction} disabled={saving||!actionCode||actionNarrative.trim().length<10}
+          className="rounded-lg border border-primary-500 px-3 py-2 text-white disabled:opacity-50">حفظ الإجراء في سجل القضية</button>
+        <p className="text-xs text-slate-400">يُسجل الإجراء باسم المستخدم، دون تنفيذ اقتطاع أو جزاء أو دفع تلقائي.</p>
+      </section>}
       {selected.status!=='CLOSED'&&<>
         <label className="block text-slate-300 text-sm">إضافة إفادة أو إجراء
           <textarea className={input} rows={3} value={note} onChange={e=>setNote(e.target.value)}/>

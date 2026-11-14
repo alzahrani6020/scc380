@@ -1,7 +1,8 @@
 import { Body, Controller, Get, Param, Post, Query, Req, Res, StreamableFile, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
-import { IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsIn, IsOptional, IsString, MaxLength, MinLength, IsNumber, Min, Max } from 'class-validator';
+import { Type } from 'class-transformer';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard, RequirePermissions } from '../auth/guards/permissions.guard';
 import { GOVERNANCE_CATEGORIES, HrGovernanceService } from './hr-governance.service';
@@ -19,6 +20,12 @@ class EvidenceDto {
   @IsIn(['application/pdf','image/jpeg','image/png']) mimeType: string;
   @IsString() contentBase64: string;
   @IsString() @MaxLength(1000) @IsOptional() description?: string;
+}
+class WorkflowActionDto {
+  @IsString() code: string;
+  @IsString() @MinLength(10) @MaxLength(4000) narrative: string;
+  @Type(() => Number) @IsNumber() @Min(0) @Max(1000000000) @IsOptional() amount?: number;
+  @IsString() @IsOptional() dueDate?: string;
 }
 class NoteDto { @IsString() @MinLength(2) @MaxLength(4000) details: string; }
 class TransitionDto {
@@ -57,6 +64,17 @@ export class HrGovernanceController {
     res.setHeader('X-Content-Type-Options','nosniff');
     res.setHeader('Content-Disposition',`attachment; filename*=UTF-8''${encodeURIComponent(item.fileName)}`);
     return new StreamableFile(Buffer.from(item.content));
+  }
+  @Get('workflows/catalog')
+  @RequirePermissions('hr:governance:read')
+  catalog() { return this.service.workflowCatalog(); }
+  @Get(':id/context')
+  @RequirePermissions('hr:governance:read')
+  context(@Req() req: any, @Param('id') id: string) { return this.service.relatedWorkspaces(req,id); }
+  @Post(':id/actions')
+  @RequirePermissions('hr:governance:write')
+  action(@Req() req: any, @Param('id') id: string, @Body() dto: WorkflowActionDto) {
+    return this.service.addWorkflowAction(req, id, dto);
   }
   @Post(':id/notes')
   @RequirePermissions('hr:governance:write')
