@@ -88,9 +88,10 @@ export class RentPaymentsService {
   async create(tenantId: string, dto: any) {
     const contract = await prisma.leaseContract.findFirst({
       where: withTenant({ id: dto.contractId }, tenantId),
-      select: { propertyId: true, unitId: true },
+      select: { propertyId: true, unitId: true, status: true },
     });
     if (!contract) throw new NotFoundException('Contract not found in this tenant');
+    if (contract.status !== 'ACTIVE') throw new ConflictException('Rent receivables require an active contract');
     if (contract.propertyId !== dto.propertyId || contract.unitId !== dto.unitId) {
       throw new BadRequestException('Rent payment must match the contract property and unit');
     }
