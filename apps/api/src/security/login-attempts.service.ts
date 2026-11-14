@@ -1,11 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import { prisma } from '@scc/database';
 
 @Injectable()
 export class LoginAttemptsService {
   async findAll(req: any, query: any) {
     if (req.user?.role !== 'SUPER_ADMIN') {
-      return { data: [], count: 0, message: 'Super admin only' };
+      throw new ForbiddenException('Super admin only');
     }
     const where: any = {};
     if (query.success !== undefined) where.success = query.success === 'true';

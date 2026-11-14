@@ -44,6 +44,24 @@ export class AuthService {
     return { userAgent: agent, ipAddress: ip, deviceInfo: browser && system ? `${browser} · ${system}` : null };
   }
 
+  // Failed authentication is recorded without submitted credentials, email or
+  // unverified tenant ownership. Logging failures must not change a 401 into 500.
+  async recordFailedLogin(req: any, reason: 'INVALID_CREDENTIALS' | 'INVALID_2FA' | 'INVALID_GOOGLE_CREDENTIAL') {
+    const metadata = this.sessionMetadata(req);
+    try {
+      await prisma.loginAttempt.create({
+        data: {
+          ipAddress: metadata.ipAddress || 'unknown',
+          userAgent: metadata.userAgent,
+          success: false,
+          failureReason: reason,
+        },
+      });
+    } catch {
+      this.logger.warn('Could not record failed login attempt');
+    }
+  }
+
   private async twoFactorChallenge(action: 'issue' | 'consume', nonce: string): Promise<boolean> {
     const redisUrl = this.config.get<string>('REDIS_URL') || process.env.REDIS_URL;
     // Never issue a 2FA session when the shared challenge store is unavailable.
@@ -218,6 +236,15 @@ export class AuthService {
           newValues: { method, sessionId: tokens.sessionKey },
         },
       }),
+      prisma.loginAttempt.create({
+        data: {
+          userId,
+          tenantId: tenantId || null,
+          ipAddress: this.sessionMetadata(req).ipAddress || 'unknown',
+          userAgent: this.sessionMetadata(req).userAgent,
+          success: true,
+        },
+      }),
     ]);
 
     return {
@@ -273,6 +300,15 @@ export class AuthService {
           entityType: 'Session',
           entityId: tokens.sessionKey,
           newValues: { method: '2fa', sessionId: tokens.sessionKey },
+        },
+      }),
+      prisma.loginAttempt.create({
+        data: {
+          userId,
+          tenantId: tenantId || null,
+          ipAddress: this.sessionMetadata(req).ipAddress || 'unknown',
+          userAgent: this.sessionMetadata(req).userAgent,
+          success: true,
         },
       }),
     ]);

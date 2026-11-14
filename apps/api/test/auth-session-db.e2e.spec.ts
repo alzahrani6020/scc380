@@ -46,6 +46,15 @@ test('DB-backed auth refresh preserves device session and blocks concurrent repl
     assert.equal(loggedIn[0].entityId, firstSid);
     assert.deepEqual(loggedIn[0].newValues, { method: 'password', sessionId: firstSid });
     assert.equal(JSON.stringify(loggedIn[0]).includes(first.refreshToken), false);
+    const firstAttempts = await prisma.loginAttempt.findMany({
+      where: { userId: user.id },
+    });
+    assert.equal(firstAttempts.length, 1);
+    assert.equal(firstAttempts[0].success, true);
+    assert.equal(firstAttempts[0].tenantId, tenant.id);
+    assert.equal(firstAttempts[0].ipAddress, '127.0.0.1');
+    assert.equal(firstAttempts[0].email, null);
+    assert.equal(JSON.stringify(firstAttempts).includes(first.refreshToken), false);
     const firstSession = await prisma.session.findUniqueOrThrow({ where: { id: firstSid } });
     assert.equal(firstSession.userAgent?.includes('Chrome/120'), true);
     assert.equal(firstSession.deviceInfo, 'Chrome · Windows');
@@ -57,6 +66,9 @@ test('DB-backed auth refresh preserves device session and blocks concurrent repl
 
     const second = await auth.login(user.id, user.email, user.role, tenant.id, tenant.slug, req) as any;
     const secondSid = (jwt.decode(second.accessToken) as any).sid;
+    assert.equal(await prisma.loginAttempt.count({
+      where: { userId: user.id, success: true },
+    }), 2);
     assert.notEqual(secondSid, firstSid);
 
     const simultaneous = await Promise.allSettled([
