@@ -60,3 +60,11 @@ test('investigation, conflict management and compliance require prior record', (
   assert.throws(()=>assertGovernanceAction('COMPLIANCE','CONTROL_VERIFIED','a',[]),/Corrective action/);
   assert.throws(()=>assertGovernanceAction('CLAIMS','SETTLEMENT_ACCEPTANCE','a',[]),/Settlement offer/);
 });
+
+test('offboarding cannot be closed without handover, custody and access checks', () => {
+  assert.throws(() => assertGovernanceClosure('OFFBOARDING', []), /HANDOVER/);
+  const history = [
+    recorded('HANDOVER'),recorded('ASSET_RETURN_CHECK'),recorded('ACCESS_REVOKED_CONFIRMED'),
+  ].map(x => ({action:x.action,createdAt:new Date()}));
+  assert.doesNotThrow(() => assertGovernanceClosure('OFFBOARDING', history));
+});

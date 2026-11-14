@@ -105,6 +105,11 @@ export function assertGovernanceClosure(
   if (category === 'DISCIPLINE' && lastIndex('APPEAL_SUBMITTED') > lastIndex('APPEAL_REVIEWED')) {
     throw new ConflictException('An unresolved employee appeal prevents case closure');
   }
+  if (category === 'OFFBOARDING') {
+    for (const required of ['HANDOVER', 'ASSET_RETURN_CHECK', 'ACCESS_REVOKED_CONFIRMED']) {
+      if (lastIndex(required) < 0) throw new ConflictException('Offboarding task missing: ' + required);
+    }
+  }
   if (category === 'CLAIMS' && lastIndex('CLAIM_PROPOSED') > lastIndex('CLAIM_REVIEWED')) {
     throw new ConflictException('A pending claim review prevents case closure');
   }
@@ -204,6 +209,24 @@ export class HrGovernanceService {
           select: { action: true, createdAt: true },
         });
         assertGovernanceClosure(record.category, history);
+        if (record.category === 'OFFBOARDING') {
+          const custody = await tx.assetCustodyAssignment.count({
+            where: { tenantId, employeeId: record.employeeId, status: 'ACTIVE' },
+          });
+          if (custody > 0) throw new ConflictException('Active custody blocks administrative offboarding closure');
+          const employee = await tx.employee.findFirst({
+            where: { tenantId, id: record.employeeId }, select: { userId: true },
+          });
+          if (employee?.userId) {
+            const [user, activeSessions] = await Promise.all([
+              tx.user.findFirst({ where: { tenantId, id: employee.userId }, select: { status: true } }),
+              tx.session.count({ where: { userId: employee.userId, revokedAt: null, expiresAt: { gt: new Date() } } }),
+            ]);
+            if (user?.status === 'ACTIVE' || activeSessions > 0) {
+              throw new ConflictException('Active employee access blocks offboarding case closure');
+            }
+          }
+        }
       }
       if ((status === 'RESOLVED' || status === 'CLOSED') && !resolution?.trim()) {
         throw new BadRequestException('Closure or resolution rationale is required');
@@ -322,7 +345,7 @@ export class HrGovernanceService {
     return prisma.$transaction(async tx => {
       const record = await tx.hrGovernanceCase.findFirst({
         where: { tenantId, id: caseId, employeeId, category: { in: ['DISCIPLINE','CLAIMS'] } },
-        select: { id: true, category: true, status: true },
+        select: { id: true, category: true, status: true, employeeId: true },
       });
       if (!record) throw new NotFoundException('Disclosed employee case not found');
       const history = await tx.hrGovernanceEvent.findMany({
@@ -412,7 +435,7 @@ export class HrGovernanceService {
     return prisma.$transaction(async tx => {
       const record = await tx.hrGovernanceCase.findFirst({
         where: { ...tenantWhere(tenantId), id },
-        select: { id: true, category: true, status: true },
+        select: { id: true, category: true, status: true, employeeId: true },
       });
       if (!record) throw new NotFoundException('Governance case not found');
       if (record.status === 'CLOSED') throw new ConflictException('Closed cases are read only');
@@ -421,6 +444,26 @@ export class HrGovernanceService {
         select: { action: true, actorUserId: true },
       });
       assertGovernanceAction(record.category, dto.code, actor, history);
+      if (record.category === 'OFFBOARDING' && dto.code === 'ASSET_RETURN_CHECK') {
+        const count = await tx.assetCustodyAssignment.count({
+          where: { tenantId, employeeId: record.employeeId, status: 'ACTIVE' },
+        });
+        if (count > 0) throw new ConflictException('Employee still has active custody assignments');
+      }
+      if (record.category === 'OFFBOARDING' && dto.code === 'ACCESS_REVOKED_CONFIRMED') {
+        const employee = await tx.employee.findFirst({
+          where: { tenantId, id: record.employeeId }, select: { userId: true },
+        });
+        if (employee?.userId) {
+          const [user, activeSessions] = await Promise.all([
+            tx.user.findFirst({ where: { tenantId, id: employee.userId }, select: { status: true } }),
+            tx.session.count({ where: { userId: employee.userId, revokedAt: null, expiresAt: { gt: new Date() } } }),
+          ]);
+          if (user?.status === 'ACTIVE' || activeSessions > 0) {
+            throw new ConflictException('Employee access or sessions are still active');
+          }
+        }
+      }
       const updated = await tx.hrGovernanceCase.updateMany({
         where: { ...tenantWhere(tenantId), id, status: { not: 'CLOSED' } },
         data: { updatedAt: new Date() },

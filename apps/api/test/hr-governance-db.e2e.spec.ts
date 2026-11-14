@@ -115,6 +115,18 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
             code:'APPEAL_REVIEWED',narrative:'Recorded independent response to appeal',
           });
         }
+        if(category==='OFFBOARDING') {
+          await assert.rejects(()=>service.transition(reqA,caseFile.id,'CLOSED','Incomplete offboarding'),/Offboarding task missing/);
+          const custodyVerified=await service.addWorkflowAction(reqA,caseFile.id,{
+            code:'ASSET_RETURN_CHECK',narrative:'Tenant custody ledger contains no active assignments',
+          });
+          assert.equal(custodyVerified.events.at(-1)?.action,'ASSET_RETURN_CHECK');
+          await service.addWorkflowAction(reqA,caseFile.id,{
+            code:'ACCESS_REVOKED_CONFIRMED',narrative:'Employee has no linked account or active session',
+          });
+          const offboardingClosed=await service.transition(reqA,caseFile.id,'CLOSED','All administrative checks recorded');
+          assert.equal(offboardingClosed.status,'CLOSED');
+        }
         const found=await service.findOne(reqA,caseFile.id);
         assert.ok(found.events.length>=2);
       }
