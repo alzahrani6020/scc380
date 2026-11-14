@@ -116,7 +116,7 @@ export class RentPaymentsService {
         where: { tenantId_idempotencyKey: { tenantId, idempotencyKey: dto.idempotencyKey } },
       });
       if (priorRequest) {
-        if (priorRequest.rentPaymentId !== id || !priorRequest.amount.equals(amount)) {
+        if (priorRequest.rentPaymentId !== id || !priorRequest.amount.equals(amount) || priorRequest.collectedAt.getTime() !== paidDate.getTime() || (priorRequest.paymentMethod ?? null) !== (dto.paymentMethod ?? null) || (priorRequest.transactionRef ?? null) !== (dto.transactionRef ?? null) || (priorRequest.bankReference ?? null) !== (dto.bankReference ?? null)) {
           throw new ConflictException('Idempotency key already belongs to a different payment');
         }
         // Retry of the same request is a read, never a second collection.
@@ -190,17 +190,18 @@ export class RentPaymentsService {
   }
 
   async overdueReport(tenantId: string) {
-    const where = withTenant({ status: 'PENDING', dueDate: { lt: new Date() } }, tenantId);
-    const [data, totalAmount] = await Promise.all([
-      prisma.rentPayment.findMany({
-        where,
-        orderBy: { dueDate: 'asc' },
-        include: {
-          contract: { select: { lesseeName: true, propertyId: true, unitId: true } },
-        },
-      }),
-      prisma.rentPayment.aggregate({ where, _sum: { amount: true } }),
-    ]);
-    return { data, count: data.length, totalOverdue: totalAmount._sum.amount || 0 };
+    const where = withTenant({ status: PaymentStatus.PENDING, dueDate: { lt: new Date() } }, tenantId);
+    const data = await prisma.rentPayment.findMany({
+      where, orderBy: { dueDate: 'asc' },
+      include: {
+        contract: { select: { lesseeName: true, propertyId: true, unitId: true } },
+        collections: { select: { amount: true } },
+      },
+    });
+    const rows = data.map(payment => this.withCollectionBalance(payment));
+    const outstanding = rows.reduce(
+      (sum, payment) => sum.plus(payment.outstandingAmount), new Prisma.Decimal(0),
+    );
+    return { data: rows, count: rows.length, totalOverdue: outstanding.toFixed(2) };
   }
 }
