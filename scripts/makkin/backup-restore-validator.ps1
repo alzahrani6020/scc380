@@ -8,7 +8,8 @@ param(
 )
 $ErrorActionPreference='Stop'
 $stamp=(Get-Date -Format 'yyyyMMdd-HHmmss')+'-'+$PID
-if(!$EvidenceRoot){$EvidenceRoot=Join-Path $env:TEMP "makkin-restore-$stamp"}
+$tempRoot=[System.IO.Path]::GetTempPath()
+if(!$EvidenceRoot){$EvidenceRoot=Join-Path $tempRoot "makkin-restore-$stamp"}
 New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
 $container="makkin-restore-$stamp".ToLowerInvariant()
 $summary=[ordered]@{status='BLOCKED';archive=$BackupFile;restore='NOT_VERIFIED';
