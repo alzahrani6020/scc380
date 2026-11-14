@@ -66,8 +66,10 @@ pg_dump -w --format=custom --no-owner --no-acl --file=/evidence/production.dump
 pg_restore --list /evidence/production.dump > /evidence/backup-toc.txt
 printf 'PASS\n' > /evidence/backup.pass
 '@
-  # Credential is sent only to container stdin; not a CLI argument or stored host file.
-  $pass | & docker run --rm -i --mount "type=bind,source=$evidence,target=/evidence" postgres:17-alpine sh -c $sh
+  # PowerShell 5.1 cannot reliably pass a multiline shell program through native sh -c.
+  # Persist only non-secret instructions in evidence; pass the password via stdin.
+  [IO.File]::WriteAllText((Join-Path $evidence 'runner.sh'),($sh.Replace("`r`n","`n") + "`n"),[Text.Encoding]::ASCII)
+  $pass | & docker run --rm -i --mount "type=bind,source=$evidence,target=/evidence" postgres:17-alpine sh /evidence/runner.sh
   if ($LASTEXITCODE -ne 0) { throw 'PRODUCTION_READ_BACKUP_FAILED' }
   $identity = (Get-Content -LiteralPath (Join-Path $evidence 'identity.txt') -Raw).Trim()
   if ($identity -cne ($expectedDatabase+'|'+$expectedUser)) { throw 'DATABASE_IDENTITY_MISMATCH' }
