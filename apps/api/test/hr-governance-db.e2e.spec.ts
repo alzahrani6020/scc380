@@ -367,7 +367,11 @@ test('HR self-governance: only disclosed employee cases, private reply and indep
         tenantId:tenantA.id,userId:userA.id,employeeCode:'GOV-SELF-'+run,
         firstName:'Review',lastName:'Recipient',hireDate:new Date('2026-01-01T00:00:00Z'),
       }});
-      const admin:any={user:{tenantId:tenantA.id,userId:'admin-'+run,role:'ADMIN'}};
+      const realAdmin=await prisma.user.create({data:{
+        tenantId:tenantA.id,email:run+'-admin@example.test',
+        firstName:'Case',lastName:'Administrator',role:'ADMIN',status:'ACTIVE',
+      }});
+      const admin:any={user:{tenantId:tenantA.id,userId:realAdmin.id,role:'ADMIN'}};
       const reviewer:any={user:{tenantId:tenantA.id,userId:'reviewer-'+run,role:'ADMIN'}};
       const self:any={user:{tenantId:tenantA.id,userId:userA.id,role:'USER'}};
       const foreign:any={user:{tenantId:tenantB.id,userId:userB.id,role:'USER'}};
@@ -400,6 +404,12 @@ test('HR self-governance: only disclosed employee cases, private reply and indep
         code:'EMPLOYEE_RESPONSE',narrative:'I dispute the proposed findings and provide clarification',
       });
       assert.equal(reply.submitted,true);
+      const responseAlert=await prisma.notification.findFirst({
+        where:{tenantId:tenantA.id,userId:realAdmin.id,
+          data:{path:['action'],equals:'EMPLOYEE_RESPONSE'}},
+      });
+      assert.ok(responseAlert);
+      assert.equal(responseAlert?.status,'SENT');
       await svc.addWorkflowAction(reviewer,record.id,{
         code:'FINAL_REVIEW',narrative:'Independent assessment following employee reply',
       });
@@ -407,6 +417,14 @@ test('HR self-governance: only disclosed employee cases, private reply and indep
         code:'APPEAL_SUBMITTED',narrative:'I request reconsideration of the independent review',
       });
       assert.equal(appeal.code,'APPEAL_SUBMITTED');
+      const appealAlert=await prisma.notification.findFirst({
+        where:{tenantId:tenantA.id,userId:realAdmin.id,
+          data:{path:['action'],equals:'APPEAL_SUBMITTED'}},
+      });
+      assert.ok(appealAlert);
+      assert.equal(await prisma.notification.count({
+        where:{tenantId:tenantB.id,userId:realAdmin.id},
+      }),0);
       await assert.rejects(()=>svc.selfResponse(self,record.id,{
         code:'APPEAL_SUBMITTED',narrative:'Duplicate pending employee appeal',
       }),/already under review/);

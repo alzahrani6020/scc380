@@ -440,7 +440,7 @@ export class HrGovernanceService {
     return prisma.$transaction(async tx => {
       const record = await tx.hrGovernanceCase.findFirst({
         where: { tenantId, id: caseId, employeeId, category: { in: ['DISCIPLINE','CLAIMS'] } },
-        select: { id: true, category: true, status: true, employeeId: true },
+        select: { id: true, category: true, status: true, employeeId: true, createdById: true, assignedToId: true },
       });
       if (!record) throw new NotFoundException('Disclosed employee case not found');
       const history = await tx.hrGovernanceEvent.findMany({
@@ -497,6 +497,27 @@ export class HrGovernanceService {
             acceptedOfferSha256: acceptedOffer?.checksum ?? null,
           }) },
       });
+      const recipients=[...new Set([record.createdById, record.assignedToId]
+        .filter((id): id is string => Boolean(id) && id!==userId))];
+      if(recipients.length) {
+        const activeReviewers=await tx.user.findMany({
+          where:{ tenantId, id:{in:recipients}, status:'ACTIVE',role:{in:['ADMIN','SUPER_ADMIN']} },
+          select:{id:true},
+        });
+        if(activeReviewers.length) {
+          const title=dto.code==='APPEAL_SUBMITTED'?'تظلم موظف بانتظار المراجعة':
+            dto.code==='SETTLEMENT_ACCEPTANCE'?'رد على عرض تسوية':'إفادة موظف جديدة';
+          await tx.notification.createMany({
+            data:activeReviewers.map(reviewer=>({
+              tenantId,userId:reviewer.id,type:'IN_APP' as const,channel:'IN_APP' as const,
+              status:'SENT' as const,sentAt:new Date(),title,
+              body:'ورد إجراء جديد من الموظف في ملف حوكمة الموارد البشرية.',
+              data:{caseId,category:record.category,action:dto.code,
+                path:'/dashboard/hr/governance/'+record.category.toLowerCase()},
+            })),
+          });
+        }
+      }
       return { submitted: true, caseId, code: dto.code };
     }, { isolationLevel: 'Serializable' });
   }
