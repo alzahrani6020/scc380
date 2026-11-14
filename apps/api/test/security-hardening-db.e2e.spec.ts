@@ -6,6 +6,8 @@ import { JwtService } from '@nestjs/jwt';
 import { prisma } from '@scc/database';
 import * as speakeasy from 'speakeasy';
 import { AuthService } from '../src/auth/auth.service';
+import { AuthController } from '../src/auth/auth.controller';
+import { LoginAttemptsService } from '../src/security/login-attempts.service';
 import { ApiKeysService } from '../src/security/api-keys.service';
 import { SessionsService } from '../src/security/sessions.service';
 
@@ -160,6 +162,49 @@ test('DB-backed session revoke audit is tenant-safe and records only successful 
     }
   } finally {
     await prisma.tenant.delete({ where: { id: tenant.id } });
+    await prisma.$disconnect();
+  }
+});
+
+test('DB-backed failed login is recorded without submitted email or password; unauthorized audit reads are forbidden', {
+  skip: process.env.CRM_DB_E2E !== '1',
+}, async () => {
+  const run = `${process.pid}-${Date.now()}`;
+  const ip = 'audit-ip-' + run;
+  const attemptedEmail = 'not-registered-' + run + '@example.test';
+  const attemptedPassword = 'DO_NOT_STORE_PASSWORD_' + run;
+  const req = { ip, headers: { 'user-agent': 'Auth audit E2E' } };
+  const secret = 'test-only-secret-32-characters-minimum-0123456789';
+  const jwt = new JwtService({ secret, signOptions: { expiresIn: '1h' } });
+  const service = new AuthService(jwt, { get: (key: string) => key === 'JWT_SECRET' ? secret : undefined } as any);
+  const controller = new AuthController(service);
+  const reader = new LoginAttemptsService();
+  try {
+    await assert.rejects(
+      () => controller.login({ email: attemptedEmail, password: attemptedPassword } as any, req),
+      (error: any) => error?.status === 401,
+    );
+    const rows = await prisma.loginAttempt.findMany({ where: { ipAddress: ip } });
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].success, false);
+    assert.equal(rows[0].failureReason, 'INVALID_CREDENTIALS');
+    assert.equal(rows[0].tenantId, null);
+    assert.equal(rows[0].userId, null);
+    assert.equal(rows[0].email, null);
+    const serialized = JSON.stringify(rows[0]);
+    assert.equal(serialized.includes(attemptedEmail), false);
+    assert.equal(serialized.includes(attemptedPassword), false);
+    await assert.rejects(
+      () => reader.findAll({ user: { role: 'ADMIN' } }, { ipAddress: ip }),
+      (error: any) => error?.status === 403,
+    );
+    const authorized = await reader.findAll(
+      { user: { role: 'SUPER_ADMIN' } }, { ipAddress: ip, success: 'false' },
+    );
+    assert.equal(authorized.count, 1);
+    assert.equal(authorized.data[0].id, rows[0].id);
+  } finally {
+    await prisma.loginAttempt.deleteMany({ where: { ipAddress: ip } });
     await prisma.$disconnect();
   }
 });
