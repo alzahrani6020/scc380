@@ -50,6 +50,23 @@ jobs:
         run: pnpm --filter @scc/database exec prisma migrate deploy --schema prisma/schema.prisma
       - name: Reconcile Prisma models on disposable database only
         run: pnpm --filter @scc/database exec prisma db push --schema prisma/schema.prisma --skip-generate
+      - name: Verify baseline fails closed against existing real-estate tables
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The previous migration step created 'properties' in disposable PostgreSQL.
+          # Applying the greenfield script again MUST fail before any destructive SQL.
+          if PGPASSWORD=scc psql -h 127.0.0.1 -U scc -d scc_real_estate_test -X -v ON_ERROR_STOP=1 -f packages/database/prisma/migrations/20261113223000_real_estate_greenfield_baseline/migration.sql > /tmp/re-baseline.out 2>&1; then
+            echo "FAIL: greenfield baseline unexpectedly accepted existing tables"
+            exit 1
+          fi
+          if ! grep -q 'Real-estate tables already exist: reconcile existing schema' /tmp/re-baseline.out; then
+            echo "FAIL: greenfield baseline rejected database for an unexpected reason"
+            sed -n '1,35p' /tmp/re-baseline.out
+            exit 1
+          fi
+          PGPASSWORD=scc psql -h 127.0.0.1 -U scc -d scc_real_estate_test -X -v ON_ERROR_STOP=1 -Atc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('properties','rent_payments','rent_collections')" | grep -qx '3'
+          echo "PASS: baseline rejected existing estate schema without removing tables"
       - name: Exercise property and unit lifecycle in isolated database
         run: pnpm --filter @scc/api exec tsx --test test/real-estate-db-acceptance.e2e.spec.ts
       - name: Exercise lease and receivable guardrails in isolated database
