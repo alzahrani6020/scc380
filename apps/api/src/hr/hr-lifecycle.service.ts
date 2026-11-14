@@ -147,6 +147,93 @@ export class HrLifecycleService {
     return prisma.hrLifecycleCase.findFirstOrThrow({ where: scope });
   }
 
+  async finalizeExit(req: any, id: string, dto: {
+    confirmation: string; lastWorkingDate: string; reason: string;
+  }) {
+    const tenantId=req.user?.tenantId;
+    const actor=req.user?.userId || req.user?.sub || req.user?.id;
+    if(!tenantId || !actor)throw new BadRequestException('Authenticated tenant operator required');
+    if(dto?.confirmation!=='FINALIZE_EMPLOYMENT_EXIT') {
+      throw new BadRequestException('Explicit finalization confirmation required');
+    }
+    const reason=dto.reason?.trim()||'';
+    const dateText=dto.lastWorkingDate||'';
+    if(reason.length<10 || reason.length>1000 || !/^\d{4}-\d{2}-\d{2}$/.test(dateText)) {
+      throw new BadRequestException('Documented termination reason and ISO date are required');
+    }
+    const terminationDate=new Date(dateText+'T00:00:00.000Z');
+    if(!Number.isFinite(terminationDate.valueOf()) ||
+       terminationDate.toISOString().slice(0,10)!==dateText ||
+       dateText>new Date().toISOString().slice(0,10)) {
+      throw new BadRequestException('Termination date cannot be invalid or in the future');
+    }
+    return prisma.$transaction(async tx=>{
+      const lifecycle=await tx.hrLifecycleCase.findFirst({
+        where:{tenantId,id,type:'OFFBOARDING',status:{in:['OPEN','IN_PROGRESS']}},
+        include:{tasks:true},
+      });
+      if(!lifecycle)throw new NotFoundException('Open offboarding lifecycle case not found');
+      if(!lifecycle.tasks.length || lifecycle.tasks.some(task=>task.status!=='DONE')) {
+        throw new ConflictException('All offboarding tasks must be explicitly completed before finalization');
+      }
+      const employee=await tx.employee.findFirst({
+        where:{tenantId,id:lifecycle.employeeId},
+        select:{id:true,userId:true,status:true,terminationDate:true,hireDate:true},
+      });
+      if(!employee || employee.status==='TERMINATED') {
+        throw new ConflictException('Employee must exist and not already be terminated');
+      }
+      if(terminationDate<employee.hireDate)throw new BadRequestException('Last working date precedes hire date');
+      const custody=await tx.assetCustodyAssignment.count({
+        where:{tenantId,employeeId:employee.id,status:'ACTIVE'},
+      });
+      if(custody>0)throw new ConflictException('Active custody assignments must be returned first');
+      if(employee.userId===actor)throw new ConflictException('Cannot deactivate the operator own account');
+      if(employee.userId) {
+        const target=await tx.user.findFirst({
+          where:{tenantId,id:employee.userId},
+          select:{id:true,role:true},
+        });
+        if(!target)throw new ConflictException('Employee account must belong to the same tenant');
+        if(['ADMIN','SUPER_ADMIN'].includes(target.role)) {
+          throw new ConflictException('Administrative account exit requires separate identity-governance approval');
+        }
+        await tx.user.updateMany({
+          where:{tenantId,id:target.id},data:{status:'INACTIVE'},
+        });
+        await tx.session.updateMany({
+          where:{userId:target.id,revokedAt:null},data:{revokedAt:new Date()},
+        });
+      }
+      await tx.employee.updateMany({
+        where:{tenantId,id:employee.id,status:{not:'TERMINATED'}},
+        data:{status:'TERMINATED',terminationDate},
+      });
+      await tx.employeeContract.updateMany({
+        where:{tenantId,employeeId:employee.id,status:'ACTIVE'},
+        data:{status:'TERMINATED',terminatedAt:terminationDate,terminationReason:reason},
+      });
+      const changed=await tx.hrLifecycleCase.updateMany({
+        where:{tenantId,id,status:{in:['OPEN','IN_PROGRESS']}},
+        data:{status:'COMPLETED',completedAt:new Date()},
+      });
+      if(changed.count!==1)throw new ConflictException('Offboarding case changed concurrently');
+      const operator=await tx.user.findFirst({
+        where:{tenantId,id:actor},select:{id:true},
+      });
+      await tx.auditLog.create({
+        data:{
+          tenantId,userId:operator?.id||null,action:'HR_EMPLOYMENT_EXIT_FINALIZED',
+          entityType:'EMPLOYEE',entityId:employee.id,
+          oldValues:{status:employee.status,terminationDate:employee.terminationDate?.toISOString()||null},
+          newValues:{status:'TERMINATED',terminationDate:dateText,reason,
+            lifecycleCaseId:id,actorUserId:actor,accessRevoked:!!employee.userId},
+        },
+      });
+      return tx.hrLifecycleCase.findFirstOrThrow({where:{tenantId,id},include:{tasks:true}});
+    },{isolationLevel:'Serializable'});
+  }
+
   async cancel(req: any, id: string) {
     const scope = { ...tenantWhere(req.user?.tenantId), id };
     const updated = await prisma.hrLifecycleCase.updateMany({

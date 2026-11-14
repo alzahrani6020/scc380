@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { IsIn, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, MaxLength, Min, MinLength } from 'class-validator';
 import { Type } from 'class-transformer';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard, RequirePermissions } from '../auth/guards/permissions.guard';
@@ -28,6 +28,12 @@ class UpdateLifecycleTaskDto {
   @Type(() => Number) @IsInt() @Min(0) @IsOptional() order?: number;
   @IsIn(['TODO','IN_PROGRESS','DONE','SKIPPED']) @IsOptional() status?: string;
   @IsString() @MaxLength(1000) @IsOptional() notes?: string;
+}
+
+class FinalizeExitDto {
+  @IsIn(['FINALIZE_EMPLOYMENT_EXIT']) confirmation: string;
+  @IsString() lastWorkingDate: string;
+  @IsString() @MinLength(10) @MaxLength(1000) reason: string;
 }
 
 @ApiTags('HR - Employee Lifecycle')
@@ -59,6 +65,12 @@ export class HrLifecycleController {
   @RequirePermissions('hr:lifecycle:write')
   updateTask(@Req() req: any, @Param('id') id: string, @Param('taskId') taskId: string, @Body() dto: UpdateLifecycleTaskDto) {
     return this.service.updateTask(req, id, taskId, dto);
+  }
+
+  @Post(':id/finalize-exit')
+  @RequirePermissions('hr:lifecycle:write','user:write')
+  finalizeExit(@Req() req: any, @Param('id') id: string, @Body() dto: FinalizeExitDto) {
+    return this.service.finalizeExit(req,id,dto);
   }
 
   @Post(':id/complete')

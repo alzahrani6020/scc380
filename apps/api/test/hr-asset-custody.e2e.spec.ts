@@ -185,3 +185,65 @@ test('HR offboarding rejects active employee user and sessions while preserving 
     }
   },
 );
+
+
+test('HR administrative exit requires completed tasks and revokes access without asserting financial payment',
+  { skip: process.env.CRM_DB_E2E !== '1' ? 'CRM_DB_E2E=1 is required' : false },
+  async () => {
+    const run='exit-finalization-'+process.pid+'-'+Date.now();
+    const tenant=await prisma.tenant.create({data:{name:'Exit Validation '+run,slug:run}});
+    const hr=new HrLifecycleService();
+    try {
+      const operator=await prisma.user.create({data:{
+        tenantId:tenant.id,email:run+'-hr@example.test',firstName:'HR',lastName:'Operator',
+        role:'ADMIN',status:'ACTIVE',
+      }});
+      const target=await prisma.user.create({data:{
+        tenantId:tenant.id,email:run+'-employee@example.test',firstName:'Employee',lastName:'Exit',
+        role:'USER',status:'ACTIVE',
+      }});
+      const employee=await prisma.employee.create({data:{
+        tenantId:tenant.id,userId:target.id,employeeCode:'EXIT-'+run,
+        firstName:'Employee',lastName:'Exit',hireDate:new Date('2026-01-01T00:00:00Z'),
+      }});
+      const session=await prisma.session.create({data:{
+        tenantId:tenant.id,userId:target.id,token:'exit-session-'+run,
+        expiresAt:new Date(Date.now()+86400000),
+      }});
+      const req:any={user:{tenantId:tenant.id,userId:operator.id,role:'ADMIN'}};
+      const lifecycle=await hr.create(req,{employeeId:employee.id,type:'OFFBOARDING'});
+      const dto={confirmation:'FINALIZE_EMPLOYMENT_EXIT',
+        lastWorkingDate:'2026-11-13',reason:'Documented employee exit after clearance'};
+      await assert.rejects(()=>hr.finalizeExit(req,lifecycle.id,dto),
+        /All offboarding tasks must be explicitly completed/);
+      for(const task of lifecycle.tasks){
+        await hr.updateTask(req,lifecycle.id,task.id,{status:'DONE'});
+      }
+      await assert.rejects(()=>hr.finalizeExit(req,lifecycle.id,{
+        ...dto,confirmation:'NO',
+      }),/Explicit finalization confirmation/);
+      const completed=await hr.finalizeExit(req,lifecycle.id,dto);
+      assert.equal(completed.status,'COMPLETED');
+      const after=await prisma.employee.findUniqueOrThrow({where:{id:employee.id}});
+      assert.equal(after.status,'TERMINATED');
+      assert.equal(after.terminationDate?.toISOString().slice(0,10),'2026-11-13');
+      assert.equal((await prisma.user.findUniqueOrThrow({where:{id:target.id}})).status,'INACTIVE');
+      assert.ok((await prisma.session.findUniqueOrThrow({where:{id:session.id}})).revokedAt);
+      assert.equal(await prisma.endServiceSettlement.count({
+        where:{tenantId:tenant.id,employeeId:employee.id,status:'PAID'},
+      }),0);
+      const recorded=await prisma.auditLog.findFirstOrThrow({
+        where:{tenantId:tenant.id,entityId:employee.id,action:'HR_EMPLOYMENT_EXIT_FINALIZED'},
+      });
+      assert.equal(recorded.userId,operator.id);
+      await assert.rejects(()=>hr.finalizeExit(req,lifecycle.id,dto),/Open offboarding lifecycle case not found/);
+    } finally {
+      await prisma.auditLog.deleteMany({where:{tenantId:tenant.id}});
+      await prisma.hrLifecycleTask.deleteMany({where:{tenantId:tenant.id}});
+      await prisma.hrLifecycleCase.deleteMany({where:{tenantId:tenant.id}});
+      await prisma.employee.deleteMany({where:{tenantId:tenant.id}});
+      await prisma.user.deleteMany({where:{tenantId:tenant.id}});
+      await prisma.tenant.deleteMany({where:{id:tenant.id}});
+    }
+  },
+);
