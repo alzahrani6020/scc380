@@ -156,7 +156,7 @@ export class AuthService {
     return user;
   }
 
-  async login(userId: string, email: string, role: string, tenantId?: string, tenantSlug?: string, req?: any) {
+  async login(userId: string, email: string, role: string, tenantId?: string, tenantSlug?: string, req?: any, method: 'password' | 'google' = 'password') {
     // Re-check account and tenant state at token issuance time.
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -208,6 +208,16 @@ export class AuthService {
         where: { id: userId },
         data: { lastLoginAt: new Date() },
       }),
+      prisma.auditLog.create({
+        data: {
+          userId,
+          tenantId: tenantId || null,
+          action: 'AUTH_LOGIN_SUCCESS',
+          entityType: 'Session',
+          entityId: tokens.sessionKey,
+          newValues: { method, sessionId: tokens.sessionKey },
+        },
+      }),
     ]);
 
     return {
@@ -254,6 +264,16 @@ export class AuthService {
       prisma.user.update({
         where: { id: userId },
         data: { lastLoginAt: new Date() },
+      }),
+      prisma.auditLog.create({
+        data: {
+          userId,
+          tenantId: tenantId || null,
+          action: 'AUTH_2FA_LOGIN_SUCCESS',
+          entityType: 'Session',
+          entityId: tokens.sessionKey,
+          newValues: { method: '2fa', sessionId: tokens.sessionKey },
+        },
       }),
     ]);
 
@@ -367,17 +387,51 @@ export class AuthService {
 
   async logout(refreshToken: string) {
     const tokenHash = this.hashToken(refreshToken);
-    await prisma.session.updateMany({
-      where: { token: tokenHash, revokedAt: null },
-      data: { revokedAt: new Date() },
+    // A revoked/unknown token is idempotent: never create a misleading
+    // successful-logout audit entry or reveal session ownership.
+    await prisma.$transaction(async (tx) => {
+      const session = await tx.session.findUnique({
+        where: { token: tokenHash },
+        select: { id: true, userId: true, tenantId: true },
+      });
+      if (!session) return;
+      const result = await tx.session.updateMany({
+        where: { id: session.id, token: tokenHash, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      if (result.count === 1) {
+        await tx.auditLog.create({
+          data: {
+            userId: session.userId,
+            tenantId: session.tenantId,
+            action: 'AUTH_LOGOUT_SUCCESS',
+            entityType: 'Session',
+            entityId: session.id,
+            newValues: { sessionId: session.id },
+          },
+        });
+      }
     });
     return { message: 'Logged out successfully' };
   }
 
-  async logoutAll(userId: string) {
-    await prisma.session.updateMany({
-      where: { userId, revokedAt: null },
-      data: { revokedAt: new Date() },
+  async logoutAll(userId: string, tenantId?: string | null) {
+    await prisma.$transaction(async (tx) => {
+      const result = await tx.session.updateMany({
+        where: { userId, tenantId: tenantId ?? null, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      if (result.count > 0) {
+        await tx.auditLog.create({
+          data: {
+            userId,
+            tenantId: tenantId ?? null,
+            action: 'AUTH_LOGOUT_ALL_SUCCESS',
+            entityType: 'Session',
+            newValues: { count: result.count },
+          },
+        });
+      }
     });
     return { message: 'All sessions revoked successfully' };
   }
@@ -608,7 +662,7 @@ export class AuthService {
       },
     });
 
-    return this.login(user.id, user.email, user.role, user.tenantId || undefined, undefined, req);
+    return this.login(user.id, user.email, user.role, user.tenantId || undefined, undefined, req, 'google');
   }
 
   // ─── 2FA / TOTP ────────────────────────────────────────────────────

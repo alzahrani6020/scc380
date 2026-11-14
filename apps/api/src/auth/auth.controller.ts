@@ -55,7 +55,7 @@ export class AuthController {
   @ApiBearerAuth()
   @Post('logout-all')
   async logoutAll(@Request() req) {
-    return this.authService.logoutAll(req.user.userId);
+    return this.authService.logoutAll(req.user.userId, req.user.tenantId ?? null);
   }
 
   // ─── Forgot / Reset Password ───────────────────────────────────────

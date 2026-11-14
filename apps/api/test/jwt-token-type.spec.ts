@@ -213,7 +213,7 @@ test('auth controller exposes refresh, logout, and authenticated logout-all', ()
   assert.match(source, /@Post\('logout'\)/);
   assert.match(source, /@Post\('logout-all'\)/);
   assert.match(source, /return this\.authService\.refresh\(refreshToken\)/);
-  assert.match(source, /return this\.authService\.logoutAll\(req\.user\.userId\)/);
+  assert.match(source, /return this\.authService\.logoutAll\(req\.user\.userId, req\.user\.tenantId \?\? null\)/);
 });
 
 test('web API refreshes once and retries the failed request without recursive refresh', () => {
