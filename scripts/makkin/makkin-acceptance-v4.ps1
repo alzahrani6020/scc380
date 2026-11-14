@@ -87,7 +87,8 @@ try {
   [void](Run 'install' 'corepack' @('pnpm','install','--frozen-lockfile') $tree)
   [void](Run 'generate' 'corepack' @('pnpm','--filter','@scc/database','db:generate') $tree)
   [void](Run 'database-build' 'corepack' @('pnpm','--filter','@scc/database','build') $tree)
-  [void](Run 'api-build' 'corepack' @('pnpm','--filter','@scc/api','build') $tree)
+  # API needs the workspace dependency graph built first (same as the proven CI flow).
+  [void](Run 'api-build' 'corepack' @('pnpm','turbo','run','build','--filter=@scc/api...') $tree)
   [void](Run 'web-build' 'corepack' @('pnpm','--filter','@scc/web','build') $tree)
   if($RunDatabaseTests){
     if(!(Get-Command docker -ErrorAction SilentlyContinue)){throw 'Docker unavailable'}
