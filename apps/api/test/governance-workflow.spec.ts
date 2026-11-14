@@ -71,7 +71,7 @@ test('a new employee claim requires a fresh respondent reply before independent 
 });
 
 test('employee appeal is not reviewed by its author and prevents premature closure', () => {
-  const history = [recorded('APPEAL_SUBMITTED','employee')];
+  const history = [recorded('DISCIPLINE_DISPOSITION','reviewer-a'),recorded('APPEAL_SUBMITTED','employee')];
   assert.throws(()=>assertGovernanceAction('DISCIPLINE','APPEAL_REVIEWED','employee',history),/independently reviewed/);
   assert.doesNotThrow(()=>assertGovernanceAction('DISCIPLINE','APPEAL_REVIEWED','reviewer-b',history));
   assert.throws(()=>assertGovernanceClosure('DISCIPLINE',history.map(x=>({...x,createdAt:new Date()}))),/unresolved/);
