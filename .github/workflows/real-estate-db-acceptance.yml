@@ -70,7 +70,7 @@ jobs:
             END IF;
             IF NOT EXISTS (
               SELECT 1 FROM pg_constraint
-              WHERE conname = 'rent_collections_rentPaymentId_fkey' AND contype = 'f'
+              WHERE conname = 'rent_collections_rentPaymentId_tenantId_fkey' AND contype = 'f'
             ) THEN
               RAISE EXCEPTION 'Tenant-consistent rent collection FK missing';
             END IF;
