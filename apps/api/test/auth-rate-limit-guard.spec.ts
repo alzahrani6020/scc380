@@ -1,7 +1,8 @@
 import 'reflect-metadata';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { HttpException } from '@nestjs/common';
+import { HttpException, UnauthorizedException } from '@nestjs/common';
+import { AuthController } from '../src/auth/auth.controller';
 import type { ExecutionContext } from '@nestjs/common';
 import { AuthRateLimitGuard } from '../src/auth/guards/auth-rate-limit.guard';
 
@@ -98,4 +99,30 @@ test('login concurrency safety: allow unrelated accounts but cap twenty concurre
   } finally { releases.forEach(release => release()); }
   const after = await guard.beginLogin(makeRequest(ip, 'new@example.test') as any, 'new@example.test');
   after();
+});
+
+test('real controller flow: correct credentials succeed after ten rejected attempts', async () => {
+  const email = 'qa-controller-flow@example.test';
+  const req = makeRequest('203.0.113.99', email);
+  const fakeService = {
+    authenticate: async (providedEmail: string, password: string) => {
+      assert.equal(providedEmail, email);
+      if (password !== 'correct-only-for-test') throw new UnauthorizedException('Invalid credentials');
+      return { id: 'test-user', email, role: 'ADMIN', tenantId: 'test-tenant' };
+    },
+    login: async () => ({ accessToken: 'test-only-placeholder', user: { email } }),
+  };
+  const controller = new AuthController(fakeService as any, guard);
+  for (let n = 0; n < 10; n++) {
+    let statusCode = 0;
+    try { await controller.login({ email, password: 'incorrect' }, req as any); }
+    catch (e) { if (e instanceof HttpException) statusCode = e.getStatus(); else throw e; }
+    assert.equal(statusCode, n === 9 ? 429 : 401);
+  }
+  const valid = await controller.login({ email, password: 'correct-only-for-test' }, req as any);
+  assert.equal(valid.accessToken, 'test-only-placeholder', 'Correct credentials must bypass failed attempt lockout');
+  let statusAfterRecovery = 0;
+  try { await controller.login({ email, password: 'incorrect' }, req as any); }
+  catch (e) { if (e instanceof HttpException) statusAfterRecovery = e.getStatus(); else throw e; }
+  assert.equal(statusAfterRecovery, 401, 'Success must clear account failure count');
 });
