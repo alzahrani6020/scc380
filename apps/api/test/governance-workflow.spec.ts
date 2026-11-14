@@ -141,7 +141,7 @@ test('governance UI searches all tenant employees instead of truncating selector
 test('claim disposition is required after latest review or settlement event', () => {
   const dated=(action:string)=>({action,createdAt:new Date('2026-11-14T00:00:00Z')});
   assert.throws(()=>assertGovernanceClosure('CLAIMS',
-    [dated('CLAIM_PROPOSED'),dated('CLAIM_REVIEWED')]),/Claim disposition/);
+    [dated('CLAIM_PROPOSED'),dated('CLAIM_REVIEWED')]),/CLAIM_DISPOSITION/);
   assert.doesNotThrow(()=>assertGovernanceClosure('CLAIMS',
     [dated('CLAIM_PROPOSED'),dated('CLAIM_REVIEWED'),dated('CLAIM_DISPOSITION')]));
   assert.throws(()=>assertGovernanceClosure('CLAIMS',
@@ -149,4 +149,13 @@ test('claim disposition is required after latest review or settlement event', ()
     /Claim disposition/);
   assert.throws(()=>assertGovernanceAction('CLAIMS','CLAIM_DISPOSITION','reviewer',[]),
     /Claim must be independently reviewed/);
+});
+
+test('empty claims and disciplinary cases cannot be closed as if reviewed', () => {
+  const dated=(action:string)=>({action,createdAt:new Date('2026-11-14T00:00:00Z')});
+  assert.throws(()=>assertGovernanceClosure('CLAIMS',[]),/CLAIM_PROPOSED/);
+  assert.throws(()=>assertGovernanceClosure('CLAIMS',
+    [dated('CLAIM_PROPOSED'),dated('CLAIM_DISPOSITION')]),/CLAIM_REVIEWED/);
+  assert.throws(()=>assertGovernanceClosure('DISCIPLINE',[]),/Disciplinary case disposition/);
+  assert.doesNotThrow(()=>assertGovernanceClosure('DISCIPLINE',[dated('DISCIPLINE_DISPOSITION')]));
 });

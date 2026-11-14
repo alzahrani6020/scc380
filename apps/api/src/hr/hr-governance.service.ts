@@ -29,6 +29,7 @@ export const GOVERNANCE_WORKFLOWS: Record<string, { code: string; label: string 
     { code: 'FINAL_REVIEW', label: 'مراجعة مستقلة للإجراء' },
     { code: 'APPEAL_SUBMITTED', label: 'تظلم الموظف' },
     { code: 'APPEAL_REVIEWED', label: 'مراجعة التظلم' },
+    { code: 'DISCIPLINE_DISPOSITION', label: 'توثيق انتهاء المراجعة دون إجراء تأديبي' },
   ],
   CONFLICTS: [
     { code: 'DISCLOSURE', label: 'إفصاح عن تعارض مصالح' },
@@ -148,6 +149,10 @@ export function assertGovernanceClosure(
   if (category==='LEGAL' && lastIndex('CASE_DISPOSITION')<0 && lastIndex('JUDGMENT_RECORDED')<0) {
     throw new ConflictException('Legal case outcome must be documented before closure');
   }
+  if (category === 'DISCIPLINE' && lastIndex('NOTICE_PROPOSED') < 0 &&
+      lastIndex('DISCIPLINE_DISPOSITION') < 0) {
+    throw new ConflictException('Disciplinary case disposition must be documented before closure');
+  }
   if (category === 'DISCIPLINE' && lastIndex('NOTICE_PROPOSED') >= 0 &&
     lastIndex('FINAL_REVIEW') < lastIndex('NOTICE_PROPOSED')) {
     throw new ConflictException('Proposed disciplinary notice requires independent final review before closure');
@@ -158,6 +163,13 @@ export function assertGovernanceClosure(
   if (category === 'OFFBOARDING') {
     for (const required of ['HANDOVER', 'ASSET_RETURN_CHECK', 'ACCESS_REVOKED_CONFIRMED']) {
       if (lastIndex(required) < 0) throw new ConflictException('Offboarding task missing: ' + required);
+    }
+  }
+  if (category === 'CLAIMS') {
+    for (const required of ['CLAIM_PROPOSED', 'CLAIM_REVIEWED', 'CLAIM_DISPOSITION']) {
+      if (lastIndex(required) < 0) {
+        throw new ConflictException('Required governance action missing: ' + required);
+      }
     }
   }
   if (category === 'CLAIMS' && lastIndex('CLAIM_PROPOSED') > lastIndex('CLAIM_REVIEWED')) {

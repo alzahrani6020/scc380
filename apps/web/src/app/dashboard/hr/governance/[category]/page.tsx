@@ -10,7 +10,7 @@ const WORKFLOW_ACTIONS: Record<string, {code:string;label:string}[]> = {
   VIOLATIONS: [{code:'REPORT_DETAIL',label:'تفاصيل البلاغ'},{code:'REVIEW_FINDING',label:'نتيجة المراجعة'}],
   INVESTIGATIONS: [{code:'INTERVIEW',label:'محضر استماع'},{code:'FACT_FINDING',label:'نتيجة التحقيق'},{code:'CUSTODY_LOSS_REVIEW',label:'تقييم عهدة مفقودة أو متضررة'}],
   EVIDENCE: [{code:'EVIDENCE_REVIEW',label:'فحص دليل'},{code:'CHAIN_OF_CUSTODY',label:'سلسلة حيازة الدليل'}],
-  DISCIPLINE: [{code:'NOTICE_PROPOSED',label:'إشعار مقترح'},{code:'FINAL_REVIEW',label:'مراجعة مستقلة'},{code:'APPEAL_REVIEWED',label:'مراجعة التظلم'}],
+  DISCIPLINE: [{code:'NOTICE_PROPOSED',label:'إشعار مقترح'},{code:'FINAL_REVIEW',label:'مراجعة مستقلة'},{code:'APPEAL_REVIEWED',label:'مراجعة التظلم'},{code:'DISCIPLINE_DISPOSITION',label:'إغلاق المراجعة دون جزاء'}],
   CONFLICTS: [{code:'DISCLOSURE',label:'إفصاح'},{code:'MITIGATION_PLAN',label:'خطة معالجة'},{code:'MITIGATION_REVIEW',label:'تقييم المعالجة'}],
   CLAIMS: [{code:'CLAIM_PROPOSED',label:'مطالبة مقترحة'},{code:'CLAIM_REVIEWED',label:'مراجعة مستقلة'},{code:'SETTLEMENT_OFFER',label:'عرض تسوية'},{code:'CLAIM_DISPOSITION',label:'توثيق مآل المطالبة'}],
   LEGAL: [{code:'CASE_REFERENCE',label:'مرجع القضية'},{code:'HEARING',label:'جلسة قضائية'},{code:'JUDGMENT_RECORDED',label:'القرار القضائي'},{code:'CASE_DISPOSITION',label:'توثيق مآل القضية'}],
