@@ -5,60 +5,69 @@ import { HttpException } from '@nestjs/common';
 import type { ExecutionContext } from '@nestjs/common';
 import { AuthRateLimitGuard } from '../src/auth/guards/auth-rate-limit.guard';
 
-// No HTTP server, database, or live authentication is used.
 const guard = new AuthRateLimitGuard();
-const makeContext = (ip: string, email: unknown, path = '/auth/login') => ({
-  switchToHttp: () => ({
-    getRequest: () => ({
-      ip, path, body: { email }, socket: { remoteAddress: 'untrusted-socket' },
-      headers: { 'x-forwarded-for': 'forged-client-address' },
-    }),
-  }),
+const makeRequest = (ip: string, email: unknown, path = '/auth/login') => ({
+  ip, path, body: { email }, socket: { remoteAddress: 'fallback' },
+  headers: { 'x-forwarded-for': 'forged-IP-not-trusted' },
+});
+const makeContext = (req: ReturnType<typeof makeRequest>) => ({
+  switchToHttp: () => ({ getRequest: () => req }),
 } as unknown as ExecutionContext);
+const status = (run: () => unknown) => {
+  try { run(); return 200; }
+  catch (e) { if (e instanceof HttpException) return e.getStatus(); throw e; }
+};
 
-function allowed(ip: string, email: unknown, path = '/auth/login'): boolean {
-  try { return guard.canActivate(makeContext(ip, email, path)); }
-  catch (err) { if (err instanceof HttpException && err.getStatus() === 429) return false; throw err; }
-}
-
-test('login: independent identities behind one reverse proxy do not share the 10-attempt limit', () => {
-  const ip = '192.0.2.17';
-  for (let i = 0; i < 10; i++) assert.equal(allowed(ip, 'first@example.test'), true);
-  assert.equal(allowed(ip, 'first@example.test'), false);
-  assert.equal(allowed(ip, 'other@example.test'), true);
-  assert.equal(allowed(ip, '  OTHER@EXAMPLE.TEST '), true, 'Identity normalization should share the same bucket');
-  for (let i = 0; i < 8; i++) assert.equal(allowed(ip, 'other@example.test'), true);
-  assert.equal(allowed(ip, 'other@example.test'), false);
-});
-
-test('login: source-wide anti-spray limit remains effective and no raw forwarded IP is trusted', () => {
-  const ip = '192.0.2.29';
-  for (let i = 0; i < 60; i++) {
-    assert.equal(allowed(ip, `spray-${i}@example.test`), true, `Request ${i + 1} should be allowed`);
+test('login: authenticated request is never rejected by pre-verification IP counters', () => {
+  const req = makeRequest('192.0.2.10', 'user@example.test');
+  for (let n = 0; n < 100; n++) {
+    assert.equal(status(() => guard.canActivate(makeContext(req))), 200);
   }
-  assert.equal(allowed(ip, 'next@example.test'), false, 'Source-wide limit must still block credential spraying');
-  assert.equal(allowed('192.0.2.30', 'next@example.test'), true, 'Different verified request IP must be independent');
 });
 
-test('login: distributed requests for same account share global 10-attempt limit', () => {
-  for (let i = 0; i < 10; i++) {
-    assert.equal(allowed(`198.51.100.${i+1}`, 'target@example.test'), true);
+test('login: 10 failed credentials per identity trigger 429 and a measurable retryAfter', () => {
+  const req = makeRequest('192.0.2.11', 'target@example.test');
+  for (let n = 0; n < 9; n++) assert.equal(status(() => guard.recordFailedLogin(req as any, req.body.email)), 200);
+  let caught: HttpException | null = null;
+  try { guard.recordFailedLogin(req as any, req.body.email); }
+  catch (e) { if (e instanceof HttpException) caught = e; else throw e; }
+  assert.equal(caught?.getStatus(), 429);
+  const payload = caught?.getResponse() as { retryAfter?: number };
+  assert.ok(payload.retryAfter && payload.retryAfter > 0 && payload.retryAfter <= 900);
+  assert.equal(status(() => guard.canActivate(makeContext(req))), 200, 'valid login path cannot be blocked');
+  guard.clearSuccessfulLogin('target@example.test');
+  assert.equal(status(() => guard.recordFailedLogin(req as any, 'TARGET@example.test')), 200);
+});
+
+test('failed logins for independent accounts behind same proxy do not share an account counter', () => {
+  const ip = '192.0.2.20';
+  for (let n = 0; n < 10; n++) {
+    status(() => guard.recordFailedLogin(makeRequest(ip, 'first@example.test') as any, 'first@example.test'));
   }
-  assert.equal(allowed('203.0.113.15', 'TARGET@example.test'), false,
-    'Distributed guessing must not reset the account-wide budget');
+  assert.equal(status(() => guard.recordFailedLogin(makeRequest(ip, 'second@example.test') as any, 'second@example.test')), 200);
 });
 
-test('login malformed email retains conservative 10-request limiter', () => {
-  const ip = '192.0.2.53';
-  for (let i = 0; i < 10; i++) assert.equal(allowed(ip, undefined), true);
-  assert.equal(allowed(ip, undefined), false);
+test('distributed credential failures cannot evade identity limit via changing source IP', () => {
+  for (let n = 0; n < 9; n++) {
+    assert.equal(status(() => guard.recordFailedLogin(makeRequest('198.51.100.' + n, 'distributed@example.test') as any, 'distributed@example.test')), 200);
+  }
+  assert.equal(status(() => guard.recordFailedLogin(makeRequest('203.0.113.3', 'DISTRIBUTED@example.test') as any, 'DISTRIBUTED@example.test')), 429);
 });
 
-test('registration and refresh policies remain unchanged', () => {
+test('source-wide brute force is throttled after 60 failed guesses', () => {
+  const ip = '192.0.2.21';
+  for (let n = 0; n < 59; n++) {
+    assert.equal(status(() => guard.recordFailedLogin(makeRequest(ip, `guess-${n}@example.test`) as any, `guess-${n}@example.test`)), 200);
+  }
+  assert.equal(status(() => guard.recordFailedLogin(makeRequest(ip, 'guess-59@example.test') as any, 'guess-59@example.test')), 429);
+  assert.equal(status(() => guard.canActivate(makeContext(makeRequest(ip, 'valid@example.test')))), 200);
+});
+
+test('non-login endpoints retain original independent limits and forged XFF is ignored', () => {
   const ip = '192.0.2.75';
-  for (let i = 0; i < 5; i++) assert.equal(allowed(ip, 'a@example.test', '/auth/register'), true);
-  assert.equal(allowed(ip, 'a@example.test', '/auth/register'), false);
+  for (let n = 0; n < 5; n++) assert.equal(status(() => guard.canActivate(makeContext(makeRequest(ip, undefined, '/auth/register')))), 200);
+  assert.equal(status(() => guard.canActivate(makeContext(makeRequest(ip, undefined, '/auth/register')))), 429);
   const refreshIp = '192.0.2.76';
-  for (let i = 0; i < 30; i++) assert.equal(allowed(refreshIp, undefined, '/auth/refresh'), true);
-  assert.equal(allowed(refreshIp, undefined, '/auth/refresh'), false);
+  for (let n = 0; n < 30; n++) assert.equal(status(() => guard.canActivate(makeContext(makeRequest(refreshIp, undefined, '/auth/refresh')))), 200);
+  assert.equal(status(() => guard.canActivate(makeContext(makeRequest(refreshIp, undefined, '/auth/refresh')))), 429);
 });
