@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "apps/web/e2e/production-login-smoke.mjs"
+      - "apps/web/e2e/production-refresh-isolated.mjs"
       - ".github/workflows/production-browser-smoke.yml"
   workflow_dispatch:
 
@@ -31,3 +32,9 @@ jobs:
         run: |
           cp apps/web/e2e/production-login-smoke.mjs /tmp/scc-smoke/production-login-smoke.mjs
           node /tmp/scc-smoke/production-login-smoke.mjs --ui-only
+      - name: Verify isolated browser refresh syntax
+        run: node --check apps/web/e2e/production-refresh-isolated.mjs
+      - name: Run deployed web 401 refresh and CRM retry with isolated API responses
+        run: |
+          cp apps/web/e2e/production-refresh-isolated.mjs /tmp/scc-smoke/production-refresh-isolated.mjs
+          node /tmp/scc-smoke/production-refresh-isolated.mjs
