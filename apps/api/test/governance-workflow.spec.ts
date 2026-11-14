@@ -38,6 +38,38 @@ test('disciplinary review requires employee response and separation of duties', 
   );
 });
 
+test('a new disciplinary notice requires a fresh employee response before review', () => {
+  const history=[
+    recorded('NOTICE_PROPOSED','author'),
+    recorded('EMPLOYEE_RESPONSE','employee'),
+    recorded('NOTICE_PROPOSED','author'),
+  ];
+  assert.throws(
+    () => assertGovernanceAction('DISCIPLINE','FINAL_REVIEW','reviewer',history),
+    /employee response/,
+  );
+  assert.doesNotThrow(
+    () => assertGovernanceAction('DISCIPLINE','FINAL_REVIEW','reviewer',
+      [...history,recorded('EMPLOYEE_RESPONSE','employee')]),
+  );
+});
+
+test('a new employee claim requires a fresh respondent reply before independent review', () => {
+  const history=[
+    recorded('CLAIM_PROPOSED','author'),
+    recorded('EMPLOYEE_RESPONSE','employee'),
+    recorded('CLAIM_PROPOSED','author'),
+  ];
+  assert.throws(
+    () => assertGovernanceAction('CLAIMS','CLAIM_REVIEWED','reviewer',history),
+    /respondent reply/,
+  );
+  assert.doesNotThrow(
+    () => assertGovernanceAction('CLAIMS','CLAIM_REVIEWED','reviewer',
+      [...history,recorded('EMPLOYEE_RESPONSE','employee')]),
+  );
+});
+
 test('employee appeal is not reviewed by its author and prevents premature closure', () => {
   const history = [recorded('APPEAL_SUBMITTED','employee')];
   assert.throws(()=>assertGovernanceAction('DISCIPLINE','APPEAL_REVIEWED','employee',history),/independently reviewed/);
