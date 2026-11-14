@@ -63,6 +63,12 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
         fileName:'late.pdf',mimeType:'application/pdf',contentBase64:pdf.toString('base64'),
       }),/Closed cases are read only/);
       assert.equal(await prisma.hrGovernanceEvent.count({where:{tenantId:a.id,caseId:record.id}}),6);
+      const subjectUser=await prisma.user.create({data:{
+        tenantId:a.id,email:'governance-'+id+'@example.test',firstName:'Case',lastName:'Subject',
+        role:'USER',status:'ACTIVE',
+      }});
+      await prisma.employee.update({where:{id:employee.id},data:{userId:subjectUser.id}});
+      const subjectReq:any={user:{tenantId:a.id,userId:subjectUser.id,role:'USER'}};
       const categories = [
         ['VIOLATIONS','REPORT_DETAIL'], ['INVESTIGATIONS','INTERVIEW'],
         ['EVIDENCE','EVIDENCE_REVIEW'], ['DISCIPLINE','NOTICE_PROPOSED'],
@@ -71,7 +77,7 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
         ['COMPLIANCE','CONTROL_FINDING'],
       ] as const;
       const reviewerReq:any={user:{tenantId:a.id,userId:'reviewer-'+id,role:'ADMIN'}};
-      const employeeReq:any={user:{tenantId:a.id,userId:'employee-reply-'+id,role:'ADMIN'}};
+
       for(const [category,code] of categories) {
         const caseFile=await service.create(reqA,{
           employeeId:employee.id,category,title:'Workspace E2E '+category,
@@ -86,7 +92,8 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
           await assert.rejects(()=>service.addWorkflowAction(reqA,caseFile.id,{
             code:'CLAIM_REVIEWED',narrative:'Attempt without response',
           }),/respondent reply/);
-          await service.addWorkflowAction(employeeReq,caseFile.id,{
+          await service.transition(reqA,caseFile.id,'IN_REVIEW');
+          await service.selfResponse(subjectReq,caseFile.id,{
             code:'EMPLOYEE_RESPONSE',narrative:'Respondent disputes the amount',
           });
           await assert.rejects(()=>service.addWorkflowAction(reqA,caseFile.id,{
@@ -96,9 +103,20 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
             code:'CLAIM_REVIEWED',narrative:'Independent review of the claim',
           });
           assert.equal(reviewed.events.at(-1)?.action,'CLAIM_REVIEWED');
+          await service.addWorkflowAction(reqA,caseFile.id,{
+            code:'SETTLEMENT_OFFER',narrative:'Recorded proposed settlement terms for claimant',
+          });
+          await assert.rejects(()=>service.addWorkflowAction(reqA,caseFile.id,{
+            code:'SETTLEMENT_ACCEPTANCE',narrative:'Forged administrative approval',
+          }),/restricted to authenticated employee self-service/);
+          const accepted=await service.selfResponse(subjectReq,caseFile.id,{
+            code:'SETTLEMENT_ACCEPTANCE',narrative:'I accept the documented proposed settlement terms',
+          });
+          assert.equal(accepted.code,'SETTLEMENT_ACCEPTANCE');
         }
         if(category==='DISCIPLINE') {
-          await service.addWorkflowAction(employeeReq,caseFile.id,{
+          await service.transition(reqA,caseFile.id,'IN_REVIEW');
+          await service.selfResponse(subjectReq,caseFile.id,{
             code:'EMPLOYEE_RESPONSE',narrative:'Employee response to proposed notice',
           });
           await assert.rejects(()=>service.addWorkflowAction(reqA,caseFile.id,{
@@ -107,7 +125,7 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
           await service.addWorkflowAction(reviewerReq,caseFile.id,{
             code:'FINAL_REVIEW',narrative:'Review of proposed administrative notice',
           });
-          await service.addWorkflowAction(employeeReq,caseFile.id,{
+          await service.selfResponse(subjectReq,caseFile.id,{
             code:'APPEAL_SUBMITTED',narrative:'Formal appeal of proposed notice',
           });
           await assert.rejects(()=>service.transition(reqA,caseFile.id,'CLOSED','Closed early'),/unresolved employee appeal/);
@@ -126,6 +144,19 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
           });
           const offboardingClosed=await service.transition(reqA,caseFile.id,'CLOSED','All administrative checks recorded');
           assert.equal(offboardingClosed.status,'CLOSED');
+        }
+        if(category==='CLAIMS') {
+          await assert.rejects(()=>service.addWorkflowAction(reqA,caseFile.id,{
+            code:'SETTLEMENT_ACCEPTANCE',narrative:'Not permitted for administrative account',
+          }),/restricted to authenticated employee self-service/);
+        }
+        if(category==='DISCIPLINE') {
+          await assert.rejects(()=>service.addWorkflowAction(reqA,caseFile.id,{
+            code:'EMPLOYEE_RESPONSE',narrative:'Administrative impersonation attempt',
+          }),/Employee statements and appeals require/);
+          await assert.rejects(()=>service.addWorkflowAction(reqA,caseFile.id,{
+            code:'APPEAL_SUBMITTED',narrative:'Administrative impersonation of employee appeal',
+          }),/Employee statements and appeals require/);
         }
         const found=await service.findOne(reqA,caseFile.id);
         assert.ok(found.events.length>=2);
@@ -185,6 +216,9 @@ test('HR self-governance: only disclosed employee cases, private reply and indep
       await assert.rejects(()=>svc.selfResponse(self,record.id,{
         code:'EMPLOYEE_RESPONSE',narrative:'Reply before review is forbidden',
       }),/under review/);
+      await assert.rejects(()=>svc.addWorkflowAction(admin,record.id,{
+        code:'EMPLOYEE_RESPONSE',narrative:'Manager masquerading as employee',
+      }),/require authenticated employee self-service/);
       await svc.transition(admin,record.id,'IN_REVIEW');
       const reply=await svc.selfResponse(self,record.id,{
         code:'EMPLOYEE_RESPONSE',narrative:'I dispute the proposed findings and provide clarification',

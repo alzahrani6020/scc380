@@ -135,7 +135,7 @@ export default function HrSelfServicePage() {
     catch { return details; }
   };
 
-  const sendCaseResponse = async (caseId:string, code:'EMPLOYEE_RESPONSE'|'APPEAL_SUBMITTED') => {
+  const sendCaseResponse = async (caseId:string, code:'EMPLOYEE_RESPONSE'|'APPEAL_SUBMITTED'|'SETTLEMENT_ACCEPTANCE') => {
     const narrative=(caseReplies[caseId]||'').trim();
     if(narrative.length<10)return;
     setCaseBusy(caseId);
@@ -225,8 +225,14 @@ export default function HrSelfServicePage() {
           const review=c.events?.some((e:any)=>e.action==='FINAL_REVIEW');
           const latestAppeal=(c.events||[]).map((e:any)=>e.action);
           const hasAppeal=latestAppeal.lastIndexOf('APPEAL_SUBMITTED')>latestAppeal.lastIndexOf('APPEAL_REVIEWED');
-          const canReply=c.status==='IN_REVIEW';
+          const latestResponse=latestAppeal.lastIndexOf('EMPLOYEE_RESPONSE');
+          const latestDisclosure=Math.max(latestAppeal.lastIndexOf('NOTICE_PROPOSED'),latestAppeal.lastIndexOf('CLAIM_PROPOSED'));
+          const alreadyReviewed=latestAppeal.lastIndexOf(c.category==='DISCIPLINE'?'FINAL_REVIEW':'CLAIM_REVIEWED')>latestDisclosure;
+          const canReply=c.status==='IN_REVIEW'&&latestDisclosure>=0&&latestResponse<latestDisclosure&&!alreadyReviewed;
           const canAppeal=c.category==='DISCIPLINE'&&review&&!hasAppeal&&['IN_REVIEW','RESOLVED'].includes(c.status);
+          const canAccept=c.category==='CLAIMS'&&['IN_REVIEW','RESOLVED'].includes(c.status)&&
+            latestAppeal.lastIndexOf('SETTLEMENT_OFFER')>=0&&latestAppeal.lastIndexOf('CLAIM_REVIEWED')>=0&&
+            latestAppeal.lastIndexOf('SETTLEMENT_ACCEPTANCE')<latestAppeal.lastIndexOf('SETTLEMENT_OFFER');
           return <article key={c.id} className="rounded-lg border border-slate-700 p-4 space-y-3">
             <h3 className="font-semibold text-white">{c.title}</h3>
             <p className="text-sm text-slate-400">{c.category==='DISCIPLINE'?'إجراء وظيفي':'مطالبة'} · {c.status}</p>
@@ -235,7 +241,7 @@ export default function HrSelfServicePage() {
                 <span className="text-primary-300">{e.action}: </span>{formatCaseNarrative(e.details)}
               </div>)}
             </div>
-            {(canReply||canAppeal)&&<>
+            {(canReply||canAppeal||canAccept)&&<>
               <label className="block text-sm text-slate-300">إفادتك أو اعتراضك
                 <textarea rows={3} maxLength={4000} value={caseReplies[c.id]||''}
                   onChange={e=>setCaseReplies(prev=>({...prev,[c.id]:e.target.value}))}
@@ -246,6 +252,8 @@ export default function HrSelfServicePage() {
                   onClick={()=>sendCaseResponse(c.id,'EMPLOYEE_RESPONSE')}>تقديم الإفادة</Button>}
                 {canAppeal&&<Button isLoading={caseBusy===c.id} disabled={caseBusy!==''||(caseReplies[c.id]||'').trim().length<10}
                   onClick={()=>sendCaseResponse(c.id,'APPEAL_SUBMITTED')}>تقديم تظلم</Button>}
+                {canAccept&&<Button isLoading={caseBusy===c.id} disabled={caseBusy!==''||(caseReplies[c.id]||'').trim().length<10}
+                  onClick={()=>{if(confirm('هل توافق على توثيق قبول عرض التسوية المذكور في ملف القضية؟ لا يُنشئ هذا الإجراء خصمًا أو تحويلًا ماليًا.'))void sendCaseResponse(c.id,'SETTLEMENT_ACCEPTANCE');}}>توثيق قبول عرض التسوية</Button>}
               </div>
             </>}
           </article>;

@@ -88,7 +88,7 @@ export class HrGovernanceController {
 
 
 class SelfGovernanceActionDto {
-  @IsIn(['EMPLOYEE_RESPONSE','APPEAL_SUBMITTED']) code: string;
+  @IsIn(['EMPLOYEE_RESPONSE','APPEAL_SUBMITTED','SETTLEMENT_ACCEPTANCE']) code: string;
   @IsString() @MinLength(10) @MaxLength(4000) narrative: string;
 }
 

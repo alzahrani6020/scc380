@@ -64,6 +64,9 @@ export function assertGovernanceAction(
   if (!GOVERNANCE_WORKFLOWS[category]?.some(item => item.code === code)) {
     throw new BadRequestException('Action is not available for this governance workspace');
   }
+  if (['EMPLOYEE_RESPONSE', 'APPEAL_SUBMITTED'].includes(code)) {
+    throw new BadRequestException('Employee statements and appeals require authenticated employee self-service');
+  }
   const latest = (action: string) => [...history].reverse().find(event => event.action === action);
   if (category === 'DISCIPLINE' && code === 'FINAL_REVIEW') {
     const proposed = latest('NOTICE_PROPOSED');
@@ -93,8 +96,11 @@ export function assertGovernanceAction(
   if (category === 'INVESTIGATIONS' && code === 'FACT_FINDING' && !latest('INTERVIEW')) {
     throw new ConflictException('Interview record required before investigation findings');
   }
-  if (category === 'CLAIMS' && code === 'SETTLEMENT_ACCEPTANCE' && !latest('SETTLEMENT_OFFER')) {
-    throw new ConflictException('Settlement offer required before accepting');
+  if (category === 'CLAIMS' && code === 'SETTLEMENT_OFFER' && !latest('CLAIM_REVIEWED')) {
+    throw new ConflictException('Independent claim review required before settlement offer');
+  }
+  if (category === 'CLAIMS' && code === 'SETTLEMENT_ACCEPTANCE') {
+    throw new BadRequestException('Settlement acceptance is restricted to authenticated employee self-service');
   }
 }
 
@@ -102,6 +108,10 @@ export function assertGovernanceClosure(
   category: string, history: { action: string; createdAt: Date }[],
 ) {
   const lastIndex = (action: string) => history.reduce((index, row, i) => row.action === action ? i : index, -1);
+  if (category === 'DISCIPLINE' && lastIndex('NOTICE_PROPOSED') >= 0 &&
+    lastIndex('FINAL_REVIEW') < lastIndex('NOTICE_PROPOSED')) {
+    throw new ConflictException('Proposed disciplinary notice requires independent final review before closure');
+  }
   if (category === 'DISCIPLINE' && lastIndex('APPEAL_SUBMITTED') > lastIndex('APPEAL_REVIEWED')) {
     throw new ConflictException('An unresolved employee appeal prevents case closure');
   }
@@ -322,7 +332,7 @@ export class HrGovernanceService {
         events: {
           where: { action: { in: [
             'NOTICE_PROPOSED', 'CLAIM_PROPOSED', 'FINAL_REVIEW', 'APPEAL_REVIEWED',
-            'EMPLOYEE_RESPONSE', 'APPEAL_SUBMITTED',
+            'EMPLOYEE_RESPONSE', 'APPEAL_SUBMITTED', 'SETTLEMENT_OFFER', 'SETTLEMENT_ACCEPTANCE',
           ] } },
           select: { id: true, action: true, details: true, createdAt: true },
           orderBy: { createdAt: 'asc' },
@@ -336,8 +346,8 @@ export class HrGovernanceService {
   async selfResponse(req: any, caseId: string, dto: { code: string; narrative: string }) {
     const { tenantId, userId, employeeId } = await this.selfEmployee(req);
     const narrative = dto.narrative?.trim() || '';
-    if (!['EMPLOYEE_RESPONSE', 'APPEAL_SUBMITTED'].includes(dto.code)) {
-      throw new BadRequestException('Only employee response or appeal is permitted');
+    if (!['EMPLOYEE_RESPONSE', 'APPEAL_SUBMITTED', 'SETTLEMENT_ACCEPTANCE'].includes(dto.code)) {
+      throw new BadRequestException('Only employee response, appeal, or settlement acceptance is permitted');
     }
     if (narrative.length < 10 || narrative.length > 4000) {
       throw new BadRequestException('Employee response must be 10-4000 characters');
@@ -358,13 +368,29 @@ export class HrGovernanceService {
         if (record.status !== 'IN_REVIEW' || latest(disclosure) < 0) {
           throw new ConflictException('Case must be disclosed and under review before reply');
         }
-      } else {
+        if (latest('EMPLOYEE_RESPONSE') > latest(disclosure)) {
+          throw new ConflictException('Response was already submitted for this disclosure');
+        }
+        const reviewed = record.category === 'DISCIPLINE' ? 'FINAL_REVIEW' : 'CLAIM_REVIEWED';
+        if (latest(reviewed) > latest(disclosure)) {
+          throw new ConflictException('The disclosed case was already reviewed');
+        }
+      } else if (dto.code === 'APPEAL_SUBMITTED') {
         if (record.category !== 'DISCIPLINE' || !['IN_REVIEW','RESOLVED'].includes(record.status) ||
           latest('FINAL_REVIEW') < 0) {
           throw new ConflictException('Appeal requires a disclosed disciplinary review');
         }
         if (latest('APPEAL_SUBMITTED') > latest('APPEAL_REVIEWED')) {
           throw new ConflictException('An employee appeal is already under review');
+        }
+      } else {
+        if (record.category !== 'CLAIMS' || !['IN_REVIEW', 'RESOLVED'].includes(record.status) ||
+          latest('SETTLEMENT_OFFER') < 0 || latest('CLAIM_REVIEWED') < 0 ||
+          latest('SETTLEMENT_OFFER') < latest('CLAIM_REVIEWED')) {
+          throw new ConflictException('A reviewed claim and a settlement offer are required');
+        }
+        if (latest('SETTLEMENT_ACCEPTANCE') > latest('SETTLEMENT_OFFER')) {
+          throw new ConflictException('Settlement offer already accepted');
         }
       }
       const changed = await tx.hrGovernanceCase.updateMany({
@@ -444,6 +470,16 @@ export class HrGovernanceService {
         select: { action: true, actorUserId: true },
       });
       assertGovernanceAction(record.category, dto.code, actor, history);
+      if (['FINAL_REVIEW', 'CLAIM_REVIEWED', 'APPEAL_REVIEWED'].includes(dto.code)) {
+        const employee = await tx.employee.findFirst({
+          where: { tenantId, id: record.employeeId }, select: { userId: true },
+        });
+        const responseType = dto.code === 'APPEAL_REVIEWED' ? 'APPEAL_SUBMITTED' : 'EMPLOYEE_RESPONSE';
+        if (!employee?.userId || !history.some(event =>
+          event.action === responseType && event.actorUserId === employee.userId)) {
+          throw new ConflictException('Verified employee self-service statement required before review');
+        }
+      }
       if (record.category === 'OFFBOARDING' && dto.code === 'ASSET_RETURN_CHECK') {
         const count = await tx.assetCustodyAssignment.count({
           where: { tenantId, employeeId: record.employeeId, status: 'ACTIVE' },

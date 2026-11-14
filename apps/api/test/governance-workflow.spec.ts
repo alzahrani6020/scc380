@@ -58,7 +58,8 @@ test('investigation, conflict management and compliance require prior record', (
   assert.throws(()=>assertGovernanceAction('INVESTIGATIONS','FACT_FINDING','a',[]),/Interview record/);
   assert.throws(()=>assertGovernanceAction('CONFLICTS','MITIGATION_REVIEW','a',[]),/Mitigation plan/);
   assert.throws(()=>assertGovernanceAction('COMPLIANCE','CONTROL_VERIFIED','a',[]),/Corrective action/);
-  assert.throws(()=>assertGovernanceAction('CLAIMS','SETTLEMENT_ACCEPTANCE','a',[]),/Settlement offer/);
+  assert.throws(()=>assertGovernanceAction('CLAIMS','SETTLEMENT_OFFER','a',[]),/Independent claim review/);
+  assert.throws(()=>assertGovernanceAction('CLAIMS','SETTLEMENT_ACCEPTANCE','a',[]),/restricted to authenticated employee self-service/);
 });
 
 test('offboarding cannot be closed without handover, custody and access checks', () => {
@@ -67,4 +68,21 @@ test('offboarding cannot be closed without handover, custody and access checks',
     recorded('HANDOVER'),recorded('ASSET_RETURN_CHECK'),recorded('ACCESS_REVOKED_CONFIRMED'),
   ].map(x => ({action:x.action,createdAt:new Date()}));
   assert.doesNotThrow(() => assertGovernanceClosure('OFFBOARDING', history));
+});
+
+test('administrators cannot impersonate employee responses or acceptance', () => {
+  for (const action of ['EMPLOYEE_RESPONSE','APPEAL_SUBMITTED']) {
+    assert.throws(() => assertGovernanceAction('DISCIPLINE',action,'admin',[]),/employee self-service/);
+  }
+  assert.throws(
+    () => assertGovernanceAction('CLAIMS','SETTLEMENT_ACCEPTANCE','admin',[]),
+    /restricted to authenticated employee self-service/,
+  );
+});
+
+test('disciplinary notices require independent final review before closure', () => {
+  const unreviewed=[recorded('NOTICE_PROPOSED')].map(x=>({...x,createdAt:new Date()}));
+  assert.throws(()=>assertGovernanceClosure('DISCIPLINE',unreviewed),/independent final review/);
+  const reviewed=[...unreviewed,{action:'FINAL_REVIEW',actorUserId:'reviewer-b',createdAt:new Date()}];
+  assert.doesNotThrow(()=>assertGovernanceClosure('DISCIPLINE',reviewed));
 });

@@ -6,12 +6,12 @@ import { useEffect, useState } from 'react';
 import api from '@/lib/api';
 
 const WORKFLOW_ACTIONS: Record<string, {code:string;label:string}[]> = {
-  VIOLATIONS: [{code:'REPORT_DETAIL',label:'تفاصيل البلاغ'},{code:'EMPLOYEE_RESPONSE',label:'رد الموظف'},{code:'REVIEW_FINDING',label:'نتيجة المراجعة'}],
+  VIOLATIONS: [{code:'REPORT_DETAIL',label:'تفاصيل البلاغ'},{code:'REVIEW_FINDING',label:'نتيجة المراجعة'}],
   INVESTIGATIONS: [{code:'INVESTIGATOR_ASSIGNED',label:'تكليف المحقق'},{code:'INTERVIEW',label:'محضر استماع'},{code:'FACT_FINDING',label:'نتيجة التحقيق'}],
   EVIDENCE: [{code:'EVIDENCE_REVIEW',label:'فحص دليل'},{code:'CHAIN_OF_CUSTODY',label:'سلسلة حيازة الدليل'}],
-  DISCIPLINE: [{code:'NOTICE_PROPOSED',label:'إشعار مقترح'},{code:'EMPLOYEE_RESPONSE',label:'إفادة الموظف'},{code:'FINAL_REVIEW',label:'مراجعة مستقلة'},{code:'APPEAL_SUBMITTED',label:'تقديم تظلم'},{code:'APPEAL_REVIEWED',label:'مراجعة التظلم'}],
+  DISCIPLINE: [{code:'NOTICE_PROPOSED',label:'إشعار مقترح'},{code:'FINAL_REVIEW',label:'مراجعة مستقلة'},{code:'APPEAL_REVIEWED',label:'مراجعة التظلم'}],
   CONFLICTS: [{code:'DISCLOSURE',label:'إفصاح'},{code:'MITIGATION_PLAN',label:'خطة معالجة'},{code:'MITIGATION_REVIEW',label:'تقييم المعالجة'}],
-  CLAIMS: [{code:'CLAIM_PROPOSED',label:'مطالبة مقترحة'},{code:'EMPLOYEE_RESPONSE',label:'رد الطرف المعني'},{code:'CLAIM_REVIEWED',label:'مراجعة مستقلة'},{code:'SETTLEMENT_OFFER',label:'عرض تسوية'},{code:'SETTLEMENT_ACCEPTANCE',label:'توثيق قبول التسوية'}],
+  CLAIMS: [{code:'CLAIM_PROPOSED',label:'مطالبة مقترحة'},{code:'CLAIM_REVIEWED',label:'مراجعة مستقلة'},{code:'SETTLEMENT_OFFER',label:'عرض تسوية'}],
   LEGAL: [{code:'CASE_REFERENCE',label:'مرجع القضية'},{code:'HEARING',label:'جلسة قضائية'},{code:'JUDGMENT_RECORDED',label:'القرار القضائي'}],
   OFFBOARDING: [{code:'HANDOVER',label:'تسليم الأعمال'},{code:'ASSET_RETURN_CHECK',label:'فحص العهد'},{code:'ACCESS_REVOKED_CONFIRMED',label:'مراجعة صلاحيات الوصول'}],
   COMPLIANCE: [{code:'CONTROL_FINDING',label:'ملاحظة رقابية'},{code:'CORRECTIVE_ACTION',label:'إجراء تصحيحي'},{code:'CONTROL_VERIFIED',label:'تحقق من المعالجة'}],
