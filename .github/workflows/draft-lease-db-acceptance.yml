@@ -44,7 +44,6 @@ jobs:
       - run: pnpm --filter @scc/database build
       - name: Apply existing migrations to disposable DB
         run: pnpm --filter @scc/database exec prisma migrate deploy --schema prisma/schema.prisma
-      - name: Reconcile Prisma in disposable DB only
-        run: pnpm --filter @scc/database exec prisma db push --schema prisma/schema.prisma --skip-generate
+      # Acceptance must exercise the migration history as deployed; db push would mask missing DDL.
       - name: Validate draft and active lease behavior
         run: pnpm --filter @scc/api exec tsx --test test/real-estate-draft-lifecycle.e2e.spec.ts
