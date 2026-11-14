@@ -76,4 +76,6 @@ test('payment workspace reads the unfiltered tenant collection summary', () => {
   assert.ok(page.includes('summary.pendingAmount'));
   assert.ok(page.includes('summary.completedAmount'));
   assert.ok(page.includes('summary.overdueAmount'));
+  assert.ok(page.includes('x.outstandingAmount'));
+  assert.ok(page.includes('idempotencyKey'));
 });
