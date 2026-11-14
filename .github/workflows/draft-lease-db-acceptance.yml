@@ -50,7 +50,7 @@ jobs:
         run: |
           set -euo pipefail
           PGPASSWORD=scc psql -h 127.0.0.1 -U scc -d "${DATABASE_URL##*/}" -X -v ON_ERROR_STOP=1 <<'SQL'
-          DO $
+          DO $audit$
           DECLARE missing text;
           BEGIN
             SELECT string_agg(required.object_name, ', ' ORDER BY required.object_name)
@@ -76,7 +76,7 @@ jobs:
             ) THEN
               RAISE EXCEPTION 'Rent collection idempotency unique index missing';
             END IF;
-          END $;
+          END $audit$;
           SQL
       - name: Detect schema drift after migrations (no db push)
         shell: bash
