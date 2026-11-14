@@ -86,3 +86,10 @@ test('disciplinary notices require independent final review before closure', () 
   const reviewed=[...unreviewed,{action:'FINAL_REVIEW',actorUserId:'reviewer-b',createdAt:new Date()}];
   assert.doesNotThrow(()=>assertGovernanceClosure('DISCIPLINE',reviewed));
 });
+
+test('investigator assignment cannot be fabricated as a text-only action', () => {
+  assert.throws(
+    () => assertGovernanceAction('INVESTIGATIONS','INVESTIGATOR_ASSIGNED','reporter',[]),
+    /requires a verified tenant user/,
+  );
+});

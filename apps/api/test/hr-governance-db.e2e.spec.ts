@@ -69,6 +69,10 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
       }});
       await prisma.employee.update({where:{id:employee.id},data:{userId:subjectUser.id}});
       const subjectReq:any={user:{tenantId:a.id,userId:subjectUser.id,role:'USER'}};
+      await prisma.user.create({data:{
+        id:'reviewer-'+id,tenantId:a.id,email:'reviewer-'+id+'@example.test',
+        firstName:'Independent',lastName:'Investigator',role:'ADMIN',status:'ACTIVE',
+      }});
       const categories = [
         ['VIOLATIONS','REPORT_DETAIL'], ['INVESTIGATIONS','INTERVIEW'],
         ['EVIDENCE','EVIDENCE_REVIEW'], ['DISCIPLINE','NOTICE_PROPOSED'],
@@ -83,10 +87,30 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
           employeeId:employee.id,category,title:'Workspace E2E '+category,
           description:'Independent validation of '+category+' case actions',
         });
-        const applied=await service.addWorkflowAction(reqA,caseFile.id,{
+        if(category==='INVESTIGATIONS') {
+          await assert.rejects(()=>service.addWorkflowAction(reqA,caseFile.id,{
+            code:'INVESTIGATOR_ASSIGNED',narrative:'Forged investigator assignment action',
+          }),/requires a verified tenant user/);
+          await assert.rejects(()=>service.assignInvestigator(reqA,caseFile.id,reqA.user.userId,
+            'Reporter must not investigate their own case'),/not found in tenant|independent/);
+          const assigned=await service.assignInvestigator(reqA,caseFile.id,reviewerReq.user.userId,
+            'Independent employee review assigned to authorized investigator');
+          assert.equal(assigned.assignedToId,reviewerReq.user.userId);
+          await assert.rejects(()=>service.addWorkflowAction(reqA,caseFile.id,{
+            code:'INTERVIEW',narrative:'Reporter is not assigned investigator',
+          }),/Only the assigned investigator/);
+        }
+        const investigatorActor=category==='INVESTIGATIONS'?reviewerReq:reqA;
+        const applied=await service.addWorkflowAction(investigatorActor,caseFile.id,{
           code,narrative:'Documented initial '+category+' procedure',
         });
         assert.equal(applied.events.at(-1)?.action,code);
+        if(category==='INVESTIGATIONS') {
+          const finding=await service.addWorkflowAction(reviewerReq,caseFile.id,{
+            code:'FACT_FINDING',narrative:'Investigator records findings after documented interview',
+          });
+          assert.equal(finding.events.at(-1)?.action,'FACT_FINDING');
+        }
         assert.equal((await service.list(reqB,{category})).count,0);
         if(category==='CLAIMS') {
           await assert.rejects(()=>service.addWorkflowAction(reqA,caseFile.id,{

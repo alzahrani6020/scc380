@@ -21,6 +21,10 @@ class EvidenceDto {
   @IsString() contentBase64: string;
   @IsString() @MaxLength(1000) @IsOptional() description?: string;
 }
+class InvestigatorAssignmentDto {
+  @IsString() investigatorUserId: string;
+  @IsString() @MinLength(10) @MaxLength(1000) rationale: string;
+}
 class WorkflowActionDto {
   @IsString() code: string;
   @IsString() @MinLength(10) @MaxLength(4000) narrative: string;
@@ -71,6 +75,11 @@ export class HrGovernanceController {
   @Get(':id/context')
   @RequirePermissions('hr:governance:read')
   context(@Req() req: any, @Param('id') id: string) { return this.service.relatedWorkspaces(req,id); }
+  @Post(':id/assign-investigator')
+  @RequirePermissions('hr:governance:write')
+  assignInvestigator(@Req() req: any, @Param('id') id: string, @Body() dto: InvestigatorAssignmentDto) {
+    return this.service.assignInvestigator(req, id, dto.investigatorUserId, dto.rationale);
+  }
   @Post(':id/actions')
   @RequirePermissions('hr:governance:write')
   action(@Req() req: any, @Param('id') id: string, @Body() dto: WorkflowActionDto) {

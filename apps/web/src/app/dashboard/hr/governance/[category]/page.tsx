@@ -7,7 +7,7 @@ import api from '@/lib/api';
 
 const WORKFLOW_ACTIONS: Record<string, {code:string;label:string}[]> = {
   VIOLATIONS: [{code:'REPORT_DETAIL',label:'تفاصيل البلاغ'},{code:'REVIEW_FINDING',label:'نتيجة المراجعة'}],
-  INVESTIGATIONS: [{code:'INVESTIGATOR_ASSIGNED',label:'تكليف المحقق'},{code:'INTERVIEW',label:'محضر استماع'},{code:'FACT_FINDING',label:'نتيجة التحقيق'}],
+  INVESTIGATIONS: [{code:'INTERVIEW',label:'محضر استماع'},{code:'FACT_FINDING',label:'نتيجة التحقيق'}],
   EVIDENCE: [{code:'EVIDENCE_REVIEW',label:'فحص دليل'},{code:'CHAIN_OF_CUSTODY',label:'سلسلة حيازة الدليل'}],
   DISCIPLINE: [{code:'NOTICE_PROPOSED',label:'إشعار مقترح'},{code:'FINAL_REVIEW',label:'مراجعة مستقلة'},{code:'APPEAL_REVIEWED',label:'مراجعة التظلم'}],
   CONFLICTS: [{code:'DISCLOSURE',label:'إفصاح'},{code:'MITIGATION_PLAN',label:'خطة معالجة'},{code:'MITIGATION_REVIEW',label:'تقييم المعالجة'}],
@@ -40,6 +40,9 @@ export default function GovernanceWorkspace() {
   const [related,setRelated] = useState<any>(null);
   const [form,setForm] = useState({ employeeId:'',contractId:'',title:'',description:'',priority:'NORMAL' });
   const [note,setNote] = useState('');
+  const [investigators,setInvestigators] = useState<any[]>([]);
+  const [investigatorUserId,setInvestigatorUserId] = useState('');
+  const [assignmentRationale,setAssignmentRationale] = useState('');
   const [actionCode,setActionCode] = useState('');
   const [actionNarrative,setActionNarrative] = useState('');
   const [actionAmount,setActionAmount] = useState('');
@@ -65,7 +68,15 @@ export default function GovernanceWorkspace() {
     } catch(e:any) { setError(e.response?.data?.message || 'تعذر تحميل البيانات أو لا توجد صلاحية'); }
     finally { setBusy(false); }
   };
-  useEffect(()=>{setSelected(null);void load();},[key]);
+  useEffect(()=>{
+    setSelected(null);setInvestigators([]);setInvestigatorUserId('');setAssignmentRationale('');
+    void load();
+    if(space?.category==='INVESTIGATIONS') {
+      api.get('/users?role=ADMIN&status=ACTIVE')
+        .then(r=>setInvestigators(r.data?.data||[]))
+        .catch(()=>setError('تعذر جلب المستخدمين المؤهلين لتكليف التحقيق'));
+    }
+  },[key]);
   useEffect(()=>{
     setContracts([]);
     if(!form.employeeId) return;
@@ -90,7 +101,7 @@ export default function GovernanceWorkspace() {
         api.get('/hr/governance/'+id+'/evidence'),
         api.get('/hr/governance/'+id+'/context'),
       ]);
-      setRelated(linked.data);setSelected(r.data);setEvidence(files.data||[]);setResolution('');setNote('');setFile(null);
+      setRelated(linked.data);setSelected(r.data);setInvestigatorUserId(r.data?.assignedToId||'');setEvidence(files.data||[]);setResolution('');setNote('');setFile(null);
       setActionCode('');setActionNarrative('');setActionAmount('');setActionDate('');
     }
     catch(e:any){setError(e.response?.data?.message||'تعذر فتح القضية');}
@@ -124,6 +135,18 @@ export default function GovernanceWorkspace() {
       const a=document.createElement('a');a.href=url;a.download=name;a.click();
       URL.revokeObjectURL(url);
     }catch(e:any){setError(e.response?.data?.message||'تعذر تنزيل الدليل');}
+  };
+  const assignInvestigator=async()=>{
+    if(!selected||!investigatorUserId||assignmentRationale.trim().length<10)return;
+    setSaving(true);setError('');
+    try {
+      const r=await api.post('/hr/governance/'+selected.id+'/assign-investigator',{
+        investigatorUserId,rationale:assignmentRationale.trim(),
+      });
+      setSelected(r.data);setAssignmentRationale('');
+      await load();
+    }catch(e:any){setError(e.response?.data?.message||'تعذر اعتماد تكليف المحقق');}
+    finally{setSaving(false);}
   };
   const addWorkflowAction=async()=>{
     if(!selected || !actionCode || actionNarrative.trim().length < 10) return;
@@ -255,6 +278,22 @@ export default function GovernanceWorkspace() {
           <button type="button" onClick={uploadEvidence} disabled={saving||!file} className="rounded-lg border border-slate-600 px-3 py-2 text-white disabled:opacity-50">رفع وحفظ الدليل</button>
         </>}
       </section>
+      {space.category==='INVESTIGATIONS'&&selected.status!=='CLOSED'&&<section className="rounded-lg border border-slate-700 p-3 space-y-3">
+        <h3 className="font-semibold text-white">تكليف المحقق المسؤول</h3>
+        <label className="block text-sm text-slate-300">المحقق من حسابات المنشأة
+          <select className={input} value={investigatorUserId} onChange={e=>setInvestigatorUserId(e.target.value)}>
+            <option value="">اختر المستخدم</option>
+            {investigators.map(u=><option key={u.id} value={u.id}>{u.firstName} {u.lastName} — {u.email}</option>)}
+          </select>
+        </label>
+        <label className="block text-sm text-slate-300">مبرر التكليف
+          <textarea className={input} maxLength={1000} value={assignmentRationale}
+            onChange={e=>setAssignmentRationale(e.target.value)} rows={2}/>
+        </label>
+        <button type="button" onClick={assignInvestigator} disabled={saving||!investigatorUserId||assignmentRationale.trim().length<10}
+          className="rounded-lg border border-primary-500 px-3 py-2 text-white disabled:opacity-50">تسجيل تكليف المحقق</button>
+        <p className="text-xs text-slate-400">المحقق المكلّف وحده يستطيع تسجيل جلسات الاستماع ونتائج التحقيق.</p>
+      </section>}
       {selected.status!=='CLOSED'&&<section className="rounded-lg border border-slate-700 p-3 space-y-3">
         <h3 className="font-semibold text-white">الإجراءات المتخصصة — {space.label}</h3>
         <label className="block text-sm text-slate-300">نوع الإجراء

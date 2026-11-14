@@ -64,6 +64,9 @@ export function assertGovernanceAction(
   if (!GOVERNANCE_WORKFLOWS[category]?.some(item => item.code === code)) {
     throw new BadRequestException('Action is not available for this governance workspace');
   }
+  if (category === 'INVESTIGATIONS' && code === 'INVESTIGATOR_ASSIGNED') {
+    throw new BadRequestException('Investigator assignment requires a verified tenant user');
+  }
   if (['EMPLOYEE_RESPONSE', 'APPEAL_SUBMITTED'].includes(code)) {
     throw new BadRequestException('Employee statements and appeals require authenticated employee self-service');
   }
@@ -438,6 +441,46 @@ export class HrGovernanceService {
     return {employee,linkedContractId:current.contractId,contracts,custody,settlements,lifecycle};
   }
 
+  async assignInvestigator(req: any, id: string, investigatorUserId: string, rationale: string) {
+    const tenantId = req.user?.tenantId;
+    const actor = req.user?.userId || req.user?.sub || req.user?.id;
+    if (!tenantId || !actor) throw new BadRequestException('Authenticated tenant user required');
+    if (!investigatorUserId || !rationale?.trim() || rationale.trim().length < 10) {
+      throw new BadRequestException('Investigator and assignment rationale are required');
+    }
+    return prisma.$transaction(async tx => {
+      const record = await tx.hrGovernanceCase.findFirst({
+        where: { ...tenantWhere(tenantId), id, category: 'INVESTIGATIONS' },
+        select: { id: true, status: true, assignedToId: true, employeeId: true, createdById: true },
+      });
+      if (!record) throw new NotFoundException('Investigation case not found');
+      if (record.status === 'CLOSED') throw new ConflictException('Closed cases are read only');
+      const investigator = await tx.user.findFirst({
+        where: { tenantId, id: investigatorUserId, status: 'ACTIVE', role: { in: ['ADMIN', 'SUPER_ADMIN'] } },
+        select: { id: true },
+      });
+      if (!investigator) throw new BadRequestException('Active investigation reviewer not found in tenant');
+      const employee = await tx.employee.findFirst({
+        where: { tenantId, id: record.employeeId }, select: { userId: true },
+      });
+      if (record.createdById === investigator.id || employee?.userId === investigator.id) {
+        throw new ConflictException('Investigator must be independent of the reporter and subject');
+      }
+      const changed = await tx.hrGovernanceCase.updateMany({
+        where: { tenantId, id, status: record.status, assignedToId: record.assignedToId },
+        data: { assignedToId: investigator.id },
+      });
+      if (changed.count !== 1) throw new ConflictException('Investigation assignment changed concurrently');
+      await tx.hrGovernanceEvent.create({
+        data: { tenantId, caseId: id, actorUserId: actor, action: 'INVESTIGATOR_ASSIGNED',
+          details: JSON.stringify({ investigatorUserId: investigator.id, rationale: rationale.trim() }) },
+      });
+      return tx.hrGovernanceCase.findFirstOrThrow({
+        where: { tenantId, id }, include: { events: { orderBy: { createdAt: 'asc' } } },
+      });
+    }, { isolationLevel: 'Serializable' });
+  }
+
   async workflowCatalog() { return GOVERNANCE_WORKFLOWS; }
 
   async addWorkflowAction(req: any, id: string, dto: {
@@ -461,7 +504,7 @@ export class HrGovernanceService {
     return prisma.$transaction(async tx => {
       const record = await tx.hrGovernanceCase.findFirst({
         where: { ...tenantWhere(tenantId), id },
-        select: { id: true, category: true, status: true, employeeId: true },
+        select: { id: true, category: true, status: true, employeeId: true, assignedToId: true },
       });
       if (!record) throw new NotFoundException('Governance case not found');
       if (record.status === 'CLOSED') throw new ConflictException('Closed cases are read only');
@@ -470,6 +513,10 @@ export class HrGovernanceService {
         select: { action: true, actorUserId: true },
       });
       assertGovernanceAction(record.category, dto.code, actor, history);
+      if (record.category === 'INVESTIGATIONS' && ['INTERVIEW','FACT_FINDING'].includes(dto.code) &&
+          record.assignedToId !== actor) {
+        throw new ConflictException('Only the assigned investigator can record investigation findings');
+      }
       if (['FINAL_REVIEW', 'CLAIM_REVIEWED', 'APPEAL_REVIEWED'].includes(dto.code)) {
         const employee = await tx.employee.findFirst({
           where: { tenantId, id: record.employeeId }, select: { userId: true },
