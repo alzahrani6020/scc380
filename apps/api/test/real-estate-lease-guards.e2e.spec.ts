@@ -60,6 +60,14 @@ test(
       }));
       await assert.rejects(() => leases.update(a.id, contract.id, { rentAmount: '2000' }), /financial terms/);
       await assert.rejects(() => leases.delete(a.id, contract.id), /draft contracts without scheduled/);
+      // Even direct ORM writes cannot attach a receipt to a foreign tenant's receivable.
+      await assert.rejects(() => prisma.rentCollection.create({
+        data: {
+          tenantId: b.id, rentPaymentId: scheduled.id,
+          amount: '1.00', collectedAt: new Date('2026-01-02T00:00:00.000Z'),
+          idempotencyKey: 'foreign-fk-'+run,
+        },
+      }));
       const firstPartial = await receivables.recordPayment(a.id, scheduled.id, {
         paidDate: '2026-01-02T00:00:00.000Z', amount: '400.00',
         idempotencyKey: 'partial-'+run, transactionRef: 'partial-bank-'+run,
