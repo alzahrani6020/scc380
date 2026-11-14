@@ -258,6 +258,17 @@ test('HR administrative exit requires completed tasks and revokes access without
       }),/Explicit finalization confirmation/);
       const completed=await hr.finalizeExit(req,lifecycle.id,dto);
       assert.equal(completed.status,'COMPLETED');
+      await assert.rejects(
+        () => hr.updateTask(req,lifecycle.id,lifecycle.tasks[0].id,{status:'TODO'}),
+        /Lifecycle case is closed/,
+      );
+      await assert.rejects(
+        () => hr.addTask(req,lifecycle.id,{title:'Late task after closure'}),
+        /Lifecycle case is closed/,
+      );
+      assert.equal((await prisma.hrLifecycleCase.findUniqueOrThrow({
+        where:{id:lifecycle.id},
+      })).status,'COMPLETED');
       const after=await prisma.employee.findUniqueOrThrow({where:{id:employee.id}});
       assert.equal(after.status,'TERMINATED');
       assert.equal(after.terminationDate?.toISOString().slice(0,10),'2026-11-13');
