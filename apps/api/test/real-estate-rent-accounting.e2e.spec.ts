@@ -53,7 +53,7 @@ test(
       assert.equal((await journals.postAccrual(a.id, due.id)).id, accrual.id);
       await assert.rejects(() => receipts.update(a.id, due.id, {
         dueDate: '2027-01-01T00:00:00.000Z',
-      }), /Cannot reschedule/);
+      }), /Cannot modify a receivable after collection or accounting posting/);
 
 
       const part = await receipts.recordPayment(a.id, due.id, {
