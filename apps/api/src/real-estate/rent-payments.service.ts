@@ -24,20 +24,32 @@ export class RentPaymentsService {
         orderBy: { dueDate: 'asc' },
         include: {
           contract: { select: { id: true, lesseeName: true, propertyId: true, unitId: true } },
+          collections: { select: { amount: true } },
         },
       }),
       prisma.rentPayment.count({ where }),
     ]);
-    return { data, count };
+    return { data: data.map(payment => this.withCollectionBalance(payment)), count };
+  }
+
+  private withCollectionBalance<T extends { amount: Prisma.Decimal; status: PaymentStatus; collections: { amount: Prisma.Decimal }[] }>(payment: T) {
+    const recorded = payment.collections.reduce((sum, item) => sum.plus(item.amount), new Prisma.Decimal(0));
+    const collected = payment.status === PaymentStatus.COMPLETED && recorded.isZero() ? payment.amount : recorded;
+    return {
+      ...payment,
+      collectedAmount: collected.toFixed(2),
+      outstandingAmount: Prisma.Decimal.max(payment.amount.minus(collected), new Prisma.Decimal(0)).toFixed(2),
+      collections: undefined,
+    };
   }
 
   async findOne(tenantId: string, id: string) {
     const payment = await prisma.rentPayment.findFirst({
       where: withTenant({ id }, tenantId),
-      include: { contract: true },
+      include: { contract: true, collections: { select: { amount: true } } },
     });
     if (!payment) throw new NotFoundException('Payment not found');
-    return payment;
+    return this.withCollectionBalance(payment);
   }
 
   async create(tenantId: string, dto: any) {
@@ -149,25 +161,31 @@ export class RentPaymentsService {
     const pending = withTenant({ status: PaymentStatus.PENDING }, tenantId);
     const completed = withTenant({ status: PaymentStatus.COMPLETED }, tenantId);
     const overdue = withTenant({ status: PaymentStatus.PENDING, dueDate: { lt: now } }, tenantId);
-    const [pendingTotal, completedTotal, overdueTotal, pendingCount, completedCount, overdueCount] =
-      await Promise.all([
-        prisma.rentPayment.aggregate({ where: pending, _sum: { amount: true } }),
-        prisma.rentPayment.aggregate({ where: completed, _sum: { amount: true } }),
-        prisma.rentPayment.aggregate({ where: overdue, _sum: { amount: true } }),
-        prisma.rentPayment.count({ where: pending }),
-        prisma.rentPayment.count({ where: completed }),
-        prisma.rentPayment.count({ where: overdue }),
-      ]);
+    const [pendingFace, completedFace, overdueFace, pendingCollected, overdueCollected,
+      pendingCount, completedCount, overdueCount] = await Promise.all([
+      prisma.rentPayment.aggregate({ where: pending, _sum: { amount: true } }),
+      prisma.rentPayment.aggregate({ where: completed, _sum: { amount: true } }),
+      prisma.rentPayment.aggregate({ where: overdue, _sum: { amount: true } }),
+      prisma.rentCollection.aggregate({
+        where: { tenantId, rentPayment: { status: PaymentStatus.PENDING } }, _sum: { amount: true },
+      }),
+      prisma.rentCollection.aggregate({
+        where: { tenantId, rentPayment: { status: PaymentStatus.PENDING, dueDate: { lt: now } } },
+        _sum: { amount: true },
+      }),
+      prisma.rentPayment.count({ where: pending }),
+      prisma.rentPayment.count({ where: completed }),
+      prisma.rentPayment.count({ where: overdue }),
+    ]);
+    const partial = pendingCollected._sum.amount ?? new Prisma.Decimal(0);
+    const partialOverdue = overdueCollected._sum.amount ?? new Prisma.Decimal(0);
     return {
-      asOf: now.toISOString(),
-      currency: 'SAR',
-      pendingAmount: (pendingTotal._sum.amount ?? 0).toString(),
-      completedAmount: (completedTotal._sum.amount ?? 0).toString(),
-      overdueAmount: (overdueTotal._sum.amount ?? 0).toString(),
-      pendingCount,
-      completedCount,
-      overdueCount,
-      // Excludes FAILED/REFUNDED; no partial settlement ledger exists yet.
+      asOf: now.toISOString(), currency: 'SAR',
+      pendingAmount: (pendingFace._sum.amount ?? new Prisma.Decimal(0)).minus(partial).toFixed(2),
+      completedAmount: (completedFace._sum.amount ?? new Prisma.Decimal(0)).plus(partial).toFixed(2),
+      overdueAmount: (overdueFace._sum.amount ?? new Prisma.Decimal(0)).minus(partialOverdue).toFixed(2),
+      pendingCount, completedCount, overdueCount,
+      // Legacy COMPLETED receivables without ledger rows remain counted as fully collected.
     };
   }
 
