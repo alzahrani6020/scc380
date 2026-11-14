@@ -54,6 +54,7 @@ function Run([string]$name,[string]$exe,[string[]]$argumentList,[string]$cwd,[bo
       $ErrorActionPreference='Continue'
       & $exe @argumentList 2>&1 | Out-File -FilePath $log -Encoding utf8
       $exit=$LASTEXITCODE
+      $script:lastRunExit=$exit
     } finally {$ErrorActionPreference=$pref}
   } finally {Pop-Location}
   if($exit -ne 0){
@@ -145,11 +146,27 @@ try {
            'tsx','--test',"test/$test") $tree $false)){$ok=$false}
     }
     $state.functional=$(if($ok){'PASS'}else{'FAIL'})
-    $drift=Run 'full-schema-drift' 'corepack' @('pnpm','--filter','@scc/database','exec',
-      'prisma','migrate','diff','--from-url',$env:DIRECT_URL,
-      '--to-schema-datamodel','prisma/schema.prisma','--exit-code') $tree $false
-    $state.schemaDrift=$(if($drift){'PASS'}else{'FAIL'})
-    if(!$ok -or !$drift){$state.status='FAIL'}else{$state.status='PARTIAL'}
+    # Prisma migrate diff --exit-code semantics: 0=no drift, 2=drift, 1=execution error.
+    # Invoke the installed package's CLI directly: Windows pnpm shim can emit
+    # a spurious "Command prisma not found" after producing a valid diff.
+    $prismaCli=Join-Path $tree 'packages/database/node_modules/prisma/build/index.js'
+    if(!(Test-Path -LiteralPath $prismaCli -PathType Leaf)){
+      Check 'full-schema-drift' 'ERROR' 'Installed Prisma CLI missing; not a schema verdict'
+      $state.schemaDrift='UNKNOWN'
+      $state.status='FAIL'
+    } else {
+      $schemaFile=Join-Path $tree 'packages/database/prisma/schema.prisma'
+      $drift=Run 'full-schema-drift' 'node' @($prismaCli,'migrate','diff',
+        '--from-url',$env:DIRECT_URL,'--to-schema-datamodel',$schemaFile,
+        '--exit-code') $tree $false
+      if($script:lastRunExit -eq 0){$state.schemaDrift='PASS'}
+      elseif($script:lastRunExit -eq 2){$state.schemaDrift='FAIL'}
+      else{
+        $state.schemaDrift='UNKNOWN'
+        Check 'prisma-cli' 'ERROR' "migrate diff exited $script:lastRunExit; not a confirmed drift verdict"
+      }
+      $state.status=$(if($ok -and $state.schemaDrift -eq 'PASS'){'PARTIAL'}else{'FAIL'})
+    }
   } else {
     Check 'db-acceptance' 'NOT_RUN' 'Supply -RunDatabaseTests'
     $state.status='PARTIAL'
