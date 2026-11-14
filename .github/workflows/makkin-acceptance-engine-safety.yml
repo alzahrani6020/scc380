@@ -11,7 +11,7 @@ permissions:
 jobs:
   powershell-safety:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: Parse all Makkin PowerShell scripts without executing
@@ -56,3 +56,36 @@ jobs:
           }
           Write-Host 'PASS: both scripts fail closed without credentials or network activity'
           $global:LASTEXITCODE = 0 # subprocesses must fail; this validation step passed
+
+      - name: Set up Node for pinned worktree build
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Activate pinned pnpm
+        shell: bash
+        run: corepack enable && corepack prepare pnpm@8.15.0 --activate
+      - name: Run SHA-pinned Makkin engine build in detached worktree (no production)
+        shell: pwsh
+        env:
+          MAKKIN_EXPECTED_SHA: ${{ github.event.pull_request.head.sha }}
+          MAKKIN_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP 'makkin-v4-full-build'
+          & pwsh -NoProfile -File scripts/makkin/makkin-acceptance-v4.ps1 `
+            -Repo $env:GITHUB_WORKSPACE -Branch $env:MAKKIN_BRANCH `
+            -ExpectedCommit $env:MAKKIN_EXPECTED_SHA -EvidenceRoot $evidence
+          if ($LASTEXITCODE -ne 0) { throw 'Makkin engine failed SHA-pinned build' }
+          $result = Get-Content (Join-Path $evidence 'result.json') -Raw | ConvertFrom-Json
+          if ($result.commit -ne $env:MAKKIN_EXPECTED_SHA -or
+              $result.status -ne 'PARTIAL' -or
+              $result.production -ne 'UNKNOWN' -or
+              $result.schemaDrift -ne 'NOT_RUN') {
+            throw 'Build evidence/production status unexpected'
+          }
+          foreach ($name in @('install','generate','database-build','api-build','web-build')) {
+            if (-not @($result.checks | Where-Object { $_.name -eq $name -and $_.status -eq 'PASS' }).Count) {
+              throw "Required detached-worktree check missing or failed: $name"
+            }
+          }
+          Write-Host 'PASS: SHA-pinned detached worktree built and production remains UNKNOWN'
