@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { prisma } from '@scc/database';
 import { HrGovernanceService } from '../src/hr/hr-governance.service';
+import { HrLifecycleService } from '../src/hr/hr-lifecycle.service';
 
 test('Governance workspaces: tenant isolation, contract ownership, notes and controlled transitions',
   { skip: process.env.CRM_DB_E2E !== '1' ? 'CRM_DB_E2E=1 is required' : false },
@@ -29,6 +30,21 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
         description:'Unverified report that must be reviewed',priority:'HIGH',
       });
       assert.equal(record.status,'OPEN');
+      const searched=await service.list(reqA,{search:'Reported work issue'});
+      assert.equal(searched.count,1);
+      assert.equal(searched.data[0].id,record.id);
+      const wrongStatus=await service.list(reqA,{status:'CLOSED'});
+      assert.equal(wrongStatus.count,0);
+      await assert.rejects(()=>service.list(reqA,{search:'x'.repeat(101)}),/Search term must be at most/);
+      await assert.rejects(()=>service.list(reqA,{status:'INVALID'}),/Invalid governance status/);
+      const foreignSearch=await service.list(reqB,{search:'Reported work issue'});
+      assert.equal(foreignSearch.count,0);
+      const pageOne=await service.list(reqA,{page:'1',limit:'1'});
+      assert.equal(pageOne.count,1);
+      assert.equal(pageOne.data.length,1);
+      assert.equal(pageOne.data[0].id,record.id);
+      await assert.rejects(()=>service.list(reqA,{page:'0'}),/Invalid pagination/);
+      await assert.rejects(()=>service.list(reqA,{limit:'999'}),/Invalid pagination/);
       assert.equal(record.events[0].action,'CREATED');
       assert.equal((await service.list(reqB,{})).count,0);
       await assert.rejects(()=>service.findOne(reqB,record.id),/not found/);
@@ -51,6 +67,19 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
       assert.equal(reviewing.status,'IN_REVIEW');
       const noted = await service.addNote(reqA,record.id,'Employee response received');
       assert.equal(noted.events.length,4);
+      await assert.rejects(
+        ()=>service.transition(reqA,record.id,'CLOSED','Premature close without review'),
+        /Required governance action missing: REPORT_DETAIL/,
+      );
+      await service.addWorkflowAction(reqA,record.id,{
+        code:'REPORT_DETAIL',narrative:'Documented original report reviewed by HR',
+      });
+      const independentReviewer:any={user:{
+        tenantId:a.id,userId:'reviewer-'+id,role:'ADMIN',
+      }};
+      await service.addWorkflowAction(independentReviewer,record.id,{
+        code:'REVIEW_FINDING',narrative:'Independent review did not substantiate the allegation',
+      });
       await assert.rejects(()=>service.transition(reqA,record.id,'CLOSED'),/rationale is required/);
       const resolved = await service.transition(reqA,record.id,'RESOLVED','No substantiated violation');
       assert.equal(resolved.status,'RESOLVED');
@@ -62,12 +91,402 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
       await assert.rejects(()=>service.addEvidence(reqA,record.id,{
         fileName:'late.pdf',mimeType:'application/pdf',contentBase64:pdf.toString('base64'),
       }),/Closed cases are read only/);
-      assert.equal(await prisma.hrGovernanceEvent.count({where:{tenantId:a.id,caseId:record.id}}),6);
+      assert.equal(await prisma.hrGovernanceEvent.count({where:{tenantId:a.id,caseId:record.id}}),8);
+      const subjectUser=await prisma.user.create({data:{
+        tenantId:a.id,email:'governance-'+id+'@example.test',firstName:'Case',lastName:'Subject',
+        role:'USER',status:'ACTIVE',
+      }});
+      await prisma.employee.update({where:{id:employee.id},data:{userId:subjectUser.id}});
+      const subjectReq:any={user:{tenantId:a.id,userId:subjectUser.id,role:'USER'}};
+      await prisma.user.create({data:{
+        id:'reviewer-'+id,tenantId:a.id,email:'reviewer-'+id+'@example.test',
+        firstName:'Independent',lastName:'Investigator',role:'ADMIN',status:'ACTIVE',
+      }});
+      await prisma.user.create({data:{
+        id:'appeal-reviewer-'+id,tenantId:a.id,email:'appeal-reviewer-'+id+'@example.test',
+        firstName:'Appeal',lastName:'Reviewer',role:'ADMIN',status:'ACTIVE',
+      }});
+      const unlinkedOffboardingEmployee=await prisma.employee.create({data:{
+        tenantId:a.id,employeeCode:'OFFBOARD-'+id,firstName:'Leaving',lastName:'Employee',
+        hireDate:new Date('2026-01-01T00:00:00Z'),
+      }});
+      const categories = [
+        ['VIOLATIONS','REPORT_DETAIL'], ['INVESTIGATIONS','INTERVIEW'],
+        ['EVIDENCE','EVIDENCE_REVIEW'], ['DISCIPLINE','NOTICE_PROPOSED'],
+        ['CONFLICTS','DISCLOSURE'], ['CLAIMS','CLAIM_PROPOSED'],
+        ['LEGAL','CASE_REFERENCE'], ['OFFBOARDING','HANDOVER'],
+        ['COMPLIANCE','CONTROL_FINDING'],
+      ] as const;
+      const reviewerReq:any={user:{tenantId:a.id,userId:'reviewer-'+id,role:'ADMIN'}};
+      const appealReviewerReq:any={user:{tenantId:a.id,userId:'appeal-reviewer-'+id,role:'ADMIN'}};
+
+      for(const [category,code] of categories) {
+        const caseFile=await service.create(reqA,{
+          employeeId:category==='OFFBOARDING'?unlinkedOffboardingEmployee.id:employee.id,
+          category,title:'Workspace E2E '+category,
+          description:'Independent validation of '+category+' case actions',
+        });
+        if(category==='EVIDENCE') {
+          await assert.rejects(()=>service.addWorkflowAction(reqA,caseFile.id,{
+            code:'EVIDENCE_REVIEW',narrative:'Attempt to review absent file',
+          }),/requires an uploaded original file/);
+          const sample=await service.addEvidence(reqA,caseFile.id,{
+            fileName:'evidence.pdf',mimeType:'application/pdf',
+            contentBase64:pdf.toString('base64'),description:'Synthetic original evidence',
+          });
+          assert.equal(sample.sizeBytes,pdf.length);
+        }
+        if(category==='INVESTIGATIONS') {
+          await assert.rejects(()=>service.addWorkflowAction(reqA,caseFile.id,{
+            code:'INVESTIGATOR_ASSIGNED',narrative:'Forged investigator assignment action',
+          }),/requires a verified tenant user/);
+          await assert.rejects(()=>service.assignInvestigator(reqA,caseFile.id,reqA.user.userId,
+            'Reporter must not investigate their own case'),/not found in tenant|independent/);
+          const assigned=await service.assignInvestigator(reqA,caseFile.id,reviewerReq.user.userId,
+            'Independent employee review assigned to authorized investigator');
+          assert.equal(assigned.assignedToId,reviewerReq.user.userId);
+          await assert.rejects(()=>service.addWorkflowAction(reqA,caseFile.id,{
+            code:'INTERVIEW',narrative:'Reporter is not assigned investigator',
+          }),/Only the assigned investigator/);
+        }
+        const investigatorActor=category==='INVESTIGATIONS'?reviewerReq:reqA;
+        const applied=await service.addWorkflowAction(investigatorActor,caseFile.id,{
+          code,narrative:'Documented initial '+category+' procedure',
+        });
+        assert.equal(applied.events.at(-1)?.action,code);
+        if (category==='DISCIPLINE' || category==='CLAIMS') {
+          const messages=await prisma.notification.findMany({
+            where:{tenantId:a.id,userId:subjectUser.id},
+            orderBy:{createdAt:'desc'},
+          });
+          assert.ok(messages.some(n => (n.data as any)?.caseId===caseFile.id));
+          assert.ok(messages.every(n=>n.channel==='IN_APP'));
+          assert.equal(await prisma.notification.count({
+            where:{tenantId:b.id,userId:subjectUser.id},
+          }),0);
+        }
+        if(category==='INVESTIGATIONS') {
+          const finding=await service.addWorkflowAction(reviewerReq,caseFile.id,{
+            code:'FACT_FINDING',narrative:'Investigator records findings after documented interview',
+          });
+          assert.equal(finding.events.at(-1)?.action,'FACT_FINDING');
+          const assetCategory=await prisma.fixedAssetCategory.create({data:{
+            tenantId:a.id,name:'Investigation Asset '+id,
+          }});
+          const investigatedAsset=await prisma.fixedAsset.create({data:{
+            tenantId:a.id,categoryId:assetCategory.id,name:'Custody Laptop',
+            code:'INV-CUSTODY-'+id,acquisitionCost:2000,currentValue:2000,
+            purchaseDate:new Date('2026-01-01T00:00:00Z'),
+          }});
+          const investigationCustody=await prisma.assetCustodyAssignment.create({data:{
+            tenantId:a.id,employeeId:employee.id,assetId:investigatedAsset.id,status:'ACTIVE',
+          }});
+          await assert.rejects(()=>service.addWorkflowAction(reviewerReq,caseFile.id,{
+            code:'CUSTODY_LOSS_REVIEW',narrative:'Missing assignment ID',
+          }),/Custody assignment ID is required/);
+          await service.addEvidence(reqA,caseFile.id,{
+            fileName:'investigation.pdf',mimeType:'application/pdf',
+            contentBase64:pdf.toString('base64'),description:'Documented custody investigation',
+          });
+          const custodyReview=await service.addWorkflowAction(reviewerReq,caseFile.id,{
+            code:'CUSTODY_LOSS_REVIEW',
+            narrative:'Verified custody incident based on investigation and original evidence',
+            custodyAssignmentId:investigationCustody.id,
+          });
+          assert.equal(custodyReview.events.at(-1)?.action,'CUSTODY_LOSS_REVIEW');
+          assert.equal(JSON.parse(custodyReview.events.at(-1)!.details).custodyAssignmentId,
+            investigationCustody.id);
+        }
+        assert.equal((await service.list(reqB,{category})).count,0);
+        if(category==='CLAIMS') {
+          await assert.rejects(()=>service.addWorkflowAction(reqA,caseFile.id,{
+            code:'CLAIM_REVIEWED',narrative:'Attempt without response',
+          }),/respondent reply/);
+          await service.transition(reqA,caseFile.id,'IN_REVIEW');
+          await service.selfResponse(subjectReq,caseFile.id,{
+            code:'EMPLOYEE_RESPONSE',narrative:'Respondent disputes the amount',
+          });
+          await assert.rejects(()=>service.addWorkflowAction(reqA,caseFile.id,{
+            code:'CLAIM_REVIEWED',narrative:'Same author review is forbidden',
+          }),/Independent claim review/);
+          const reviewed=await service.addWorkflowAction(reviewerReq,caseFile.id,{
+            code:'CLAIM_REVIEWED',narrative:'Independent review of the claim',
+          });
+          assert.equal(reviewed.events.at(-1)?.action,'CLAIM_REVIEWED');
+          await assert.rejects(()=>service.addWorkflowAction(reqA,caseFile.id,{
+            code:'SETTLEMENT_OFFER',narrative:'Offer must have a concrete amount',
+          }),/requires an amount in currency minor units/);
+          const offered=await service.addWorkflowAction(reqA,caseFile.id,{
+            code:'SETTLEMENT_OFFER',narrative:'Recorded proposed settlement terms for claimant',
+            amount:1500.25,
+          });
+          const offer=offered.events.at(-1);
+          assert.equal(offer?.action,'SETTLEMENT_OFFER');
+          const offerNotification=await prisma.notification.findFirst({
+            where:{tenantId:a.id,userId:subjectUser.id,
+              data:{path:['action'],equals:'SETTLEMENT_OFFER'}},
+          });
+          assert.ok(offerNotification);
+          await assert.rejects(()=>service.addWorkflowAction(reqA,caseFile.id,{
+            code:'SETTLEMENT_ACCEPTANCE',narrative:'Forged administrative approval',
+          }),/restricted to authenticated employee self-service/);
+          await assert.rejects(()=>service.selfResponse(subjectReq,caseFile.id,{
+            code:'SETTLEMENT_ACCEPTANCE',narrative:'Attempt to accept without identifying offer',
+          }),/current settlement offer/);
+          await assert.rejects(()=>service.selfResponse(subjectReq,caseFile.id,{
+            code:'SETTLEMENT_ACCEPTANCE',narrative:'Attempt to accept unrelated offer',
+            offerEventId:'fake-offer-id',
+          }),/current settlement offer/);
+          const accepted=await service.selfResponse(subjectReq,caseFile.id,{
+            code:'SETTLEMENT_ACCEPTANCE',narrative:'I accept the documented proposed settlement terms',
+            offerEventId:offer!.id,
+          });
+          assert.equal(accepted.code,'SETTLEMENT_ACCEPTANCE');
+          const stored=await service.findOne(reqA,caseFile.id);
+          const acceptance=stored.events.find(e=>e.action==='SETTLEMENT_ACCEPTANCE');
+          const acceptanceDetails=JSON.parse(acceptance!.details);
+          assert.equal(acceptanceDetails.acceptedOfferEventId,offer!.id);
+          assert.match(acceptanceDetails.acceptedOfferSha256,/^[0-9a-f]{64}$/);
+          await assert.rejects(()=>service.selfResponse(subjectReq,caseFile.id,{
+            code:'SETTLEMENT_ACCEPTANCE',narrative:'Repeat acceptance of same proposed terms',
+            offerEventId:offer!.id,
+          }),/already accepted/);
+          await service.addWorkflowAction(reqA,caseFile.id,{
+            code:'CLAIM_DISPOSITION',narrative:'Settlement proposal accepted and documented without financial posting',
+          });
+        }
+        if(category==='DISCIPLINE') {
+          await service.transition(reqA,caseFile.id,'IN_REVIEW');
+          await service.selfResponse(subjectReq,caseFile.id,{
+            code:'EMPLOYEE_RESPONSE',narrative:'Employee response to proposed notice',
+          });
+          await assert.rejects(()=>service.addWorkflowAction(reqA,caseFile.id,{
+            code:'FINAL_REVIEW',narrative:'Improper self review of proposed action',
+          }),/Independent reviewer/);
+          await service.addWorkflowAction(reviewerReq,caseFile.id,{
+            code:'FINAL_REVIEW',narrative:'Review of proposed administrative notice',
+          });
+          await service.selfResponse(subjectReq,caseFile.id,{
+            code:'APPEAL_SUBMITTED',narrative:'Formal appeal of proposed notice',
+          });
+          await assert.rejects(()=>service.transition(reqA,caseFile.id,'CLOSED','Closed early'),/unresolved employee appeal/);
+          await assert.rejects(()=>service.addWorkflowAction(reviewerReq,caseFile.id,{
+            code:'APPEAL_REVIEWED',narrative:'Original reviewer cannot decide the appeal',
+          }),/must differ from the original decision reviewer/);
+          await service.addWorkflowAction(appealReviewerReq,caseFile.id,{
+            code:'APPEAL_REVIEWED',narrative:'Recorded independent response to appeal',
+          });
+        }
+        if(category==='OFFBOARDING') {
+          await assert.rejects(()=>service.transition(reqA,caseFile.id,'CLOSED','Incomplete offboarding'),/Offboarding task missing/);
+          const custodyVerified=await service.addWorkflowAction(reqA,caseFile.id,{
+            code:'ASSET_RETURN_CHECK',narrative:'Tenant custody ledger contains no active assignments',
+          });
+          assert.equal(custodyVerified.events.at(-1)?.action,'ASSET_RETURN_CHECK');
+          await service.addWorkflowAction(reqA,caseFile.id,{
+            code:'ACCESS_REVOKED_CONFIRMED',narrative:'Employee has no linked account or active session',
+          });
+          await assert.rejects(
+            () => service.transition(reqA,caseFile.id,'CLOSED','Governance case without lifecycle'),
+            /Completed HR offboarding lifecycle is required/,
+          );
+          const lifecycle=new HrLifecycleService();
+          const exit=await lifecycle.create(reqA,{
+            employeeId:unlinkedOffboardingEmployee.id,type:'OFFBOARDING',
+          });
+          for(const task of exit.tasks){
+            await lifecycle.updateTask(reqA,exit.id,task.id,{status:'DONE'});
+          }
+          await prisma.employee.update({
+            where:{id:unlinkedOffboardingEmployee.id},
+            data:{status:'TERMINATED',terminationDate:new Date('2026-11-13T00:00:00Z')},
+          });
+          const exitClosed=await lifecycle.complete(reqA,exit.id);
+          assert.equal(exitClosed.status,'COMPLETED');
+          const offboardingClosed=await service.transition(reqA,caseFile.id,'CLOSED','All administrative checks recorded');
+          assert.equal(offboardingClosed.status,'CLOSED');
+        }
+        if(category==='CLAIMS') {
+          await assert.rejects(()=>service.addWorkflowAction(reqA,caseFile.id,{
+            code:'SETTLEMENT_ACCEPTANCE',narrative:'Not permitted for administrative account',
+          }),/restricted to authenticated employee self-service/);
+        }
+        if(category==='DISCIPLINE') {
+          await assert.rejects(()=>service.addWorkflowAction(reqA,caseFile.id,{
+            code:'EMPLOYEE_RESPONSE',narrative:'Administrative impersonation attempt',
+          }),/Employee statements and appeals require/);
+          await assert.rejects(()=>service.addWorkflowAction(reqA,caseFile.id,{
+            code:'APPEAL_SUBMITTED',narrative:'Administrative impersonation of employee appeal',
+          }),/Employee statements and appeals require/);
+        }
+        if(category==='VIOLATIONS') {
+          await assert.rejects(()=>service.transition(reqA,caseFile.id,'CLOSED',
+            'Attempt to close without review'),/Required governance action missing: REVIEW_FINDING/);
+          await assert.rejects(()=>service.addWorkflowAction(reqA,caseFile.id,{
+            code:'REVIEW_FINDING',narrative:'Reporter must not review own allegation',
+          }),/Independent reviewer required/);
+          await service.addWorkflowAction(reviewerReq,caseFile.id,{
+            code:'REVIEW_FINDING',narrative:'Recorded review of the reported issue',
+          });
+        }
+        if(category==='CONFLICTS') {
+          await service.addWorkflowAction(reqA,caseFile.id,{
+            code:'MITIGATION_PLAN',narrative:'Proposed mitigation of conflict of interest',
+          });
+          await assert.rejects(()=>service.addWorkflowAction(reqA,caseFile.id,{
+            code:'MITIGATION_REVIEW',narrative:'Author cannot independently verify own plan',
+          }),/Independent reviewer required/);
+          await service.addWorkflowAction(reviewerReq,caseFile.id,{
+            code:'MITIGATION_REVIEW',narrative:'Verified conflict mitigation controls',
+          });
+        }
+        if(category==='LEGAL') {
+          await assert.rejects(()=>service.transition(reqA,caseFile.id,'CLOSED',
+            'Attempt without outcome'),/Legal case outcome must be documented/);
+          await service.addWorkflowAction(reqA,caseFile.id,{
+            code:'CASE_DISPOSITION',narrative:'Record that the referenced matter is withdrawn',
+          });
+        }
+        if(category==='COMPLIANCE') {
+          await service.addWorkflowAction(reqA,caseFile.id,{
+            code:'CORRECTIVE_ACTION',narrative:'Corrective action approved for compliance finding',
+          });
+          await assert.rejects(()=>service.addWorkflowAction(reqA,caseFile.id,{
+            code:'CONTROL_VERIFIED',narrative:'Operator cannot verify own corrective action',
+          }),/Independent verification required/);
+          await service.addWorkflowAction(reviewerReq,caseFile.id,{
+            code:'CONTROL_VERIFIED',narrative:'Verified the corrective measure and controls',
+          });
+        }
+        if(category!=='OFFBOARDING') {
+          const final=await service.transition(reqA,caseFile.id,'CLOSED','All required records documented');
+          assert.equal(final.status,'CLOSED');
+        }
+        const found=await service.findOne(reqA,caseFile.id);
+        assert.ok(found.events.length>=2);
+      }
+      const newest=await service.list(reqA,{page:'1',limit:'1'});
+      const older=await service.list(reqA,{page:'2',limit:'1'});
+      assert.equal(newest.count,10);
+      assert.equal(older.count,10);
+      assert.equal(newest.data.length,1);
+      assert.equal(older.data.length,1);
+      assert.notEqual(newest.data[0].id,older.data[0].id);
+      const exact=await service.list(reqA,{search:'Workspace E2E CLAIMS',status:'CLOSED'});
+      assert.equal(exact.count,1);
+      assert.equal(exact.data[0].category,'CLAIMS');
     } finally {
       await prisma.hrGovernanceEvidence.deleteMany({where:{tenantId:a.id}});
       await prisma.hrGovernanceEvent.deleteMany({where:{tenantId:a.id}});
       await prisma.hrGovernanceCase.deleteMany({where:{tenantId:a.id}});
+      await prisma.assetCustodyAssignment.deleteMany({where:{tenantId:a.id}});
+      await prisma.fixedAsset.deleteMany({where:{tenantId:a.id}});
+      await prisma.fixedAssetCategory.deleteMany({where:{tenantId:a.id}});
+      await prisma.user.deleteMany({where:{tenantId:a.id}});
       await prisma.tenant.deleteMany({where:{id:{in:[a.id,b.id]}}});
+    }
+  },
+);
+
+
+test('HR self-governance: only disclosed employee cases, private reply and independent appeal',
+  { skip: process.env.CRM_DB_E2E !== '1' ? 'CRM_DB_E2E=1 is required' : false },
+  async () => {
+    const run='self-gov-'+process.pid+'-'+Date.now();
+    const tenantA=await prisma.tenant.create({data:{name:'Self Governance A',slug:run+'-a'}});
+    const tenantB=await prisma.tenant.create({data:{name:'Self Governance B',slug:run+'-b'}});
+    const svc=new HrGovernanceService();
+    try {
+      const userA=await prisma.user.create({data:{
+        tenantId:tenantA.id,email:run+'-a@example.test',firstName:'Response',lastName:'Employee',
+        role:'USER',status:'ACTIVE',
+      }});
+      const userB=await prisma.user.create({data:{
+        tenantId:tenantB.id,email:run+'-b@example.test',firstName:'Other',lastName:'Employee',
+        role:'USER',status:'ACTIVE',
+      }});
+      const employee=await prisma.employee.create({data:{
+        tenantId:tenantA.id,userId:userA.id,employeeCode:'GOV-SELF-'+run,
+        firstName:'Review',lastName:'Recipient',hireDate:new Date('2026-01-01T00:00:00Z'),
+      }});
+      await prisma.employee.create({data:{
+        tenantId:tenantB.id,userId:userB.id,employeeCode:'GOV-FOREIGN-'+run,
+        firstName:'Other',lastName:'Recipient',hireDate:new Date('2026-01-01T00:00:00Z'),
+      }});
+      const realAdmin=await prisma.user.create({data:{
+        tenantId:tenantA.id,email:run+'-admin@example.test',
+        firstName:'Case',lastName:'Administrator',role:'ADMIN',status:'ACTIVE',
+      }});
+      const admin:any={user:{tenantId:tenantA.id,userId:realAdmin.id,role:'ADMIN'}};
+      const reviewer:any={user:{tenantId:tenantA.id,userId:'reviewer-'+run,role:'ADMIN'}};
+      const self:any={user:{tenantId:tenantA.id,userId:userA.id,role:'USER'}};
+      const foreign:any={user:{tenantId:tenantB.id,userId:userB.id,role:'USER'}};
+      const record=await svc.create(admin,{
+        employeeId:employee.id,category:'DISCIPLINE',title:'Private disciplinary notice',
+        description:'A proposed notice must be disclosed before employee response',
+      });
+      assert.equal((await svc.selfCases(self)).length,0);
+      await svc.addWorkflowAction(admin,record.id,{
+        code:'NOTICE_PROPOSED',narrative:'Proposed notice communicated to employee',
+      });
+      const disclosed=await svc.selfCases(self);
+      assert.equal(disclosed.length,1);
+      assert.equal(disclosed[0].id,record.id);
+      assert.equal((await svc.selfCases(foreign)).length,0);
+      await assert.rejects(()=>svc.selfResponse(foreign,record.id,{
+        code:'EMPLOYEE_RESPONSE',narrative:'Foreign employee cannot respond',
+      }),/Disclosed employee case not found/);
+      await assert.rejects(()=>svc.selfResponse(self,record.id,{
+        code:'FINAL_REVIEW',narrative:'Employee cannot authorize review',
+      }),/Only employee response/);
+      await assert.rejects(()=>svc.selfResponse(self,record.id,{
+        code:'EMPLOYEE_RESPONSE',narrative:'Reply before review is forbidden',
+      }),/under review/);
+      await assert.rejects(()=>svc.addWorkflowAction(admin,record.id,{
+        code:'EMPLOYEE_RESPONSE',narrative:'Manager masquerading as employee',
+      }),/require authenticated employee self-service/);
+      await svc.transition(admin,record.id,'IN_REVIEW');
+      const reply=await svc.selfResponse(self,record.id,{
+        code:'EMPLOYEE_RESPONSE',narrative:'I dispute the proposed findings and provide clarification',
+      });
+      assert.equal(reply.submitted,true);
+      const responseAlert=await prisma.notification.findFirst({
+        where:{tenantId:tenantA.id,userId:realAdmin.id,
+          data:{path:['action'],equals:'EMPLOYEE_RESPONSE'}},
+      });
+      assert.ok(responseAlert);
+      assert.equal(responseAlert?.status,'SENT');
+      await svc.addWorkflowAction(reviewer,record.id,{
+        code:'FINAL_REVIEW',narrative:'Independent assessment following employee reply',
+      });
+      const appeal=await svc.selfResponse(self,record.id,{
+        code:'APPEAL_SUBMITTED',narrative:'I request reconsideration of the independent review',
+      });
+      assert.equal(appeal.code,'APPEAL_SUBMITTED');
+      const appealAlert=await prisma.notification.findFirst({
+        where:{tenantId:tenantA.id,userId:realAdmin.id,
+          data:{path:['action'],equals:'APPEAL_SUBMITTED'}},
+      });
+      assert.ok(appealAlert);
+      assert.equal(await prisma.notification.count({
+        where:{tenantId:tenantB.id,userId:realAdmin.id},
+      }),0);
+      await assert.rejects(()=>svc.selfResponse(self,record.id,{
+        code:'APPEAL_SUBMITTED',narrative:'Duplicate pending employee appeal',
+      }),/already under review/);
+      await assert.rejects(()=>svc.transition(admin,record.id,'CLOSED','Close prematurely'),/unresolved employee appeal/);
+      await svc.addWorkflowAction({ user: { tenantId: tenantA.id, userId: 'second-reviewer-'+run, role: 'ADMIN' } },record.id,{
+        code:'APPEAL_REVIEWED',narrative:'Recorded independent appeal decision',
+      });
+      const closed=await svc.transition(admin,record.id,'CLOSED','Review and appeal documented');
+      assert.equal(closed.status,'CLOSED');
+    } finally {
+      await prisma.hrGovernanceEvidence.deleteMany({where:{tenantId:tenantA.id}});
+      await prisma.hrGovernanceEvent.deleteMany({where:{tenantId:tenantA.id}});
+      await prisma.hrGovernanceCase.deleteMany({where:{tenantId:tenantA.id}});
+      await prisma.employee.deleteMany({where:{tenantId:{in:[tenantA.id,tenantB.id]}}});
+      await prisma.user.deleteMany({where:{tenantId:{in:[tenantA.id,tenantB.id]}}});
+      await prisma.tenant.deleteMany({where:{id:{in:[tenantA.id,tenantB.id]}}});
     }
   },
 );

@@ -145,14 +145,17 @@ export class EndServiceSettlementsService {
     if (!settlement) throw new NotFoundException('End-service settlement not found');
     if (settlement.status !== 'DRAFT') throw new ConflictException('Only draft settlements can be approved');
 
-    return prisma.endServiceSettlement.update({
-      where: { id },
+    const tenantId = req.user?.tenantId;
+    const updated = await prisma.endServiceSettlement.updateMany({
+      where: { tenantId, id, status: 'DRAFT' },
       data: {
         status: 'APPROVED',
         approvedAt: new Date(),
         approvedById: req.user?.userId || req.user?.sub || req.user?.id || null,
       },
     });
+    if (updated.count !== 1) throw new ConflictException('Settlement status changed before approval');
+    return prisma.endServiceSettlement.findFirstOrThrow({ where: { tenantId, id } });
   }
 
 
@@ -271,7 +274,15 @@ export class EndServiceSettlementsService {
     });
   }
 
-  async pay(req: any, id: string) {
+  async pay(req: any, id: string, dto: { paymentReference: string; paymentMethod: string }) {
+    const actor=req.user?.userId || req.user?.sub || req.user?.id;
+    const reference=typeof dto?.paymentReference==='string'?dto.paymentReference.trim():'';
+    if (!actor || reference.length<6 || reference.length>160) {
+      throw new BadRequestException('Documented payment reference (6-160 characters) and actor are required');
+    }
+    if (!['BANK_TRANSFER','CASH','CHEQUE','OTHER'].includes(dto?.paymentMethod)) {
+      throw new BadRequestException('A valid payment method is required');
+    }
     const tenantId = req.user?.tenantId;
     const settlement = await prisma.endServiceSettlement.findFirst({
       where: { ...tenantWhere(tenantId), id },
@@ -280,6 +291,14 @@ export class EndServiceSettlementsService {
     if (settlement.status !== 'APPROVED') throw new ConflictException('Only approved settlements can be paid');
 
     return prisma.$transaction(async (tx) => {
+      const locked=await tx.endServiceSettlement.updateMany({
+        where:{tenantId,id,status:'APPROVED'},
+        data:{
+          status:'PAID',paidAt:new Date(),paymentReference:reference,
+          paymentMethod:dto.paymentMethod,paymentRecordedById:actor,
+        },
+      });
+      if(locked.count!==1)throw new ConflictException('Settlement was already processed');
       let remainingLoanDeduction = money(settlement.loanDeduction);
       if (remainingLoanDeduction > 0) {
         const loans = await tx.employeeLoan.findMany({
@@ -314,24 +333,10 @@ export class EndServiceSettlementsService {
         }
       }
 
-      await tx.employee.update({
-        where: { id: settlement.employeeId },
-        data: { status: 'TERMINATED', terminationDate: settlement.lastWorkingDate },
-      });
-      await tx.employeeContract.updateMany({
-        where: { tenantId, employeeId: settlement.employeeId, status: 'ACTIVE' },
-        data: {
-          status: 'TERMINATED',
-          terminatedAt: settlement.lastWorkingDate,
-          terminationReason: settlement.reason,
-        },
-      });
-
-      return tx.endServiceSettlement.update({
-        where: { id },
-        data: { status: 'PAID', paidAt: new Date() },
-      });
-    });
+      // Payment recording must not terminate employment or employment contracts.
+      // Exit status is controlled independently by the HR lifecycle.
+      return tx.endServiceSettlement.findFirstOrThrow({where:{tenantId,id}});
+    }, { isolationLevel: 'Serializable' });
   }
 
   async cancelDraft(req: any, id: string) {
@@ -340,6 +345,12 @@ export class EndServiceSettlementsService {
     });
     if (!settlement) throw new NotFoundException('End-service settlement not found');
     if (settlement.status !== 'DRAFT') throw new ConflictException('Only draft settlements can be cancelled');
-    return prisma.endServiceSettlement.update({ where: { id }, data: { status: 'CANCELLED' } });
+    const tenantId = req.user?.tenantId;
+    const updated = await prisma.endServiceSettlement.updateMany({
+      where: { tenantId, id, status: 'DRAFT' },
+      data: { status: 'CANCELLED' },
+    });
+    if (updated.count !== 1) throw new ConflictException('Settlement status changed before cancellation');
+    return prisma.endServiceSettlement.findFirstOrThrow({ where: { tenantId, id } });
   }
 }

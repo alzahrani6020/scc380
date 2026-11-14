@@ -1244,6 +1244,9 @@ model EndServiceSettlement {
   approvedById           String?
   approvedAt             DateTime?
   paidAt                 DateTime?
+  paymentReference       String?
+  paymentMethod          String?
+  paymentRecordedById    String?
   notes                  String?
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt

@@ -36,6 +36,7 @@ class AssignAssetDto {
 }
 class CloseCustodyDto {
   @IsIn(['RETURNED','LOST','DAMAGED']) status: string;
+  @IsString() @IsOptional() governanceCaseId?: string;
   @IsString() @IsOptional() conditionIn?: string;
   @IsString() @IsOptional() notes?: string;
   @IsString() @IsOptional() assetAccountId?: string;

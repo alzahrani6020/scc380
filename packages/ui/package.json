@@ -11,12 +11,6 @@
     "lint": "eslint \"src/**/*.tsx\" --fix"
   },
   "dependencies": {
-    "@scc/utils": "workspace:*",
-    "class-variance-authority": "^0.7.0",
-    "clsx": "^2.1.0",
-    "tailwind-merge": "^2.2.0"
-  },
-  "dependencies": {
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "react": "^18.2.0",

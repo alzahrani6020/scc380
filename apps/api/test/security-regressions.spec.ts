@@ -314,3 +314,15 @@ test('audit logging redacts raw case evidence and employee document uploads', ()
   assert.equal(protectedBody.contentBase64, '***REDACTED***');
   assert.equal(protectedBody.nested.contentBase64, '***REDACTED***');
 });
+
+test('Nest API route configuration supports local origins and production proxy', () => {
+  const config = src('../web/next.config.js');
+  const client = src('../web/src/lib/api.ts');
+  const session = src('../web/src/app/api/auth/session/route.ts');
+  const nest = src('main.ts');
+  assert.match(config, /afterFiles:/);
+  assert.match(config, /source: '\/api\/:path\*'/);
+  assert.match(client, /NEXT_PUBLIC_API_URL/);
+  assert.match(session, /return base\.endsWith\('\/api'\) \?/);
+  assert.doesNotMatch(nest, /setGlobalPrefix\(['"]api['"]\)/);
+});
