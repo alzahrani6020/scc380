@@ -27,7 +27,12 @@ export class RentAccountingService {
       const existing = await tx.journalEntryHeader.findFirst({
         where: { tenantId, sourceType, sourceId: paymentId }, include: { lines: true },
       });
-      if (existing) return existing;
+      if (existing) {
+        if (existing.status !== 'POSTED') {
+          throw new ConflictException('Existing source journal is not posted; review it before retrying');
+        }
+        return existing;
+      }
       const accounts = await this.mapping.resolveInTransaction(tx, tenantId, [
         'ACCOUNTS_RECEIVABLE', 'RENT_REVENUE',
       ]);
@@ -60,7 +65,12 @@ export class RentAccountingService {
       const existing = await tx.journalEntryHeader.findFirst({
         where: { tenantId, sourceType, sourceId: collectionId }, include: { lines: true },
       });
-      if (existing) return existing;
+      if (existing) {
+        if (existing.status !== 'POSTED') {
+          throw new ConflictException('Existing source journal is not posted; review it before retrying');
+        }
+        return existing;
+      }
       const accrued = await tx.journalEntryHeader.findFirst({
         where: {
           tenantId, sourceType: 'RENT_RECEIVABLE',
@@ -68,6 +78,9 @@ export class RentAccountingService {
         },
       });
       if (!accrued) throw new ConflictException('Post the rent receivable accrual before collection');
+      if (receipt.collectedAt < accrued.date) {
+        throw new ConflictException('Receipt predates rent accrual; use approved advance-payment accounting policy');
+      }
       const method = receipt.paymentMethod as PaymentMethod | null;
       if (!method || !Object.values(PaymentMethod).includes(method)) {
         throw new BadRequestException('A mapped collection payment method is required');
