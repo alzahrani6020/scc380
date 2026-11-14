@@ -156,7 +156,7 @@ export class AuthService {
     return user;
   }
 
-  async login(userId: string, email: string, role: string, tenantId?: string, tenantSlug?: string, req?: any) {
+  async login(userId: string, email: string, role: string, tenantId?: string, tenantSlug?: string, req?: any, method: 'password' | 'google' = 'password') {
     // Re-check account and tenant state at token issuance time.
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -215,7 +215,7 @@ export class AuthService {
           action: 'AUTH_LOGIN_SUCCESS',
           entityType: 'Session',
           entityId: tokens.sessionKey,
-          newValues: { method: 'password', sessionId: tokens.sessionKey },
+          newValues: { method, sessionId: tokens.sessionKey },
         },
       }),
     ]);
@@ -662,7 +662,7 @@ export class AuthService {
       },
     });
 
-    return this.login(user.id, user.email, user.role, user.tenantId || undefined, undefined, req);
+    return this.login(user.id, user.email, user.role, user.tenantId || undefined, undefined, req, 'google');
   }
 
   // ─── 2FA / TOTP ────────────────────────────────────────────────────
