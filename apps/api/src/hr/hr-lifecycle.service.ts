@@ -90,6 +90,9 @@ export class HrLifecycleService {
     const task = await prisma.hrLifecycleTask.findFirst({ where: { ...tenantWhere(tenantId), id: taskId, caseId } });
     if (!task) throw new NotFoundException('Lifecycle task not found');
     if (dto.status && !TASK_STATUSES.has(dto.status)) throw new BadRequestException('Unsupported task status');
+    if(lifecycle.type==='OFFBOARDING' && dto.status==='SKIPPED') {
+      throw new ConflictException('Offboarding tasks must be completed, not skipped');
+    }
     await this.assertAssignedUser(tenantId, dto.assignedToId);
 
     const data: any = {};
@@ -121,8 +124,13 @@ export class HrLifecycleService {
     if (['COMPLETED', 'CANCELLED'].includes(lifecycle.status)) {
       throw new ConflictException('Lifecycle case is closed');
     }
-    const incomplete = lifecycle.tasks.filter((task) => !['DONE','SKIPPED'].includes(task.status));
-    if (incomplete.length) throw new ConflictException('All lifecycle tasks must be done or skipped');
+    const incomplete = lifecycle.tasks.filter((task) =>
+      lifecycle.type==='OFFBOARDING' ? task.status!=='DONE' : !['DONE','SKIPPED'].includes(task.status));
+    if (incomplete.length) throw new ConflictException(
+      lifecycle.type==='OFFBOARDING'
+        ? 'All offboarding tasks must be completed, not skipped'
+        : 'All lifecycle tasks must be done or skipped',
+    );
 
     if (lifecycle.type === 'ONBOARDING') {
       const readiness = await this.getOnboardingReadiness(tenantId, lifecycle.employeeId);
@@ -183,7 +191,7 @@ export class HrLifecycleService {
       if(!employee || employee.status==='TERMINATED') {
         throw new ConflictException('Employee must exist and not already be terminated');
       }
-      if(terminationDate<employee.hireDate)throw new BadRequestException('Last working date precedes hire date');
+      if(terminationDate.getTime()<employee.hireDate.getTime())throw new BadRequestException('Last working date precedes hire date');
       const custody=await tx.assetCustodyAssignment.count({
         where:{tenantId,employeeId:employee.id,status:'ACTIVE'},
       });
@@ -264,8 +272,9 @@ export class HrLifecycleService {
         canComplete = readiness.ready;
       }
       if (lifecycle?.type === 'OFFBOARDING') {
-        const readiness = await this.getOffboardingReadiness(tenantId, lifecycle.employeeId);
-        canComplete = readiness.ready;
+        // Closing an exit case must always be an explicit audited operation,
+        // never a side-effect of marking the last task DONE.
+        canComplete = false;
       }
     }
 

@@ -225,6 +225,10 @@ test('HR administrative exit requires completed tasks and revokes access without
       }});
       const req:any={user:{tenantId:tenant.id,userId:operator.id,role:'ADMIN'}};
       const lifecycle=await hr.create(req,{employeeId:employee.id,type:'OFFBOARDING'});
+      await assert.rejects(
+        () => hr.updateTask(req,lifecycle.id,lifecycle.tasks[0].id,{status:'SKIPPED'}),
+        /must be completed, not skipped/,
+      );
       const dto={confirmation:'FINALIZE_EMPLOYMENT_EXIT',
         lastWorkingDate:'2026-11-13',reason:'Documented employee exit after clearance'};
       await assert.rejects(()=>hr.finalizeExit(req,lifecycle.id,dto),
@@ -232,6 +236,8 @@ test('HR administrative exit requires completed tasks and revokes access without
       for(const task of lifecycle.tasks){
         await hr.updateTask(req,lifecycle.id,task.id,{status:'DONE'});
       }
+      const beforeFinalization=await hr.findOne(req,lifecycle.id);
+      assert.equal(beforeFinalization.status,'IN_PROGRESS');
       await assert.rejects(()=>hr.finalizeExit(req,lifecycle.id,{
         ...dto,confirmation:'NO',
       }),/Explicit finalization confirmation/);
