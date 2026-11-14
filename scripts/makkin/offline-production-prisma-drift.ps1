@@ -25,11 +25,12 @@ try {
   $report.BACKUP='PASS_VERIFIED_HASH'
   foreach ($exe in @('docker','git','pnpm')) { if (!(Get-Command $exe -ErrorAction SilentlyContinue)) { throw ('MISSING_TOOL_'+$exe) } }
   if (!(Test-Path -LiteralPath (Join-Path $RepoRoot '.git'))) { throw 'REPOSITORY_NOT_FOUND' }
-  & git -C $RepoRoot cat-file -e ($ReviewSha+'^{commit}') 2>$null
-  if ($LASTEXITCODE -ne 0) {
-    & git -C $RepoRoot fetch --no-tags origin $ReviewSha
-    if ($LASTEXITCODE -ne 0) { throw 'REVIEW_COMMIT_NOT_FETCHED' }
-  }
+  # A pinned PR commit may not be in the local object store. Fetch the known
+  # PR branch first; this updates FETCH_HEAD only, not any local working tree.
+  & git -C $RepoRoot fetch --no-tags origin 'refs/heads/fix/real-estate-verified-main-20261114'
+  if ($LASTEXITCODE -ne 0) { throw 'REVIEW_BRANCH_FETCH_FAILED' }
+  $objectType = (& git -C $RepoRoot cat-file -t $ReviewSha)
+  if ($LASTEXITCODE -ne 0 -or ($objectType | Out-String).Trim() -ne 'commit') { throw 'REVIEW_COMMIT_NOT_AVAILABLE' }
   & git -C $RepoRoot worktree add --detach $checkout $ReviewSha
   if ($LASTEXITCODE -ne 0) { throw 'CLEAN_CHECKOUT_FAILED' }
   $actualSha = (& git -C $checkout rev-parse HEAD).Trim()
