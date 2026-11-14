@@ -52,6 +52,34 @@ export class RentPaymentsService {
     return this.withCollectionBalance(payment);
   }
 
+  async collectionHistory(tenantId: string, id: string) {
+    const receivable = await prisma.rentPayment.findFirst({
+      where: withTenant({ id }, tenantId), select: { id: true, amount: true },
+    });
+    if (!receivable) throw new NotFoundException('Rent receivable not found');
+    const rows = await prisma.rentCollection.findMany({
+      where: { tenantId, rentPaymentId: id },
+      orderBy: [{ collectedAt: 'asc' }, { createdAt: 'asc' }],
+    });
+    const posted = await prisma.journalEntryHeader.findMany({
+      where: {
+        tenantId, sourceType: 'RENT_COLLECTION',
+        sourceId: { in: rows.map(row => row.id) }, status: 'POSTED',
+      },
+      select: { sourceId: true, id: true },
+    });
+    const journals = new Map(posted.map(row => [row.sourceId, row.id]));
+    return {
+      receivableId: id,
+      faceAmount: receivable.amount.toFixed(2),
+      count: rows.length,
+      data: rows.map(row => ({
+        ...row,
+        accountingJournalId: journals.get(row.id) ?? null,
+      })),
+    };
+  }
+
   async create(tenantId: string, dto: any) {
     const contract = await prisma.leaseContract.findFirst({
       where: withTenant({ id: dto.contractId }, tenantId),
