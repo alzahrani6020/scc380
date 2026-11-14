@@ -13,7 +13,7 @@ const contracts = [
   { controller: PropertiesController, api: 'real-estate/properties', page: 'properties', methods: ['findAll', 'summary', 'findOne', 'create', 'update', 'remove'] },
   { controller: UnitsController, api: 'real-estate/units', page: 'units', methods: ['findAll', 'findOne', 'create', 'update', 'remove'] },
   { controller: LeaseContractsController, api: 'real-estate/contracts', page: 'contracts', methods: ['findAll', 'findOne', 'create', 'update', 'remove', 'renew', 'activate', 'paymentPreview', 'terminate', 'ejarSync'] },
-  { controller: RentPaymentsController, api: 'real-estate/payments', page: 'payments', methods: ['findAll', 'findOne', 'create', 'update', 'remove', 'record', 'overdueReport', 'collectionSummary'] },
+  { controller: RentPaymentsController, api: 'real-estate/payments', page: 'payments', methods: ['findAll', 'findOne', 'create', 'update', 'remove', 'record', 'overdueReport', 'collectionSummary', 'collectionHistory', 'postAccrual', 'postCollection'] },
 ] as const;
 
 for (const { controller, api, page, methods } of contracts) {
@@ -27,7 +27,11 @@ for (const { controller, api, page, methods } of contracts) {
       assert.equal(typeof handler, 'function', `${page}:${method} missing`);
       const permissions = Reflect.getMetadata(REQUIRE_PERMISSIONS_KEY, handler);
       assert.ok(Array.isArray(permissions) && permissions.length > 0, `${page}:${method} lacks permission metadata`);
-      assert.ok(permissions.every((permission: string) => permission.startsWith('real-estate:')), `${page}:${method} uses wrong permission namespace`);
+      assert.ok(permissions.some((permission: string) => permission.startsWith('real-estate:')), `${page}:${method} lacks real estate permission`);
+      assert.ok(permissions.every((permission: string) => permission.startsWith('real-estate:') || permission === 'erp:write'), `${page}:${method} uses wrong permission namespace`);
+      if (method === 'postAccrual' || method === 'postCollection') {
+        assert.ok(permissions.includes('erp:write'), `${page}:${method} must require ERP write permission`);
+      }
     }
   });
 }
@@ -78,4 +82,7 @@ test('payment workspace reads the unfiltered tenant collection summary', () => {
   assert.ok(page.includes('summary.overdueAmount'));
   assert.ok(page.includes('x.outstandingAmount'));
   assert.ok(page.includes('idempotencyKey'));
+  assert.ok(page.includes("/real-estate/payments/'+id+'/collections"));
+  assert.ok(page.includes("/post-accrual"));
+  assert.ok(page.includes("/post-accounting"));
 });
