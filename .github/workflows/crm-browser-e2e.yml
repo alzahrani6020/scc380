@@ -75,6 +75,9 @@ jobs:
       - name: Verify 429 login UI handling in browser
         run: node apps/web/e2e/login-rate-limit.mjs
 
+      - name: Verify password manager autofill login payload
+        run: node apps/web/e2e/login-autofill-payload.mjs
+
       - name: Verify secure refresh cookie HTTP exchange
         run: node apps/web/e2e/auth-cookie.mjs
 
