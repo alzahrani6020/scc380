@@ -37,6 +37,9 @@ export default function GovernanceWorkspace() {
   const [records,setRecords] = useState<any[]>([]);
   const [page,setPage] = useState(1);
   const [total,setTotal] = useState(0);
+  const [searchInput,setSearchInput]=useState('');
+  const [appliedSearch,setAppliedSearch]=useState('');
+  const [statusFilter,setStatusFilter]=useState('');
   const loadSequence=useRef(0);
   const [contracts,setContracts] = useState<any[]>([]);
   const [selected,setSelected] = useState<any>(null);
@@ -74,7 +77,10 @@ export default function GovernanceWorkspace() {
     const seq=++loadSequence.current;
     setBusy(true);setError('');
     try {
-      const cases=await api.get('/hr/governance?category='+encodeURIComponent(space.category)+'&page='+page+'&limit=25');
+      const params=new URLSearchParams({category:space.category,page:String(page),limit:'25'});
+      if(appliedSearch)params.set('search',appliedSearch);
+      if(statusFilter)params.set('status',statusFilter);
+      const cases=await api.get('/hr/governance?'+params.toString());
       if(seq!==loadSequence.current)return;
       setRecords(cases.data?.data || []);
       setTotal(cases.data?.count || 0);
@@ -85,14 +91,15 @@ export default function GovernanceWorkspace() {
     }
   };
   useEffect(()=>{
-    setSelected(null);setPage(1);setInvestigators([]);setInvestigatorUserId('');setAssignmentRationale('');
+    setSelected(null);setPage(1);setSearchInput('');setAppliedSearch('');setStatusFilter('');
+    setInvestigators([]);setInvestigatorUserId('');setAssignmentRationale('');
     if(space?.category==='INVESTIGATIONS') {
       api.get('/users?role=ADMIN&status=ACTIVE')
         .then(r=>setInvestigators(r.data?.data||[]))
         .catch(()=>setError('تعذر جلب المستخدمين المؤهلين لتكليف التحقيق'));
     }
   },[key]);
-  useEffect(()=>{void load();},[key,page]);
+  useEffect(()=>{void load();},[key,page,appliedSearch,statusFilter]);
   useEffect(()=>{
     setContracts([]);
     if(!form.employeeId) return;
@@ -237,6 +244,25 @@ export default function GovernanceWorkspace() {
       </form>
       <section className="scc-card space-y-3">
         <h2 className="text-white font-semibold">ملفات {space.label}</h2>
+        <form className="flex flex-wrap gap-2" onSubmit={e=>{
+          e.preventDefault();
+          setPage(1);
+          setAppliedSearch(searchInput.trim());
+        }}>
+          <input className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-900 p-2 text-white text-sm"
+            value={searchInput} maxLength={100} onChange={e=>setSearchInput(e.target.value)}
+            placeholder="ابحث في عنوان القضية أو وصفها"/>
+          <button type="submit" className="rounded-lg border border-slate-600 px-3 py-2 text-white">بحث</button>
+        </form>
+        <label className="block text-sm text-slate-300">حالة القضية
+          <select className={input} value={statusFilter} onChange={e=>{setStatusFilter(e.target.value);setPage(1);}}>
+            <option value="">جميع الحالات</option>
+            <option value="OPEN">مفتوحة</option>
+            <option value="IN_REVIEW">قيد المراجعة</option>
+            <option value="RESOLVED">تمت المراجعة</option>
+            <option value="CLOSED">مغلقة</option>
+          </select>
+        </label>
         {busy&&<p className="text-slate-400">تحميل...</p>}
         {!busy&&records.length===0&&<p className="text-slate-400">لا توجد ملفات مسجلة.</p>}
         {records.map(item=><button type="button" onClick={()=>openCase(item.id)} key={item.id}

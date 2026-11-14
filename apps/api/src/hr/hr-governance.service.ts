@@ -163,7 +163,7 @@ export function assertGovernanceClosure(
 @Injectable()
 export class HrGovernanceService {
   async list(req: any, query: {
-    category?: string; status?: string; employeeId?: string; page?: string | number; limit?: string | number;
+    category?: string; status?: string; employeeId?: string; search?: string; page?: string | number; limit?: string | number;
   }) {
     const tenantId=req.user?.tenantId;
     const where: any = { ...tenantWhere(tenantId) };
@@ -180,6 +180,18 @@ export class HrGovernanceService {
       where.status = query.status;
     }
     if (query.employeeId) where.employeeId = query.employeeId;
+    if (query.search !== undefined) {
+      if (typeof query.search !== 'string' || query.search.length > 100) {
+        throw new BadRequestException('Search term must be at most 100 characters');
+      }
+      const text=query.search.trim();
+      if (text) {
+        where.OR=[
+          { title: { contains: text, mode: 'insensitive' } },
+          { description: { contains: text, mode: 'insensitive' } },
+        ];
+      }
+    }
     const page=query.page === undefined ? 1 : Number(query.page);
     const limit=query.limit === undefined ? 25 : Number(query.limit);
     if (!Number.isInteger(page) || page < 1 || page > 100000 ||

@@ -30,6 +30,15 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
         description:'Unverified report that must be reviewed',priority:'HIGH',
       });
       assert.equal(record.status,'OPEN');
+      const searched=await service.list(reqA,{search:'Reported work issue'});
+      assert.equal(searched.count,1);
+      assert.equal(searched.data[0].id,record.id);
+      const wrongStatus=await service.list(reqA,{status:'CLOSED'});
+      assert.equal(wrongStatus.count,0);
+      await assert.rejects(()=>service.list(reqA,{search:'x'.repeat(101)}),/Search term must be at most/);
+      await assert.rejects(()=>service.list(reqA,{status:'INVALID'}),/Invalid governance status/);
+      const foreignSearch=await service.list(reqB,{search:'Reported work issue'});
+      assert.equal(foreignSearch.count,0);
       const pageOne=await service.list(reqA,{page:'1',limit:'1'});
       assert.equal(pageOne.count,1);
       assert.equal(pageOne.data.length,1);
@@ -301,6 +310,9 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
       assert.equal(newest.data.length,1);
       assert.equal(older.data.length,1);
       assert.notEqual(newest.data[0].id,older.data[0].id);
+      const exact=await service.list(reqA,{search:'Workspace E2E CLAIMS',status:'CLOSED'});
+      assert.equal(exact.count,1);
+      assert.equal(exact.data[0].category,'CLAIMS');
     } finally {
       await prisma.hrGovernanceEvidence.deleteMany({where:{tenantId:a.id}});
       await prisma.hrGovernanceEvent.deleteMany({where:{tenantId:a.id}});
