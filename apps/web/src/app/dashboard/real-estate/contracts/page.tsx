@@ -9,7 +9,7 @@ import Select from '@/components/ui/Select';
 import Button from '@/components/ui/Button';
 
 const statuses=[{value:'DRAFT',label:'مسودة'},{value:'ACTIVE',label:'نشط'},{value:'EXPIRED',label:'منتهي'},{value:'TERMINATED',label:'منهى'},{value:'RENEWED',label:'مجدّد'}];
-const frequencies=[{value:'MONTHLY',label:'شهري'},{value:'QUARTERLY',label:'ربع سنوي'},{value:'SEMI_ANNUAL',label:'نصف سنوي'},{value:'ANNUAL',label:'سنوي'}];
+const frequencies=[{value:'WEEKLY',label:'أسبوعي'},{value:'MONTHLY',label:'شهري'},{value:'QUARTERLY',label:'ربع سنوي'},{value:'SEMI_ANNUAL',label:'نصف سنوي'},{value:'ANNUAL',label:'سنوي'}];
 
 export default function ContractsPage(){
  const [items,setItems]=useState<any[]>([]);
