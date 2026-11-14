@@ -150,6 +150,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             $restoreFailure = Get-Content (Join-Path $evidence 'result.json') -Raw | ConvertFrom-Json
             Write-Host "Synthetic fixture failure: $($restoreFailure.error)"
+            foreach ($name in @('container.log','copy.log','archive-list.log','restore.log','cleanup.log')) {
+              $log = Join-Path $evidence $name
+              if (Test-Path -LiteralPath $log) {
+                Write-Host "=== $name ==="
+                Get-Content -LiteralPath $log -Tail 30
+              }
+            }
             throw 'Isolated restore validator failed on synthetic fixture'
           }
           $result = Get-Content (Join-Path $evidence 'result.json') -Raw | ConvertFrom-Json
