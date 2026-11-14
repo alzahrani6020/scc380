@@ -10,6 +10,7 @@ export type AccountingRole =
   | 'VAT_PAYABLE'
   | 'VAT_RECEIVABLE'
   | 'SALES_REVENUE'
+  | 'RENT_REVENUE'
   | 'COGS'
   | 'PAYROLL_EXPENSE'
   | 'GENERAL_EXPENSE';
@@ -23,6 +24,7 @@ const DEFAULT_CODES: Record<AccountingRole, string> = {
   VAT_PAYABLE: '2110',
   VAT_RECEIVABLE: '1140',
   SALES_REVENUE: '4100',
+  RENT_REVENUE: '4200',
   COGS: '5600',
   PAYROLL_EXPENSE: '5200',
   GENERAL_EXPENSE: '5000',
