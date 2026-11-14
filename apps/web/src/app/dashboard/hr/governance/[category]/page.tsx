@@ -2,8 +2,9 @@
 
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import api from '@/lib/api';
+import AsyncCombobox from '@/components/ui/AsyncCombobox';
 
 const WORKFLOW_ACTIONS: Record<string, {code:string;label:string}[]> = {
   VIOLATIONS: [{code:'REPORT_DETAIL',label:'تفاصيل البلاغ'},{code:'REVIEW_FINDING',label:'نتيجة المراجعة'}],
@@ -37,7 +38,6 @@ export default function GovernanceWorkspace() {
   const [page,setPage] = useState(1);
   const [total,setTotal] = useState(0);
   const loadSequence=useRef(0);
-  const [employees,setEmployees] = useState<any[]>([]);
   const [contracts,setContracts] = useState<any[]>([]);
   const [selected,setSelected] = useState<any>(null);
   const [related,setRelated] = useState<any>(null);
@@ -58,19 +58,26 @@ export default function GovernanceWorkspace() {
   const [error,setError] = useState('');
   const [busy,setBusy] = useState(true);
 
+  const searchEmployees=useCallback(async (search:string, signal:AbortSignal)=>{
+    const r=await api.get('/hr/employees?search='+encodeURIComponent(search)+'&page=1&limit=25',{signal});
+    return (r.data?.data||[]).map((e:any)=>({
+      value:e.id,label:e.employeeCode+' — '+e.firstName+' '+e.lastName,
+    }));
+  },[]);
+  const resolveEmployee=useCallback(async (value:string, signal:AbortSignal)=>{
+    const r=await api.get('/hr/employees/'+encodeURIComponent(value),{signal});
+    const e=r.data;
+    return e?{value:e.id,label:e.employeeCode+' — '+e.firstName+' '+e.lastName}:null;
+  },[]);
   const load = async () => {
     if (!space) return;
     const seq=++loadSequence.current;
     setBusy(true);setError('');
     try {
-      const [cases,staff]=await Promise.all([
-        api.get('/hr/governance?category='+encodeURIComponent(space.category)+'&page='+page+'&limit=25'),
-        api.get('/hr/employees?limit=200'),
-      ]);
+      const cases=await api.get('/hr/governance?category='+encodeURIComponent(space.category)+'&page='+page+'&limit=25');
       if(seq!==loadSequence.current)return;
       setRecords(cases.data?.data || []);
       setTotal(cases.data?.count || 0);
-      setEmployees(staff.data?.data || []);
     }catch(e:any){
       if(seq===loadSequence.current)setError(e.response?.data?.message || 'تعذر تحميل البيانات أو لا توجد صلاحية');
     }finally{
@@ -95,7 +102,9 @@ export default function GovernanceWorkspace() {
   },[form.employeeId]);
 
   const submit = async (e:React.FormEvent) => {
-    e.preventDefault();setSaving(true);setError('');
+    e.preventDefault();
+    if(!form.employeeId){setError('يجب اختيار الموظف قبل حفظ القضية');return;}
+    setSaving(true);setError('');
     try {
       await api.post('/hr/governance',{...form,contractId:form.contractId||undefined,category:space.category});
       setForm({employeeId:'',contractId:'',title:'',description:'',priority:'NORMAL'});
@@ -202,12 +211,11 @@ export default function GovernanceWorkspace() {
     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
       <form onSubmit={submit} className="scc-card space-y-3">
         <h2 className="font-semibold text-white">فتح ملف جديد</h2>
-        <label className="block text-sm text-slate-300">الموظف
-          <select required className={input} value={form.employeeId} onChange={e=>setForm({...form,employeeId:e.target.value})}>
-            <option value="">اختر الموظف</option>
-            {employees.map(x=><option key={x.id} value={x.id}>{x.employeeCode} — {x.firstName} {x.lastName}</option>)}
-          </select>
-        </label>
+        <AsyncCombobox label="الموظف" required
+          value={form.employeeId} loadOptions={searchEmployees} resolveValue={resolveEmployee}
+          placeholder="اختر الموظف" searchPlaceholder="ابحث بالاسم أو الرقم الوظيفي"
+          onChange={value=>setForm(prev=>({...prev,employeeId:value,contractId:''}))}
+        />
         <label className="block text-sm text-slate-300">العقد المرتبط (اختياري)
           <select className={input} value={form.contractId} onChange={e=>setForm({...form,contractId:e.target.value})}>
             <option value="">دون عقد محدد</option>

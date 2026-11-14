@@ -1,5 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   GOVERNANCE_WORKFLOWS,
   assertGovernanceAction,
@@ -125,4 +127,13 @@ test('independent governance reviews cannot be signed by the action author', () 
   assert.throws(()=>assertGovernanceAction('DISCIPLINE','APPEAL_REVIEWED','first-reviewer',appeal),
     /must differ from the original decision reviewer/);
   assert.doesNotThrow(()=>assertGovernanceAction('DISCIPLINE','APPEAL_REVIEWED','second-reviewer',appeal));
+});
+
+test('governance UI searches all tenant employees instead of truncating selector at 200', () => {
+  const ui=readFileSync(join(process.cwd(),'../web/src/app/dashboard/hr/governance/[category]/page.tsx'),'utf8');
+  assert.match(ui,/AsyncCombobox/);
+  assert.match(ui,/searchEmployees/);
+  assert.match(ui,/resolveEmployee/);
+  assert.match(ui,/hr\/employees\?search=/);
+  assert.doesNotMatch(ui,/hr\/employees\?limit=200/);
 });
