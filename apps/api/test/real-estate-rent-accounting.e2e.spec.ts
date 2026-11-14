@@ -91,6 +91,7 @@ test(
         where: { tenantId: a.id, sourceType: 'RENT_RECEIVABLE' },
       }), 1);
     } finally {
+      await prisma.rentCollection.deleteMany({ where: { tenantId: { in: [a.id, b.id] } } });
       await prisma.tenant.deleteMany({ where: { id: { in: [a.id, b.id] } } });
       await prisma.$disconnect();
     }
