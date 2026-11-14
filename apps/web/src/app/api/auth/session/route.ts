@@ -51,9 +51,8 @@ function apiUrl(action: Exclude<Action, 'clear'>) {
         : null;
   if (!raw) return null;
   const base = raw.replace(/\/+$/, '');
-  // Nest controllers are mounted at /auth/* (no global /api prefix).
-  // Explicit /api upstream URLs remain supported for proxy-based deployments.
-  return `${base}/auth/${action}`;
+  // Nest controllers are mounted at /auth/*; strip an optional /api suffix.
+  return base.endsWith('/api') ? `${base.slice(0, -4)}/auth/${action}` : `${base}/auth/${action}`;
 }
 
 export async function POST(request: NextRequest) {
