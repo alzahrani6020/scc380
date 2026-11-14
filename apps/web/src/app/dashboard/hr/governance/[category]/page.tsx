@@ -12,7 +12,7 @@ const WORKFLOW_ACTIONS: Record<string, {code:string;label:string}[]> = {
   DISCIPLINE: [{code:'NOTICE_PROPOSED',label:'إشعار مقترح'},{code:'FINAL_REVIEW',label:'مراجعة مستقلة'},{code:'APPEAL_REVIEWED',label:'مراجعة التظلم'}],
   CONFLICTS: [{code:'DISCLOSURE',label:'إفصاح'},{code:'MITIGATION_PLAN',label:'خطة معالجة'},{code:'MITIGATION_REVIEW',label:'تقييم المعالجة'}],
   CLAIMS: [{code:'CLAIM_PROPOSED',label:'مطالبة مقترحة'},{code:'CLAIM_REVIEWED',label:'مراجعة مستقلة'},{code:'SETTLEMENT_OFFER',label:'عرض تسوية'}],
-  LEGAL: [{code:'CASE_REFERENCE',label:'مرجع القضية'},{code:'HEARING',label:'جلسة قضائية'},{code:'JUDGMENT_RECORDED',label:'القرار القضائي'}],
+  LEGAL: [{code:'CASE_REFERENCE',label:'مرجع القضية'},{code:'HEARING',label:'جلسة قضائية'},{code:'JUDGMENT_RECORDED',label:'القرار القضائي'},{code:'CASE_DISPOSITION',label:'توثيق مآل القضية'}],
   OFFBOARDING: [{code:'HANDOVER',label:'تسليم الأعمال'},{code:'ASSET_RETURN_CHECK',label:'فحص العهد'},{code:'ACCESS_REVOKED_CONFIRMED',label:'مراجعة صلاحيات الوصول'}],
   COMPLIANCE: [{code:'CONTROL_FINDING',label:'ملاحظة رقابية'},{code:'CORRECTIVE_ACTION',label:'إجراء تصحيحي'},{code:'CONTROL_VERIFIED',label:'تحقق من المعالجة'}],
 };

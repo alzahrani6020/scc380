@@ -73,6 +73,10 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
         id:'reviewer-'+id,tenantId:a.id,email:'reviewer-'+id+'@example.test',
         firstName:'Independent',lastName:'Investigator',role:'ADMIN',status:'ACTIVE',
       }});
+      const unlinkedOffboardingEmployee=await prisma.employee.create({data:{
+        tenantId:a.id,employeeCode:'OFFBOARD-'+id,firstName:'Leaving',lastName:'Employee',
+        hireDate:new Date('2026-01-01T00:00:00Z'),
+      }});
       const categories = [
         ['VIOLATIONS','REPORT_DETAIL'], ['INVESTIGATIONS','INTERVIEW'],
         ['EVIDENCE','EVIDENCE_REVIEW'], ['DISCIPLINE','NOTICE_PROPOSED'],
@@ -84,9 +88,20 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
 
       for(const [category,code] of categories) {
         const caseFile=await service.create(reqA,{
-          employeeId:employee.id,category,title:'Workspace E2E '+category,
+          employeeId:category==='OFFBOARDING'?unlinkedOffboardingEmployee.id:employee.id,
+          category,title:'Workspace E2E '+category,
           description:'Independent validation of '+category+' case actions',
         });
+        if(category==='EVIDENCE') {
+          await assert.rejects(()=>service.addWorkflowAction(reqA,caseFile.id,{
+            code:'EVIDENCE_REVIEW',narrative:'Attempt to review absent file',
+          }),/requires an uploaded original file/);
+          const sample=await service.addEvidence(reqA,caseFile.id,{
+            fileName:'evidence.pdf',mimeType:'application/pdf',
+            contentBase64:pdf.toString('base64'),description:'Synthetic original evidence',
+          });
+          assert.equal(sample.sizeBytes,pdf.length);
+        }
         if(category==='INVESTIGATIONS') {
           await assert.rejects(()=>service.addWorkflowAction(reqA,caseFile.id,{
             code:'INVESTIGATOR_ASSIGNED',narrative:'Forged investigator assignment action',
@@ -181,6 +196,40 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
           await assert.rejects(()=>service.addWorkflowAction(reqA,caseFile.id,{
             code:'APPEAL_SUBMITTED',narrative:'Administrative impersonation of employee appeal',
           }),/Employee statements and appeals require/);
+        }
+        if(category==='VIOLATIONS') {
+          await assert.rejects(()=>service.transition(reqA,caseFile.id,'CLOSED',
+            'Attempt to close without review'),/Required governance action missing: REVIEW_FINDING/);
+          await service.addWorkflowAction(reqA,caseFile.id,{
+            code:'REVIEW_FINDING',narrative:'Recorded review of the reported issue',
+          });
+        }
+        if(category==='CONFLICTS') {
+          await service.addWorkflowAction(reqA,caseFile.id,{
+            code:'MITIGATION_PLAN',narrative:'Proposed mitigation of conflict of interest',
+          });
+          await service.addWorkflowAction(reqA,caseFile.id,{
+            code:'MITIGATION_REVIEW',narrative:'Verified conflict mitigation controls',
+          });
+        }
+        if(category==='LEGAL') {
+          await assert.rejects(()=>service.transition(reqA,caseFile.id,'CLOSED',
+            'Attempt without outcome'),/Legal case outcome must be documented/);
+          await service.addWorkflowAction(reqA,caseFile.id,{
+            code:'CASE_DISPOSITION',narrative:'Record that the referenced matter is withdrawn',
+          });
+        }
+        if(category==='COMPLIANCE') {
+          await service.addWorkflowAction(reqA,caseFile.id,{
+            code:'CORRECTIVE_ACTION',narrative:'Corrective action approved for compliance finding',
+          });
+          await service.addWorkflowAction(reqA,caseFile.id,{
+            code:'CONTROL_VERIFIED',narrative:'Verified the corrective measure and controls',
+          });
+        }
+        if(category!=='OFFBOARDING') {
+          const final=await service.transition(reqA,caseFile.id,'CLOSED','All required records documented');
+          assert.equal(final.status,'CLOSED');
         }
         const found=await service.findOne(reqA,caseFile.id);
         assert.ok(found.events.length>=2);

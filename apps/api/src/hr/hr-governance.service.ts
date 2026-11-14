@@ -45,6 +45,7 @@ export const GOVERNANCE_WORKFLOWS: Record<string, { code: string; label: string 
     { code: 'CASE_REFERENCE', label: 'مرجع القضية' },
     { code: 'HEARING', label: 'جلسة أو موعد قضائي' },
     { code: 'JUDGMENT_RECORDED', label: 'تسجيل نتيجة قضائية موثقة' },
+    { code: 'CASE_DISPOSITION', label: 'محضر مآل القضية أو إغلاقها' },
   ],
   OFFBOARDING: [
     { code: 'HANDOVER', label: 'محضر تسليم الأعمال' },
@@ -111,6 +112,20 @@ export function assertGovernanceClosure(
   category: string, history: { action: string; createdAt: Date }[],
 ) {
   const lastIndex = (action: string) => history.reduce((index, row, i) => row.action === action ? i : index, -1);
+  const mandatory: Record<string,string[]> = {
+    VIOLATIONS:['REPORT_DETAIL','REVIEW_FINDING'],
+    INVESTIGATIONS:['INVESTIGATOR_ASSIGNED','INTERVIEW','FACT_FINDING'],
+    EVIDENCE:['EVIDENCE_REVIEW'],
+    CONFLICTS:['DISCLOSURE','MITIGATION_PLAN','MITIGATION_REVIEW'],
+    LEGAL:['CASE_REFERENCE'],
+    COMPLIANCE:['CONTROL_FINDING','CORRECTIVE_ACTION','CONTROL_VERIFIED'],
+  };
+  for (const required of mandatory[category] || []) {
+    if (lastIndex(required)<0) throw new ConflictException('Required governance action missing: '+required);
+  }
+  if (category==='LEGAL' && lastIndex('CASE_DISPOSITION')<0 && lastIndex('JUDGMENT_RECORDED')<0) {
+    throw new ConflictException('Legal case outcome must be documented before closure');
+  }
   if (category === 'DISCIPLINE' && lastIndex('NOTICE_PROPOSED') >= 0 &&
     lastIndex('FINAL_REVIEW') < lastIndex('NOTICE_PROPOSED')) {
     throw new ConflictException('Proposed disciplinary notice requires independent final review before closure');
@@ -222,6 +237,10 @@ export class HrGovernanceService {
           select: { action: true, createdAt: true },
         });
         assertGovernanceClosure(record.category, history);
+        if (record.category === 'EVIDENCE') {
+          const evidenceCount = await tx.hrGovernanceEvidence.count({ where: { tenantId, caseId: id } });
+          if (!evidenceCount) throw new ConflictException('Evidence workspace closure requires an uploaded original file');
+        }
         if (record.category === 'OFFBOARDING') {
           const custody = await tx.assetCustodyAssignment.count({
             where: { tenantId, employeeId: record.employeeId, status: 'ACTIVE' },
@@ -526,6 +545,10 @@ export class HrGovernanceService {
           event.action === responseType && event.actorUserId === employee.userId)) {
           throw new ConflictException('Verified employee self-service statement required before review');
         }
+      }
+      if (record.category === 'EVIDENCE' && dto.code === 'EVIDENCE_REVIEW') {
+        const evidenceCount = await tx.hrGovernanceEvidence.count({ where: { tenantId, caseId: id } });
+        if (!evidenceCount) throw new ConflictException('Evidence review requires an uploaded original file');
       }
       if (record.category === 'OFFBOARDING' && dto.code === 'ASSET_RETURN_CHECK') {
         const count = await tx.assetCustodyAssignment.count({

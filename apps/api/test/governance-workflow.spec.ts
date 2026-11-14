@@ -93,3 +93,21 @@ test('investigator assignment cannot be fabricated as a text-only action', () =>
     /requires a verified tenant user/,
   );
 });
+
+test('category-specific closure requires documented governance actions', () => {
+  const dated=(action:string)=>({action,createdAt:new Date('2026-01-01T00:00:00Z')});
+  const requirements: Record<string,string[]> = {
+    VIOLATIONS:['REPORT_DETAIL','REVIEW_FINDING'],
+    INVESTIGATIONS:['INVESTIGATOR_ASSIGNED','INTERVIEW','FACT_FINDING'],
+    EVIDENCE:['EVIDENCE_REVIEW'],
+    CONFLICTS:['DISCLOSURE','MITIGATION_PLAN','MITIGATION_REVIEW'],
+    COMPLIANCE:['CONTROL_FINDING','CORRECTIVE_ACTION','CONTROL_VERIFIED'],
+  };
+  for(const [category,actions] of Object.entries(requirements)) {
+    assert.throws(()=>assertGovernanceClosure(category,[]),/Required governance action missing/);
+    assert.doesNotThrow(()=>assertGovernanceClosure(category,actions.map(dated)));
+  }
+  assert.throws(()=>assertGovernanceClosure('LEGAL',[dated('CASE_REFERENCE')]),/Legal case outcome/);
+  assert.doesNotThrow(()=>assertGovernanceClosure('LEGAL',
+    [dated('CASE_REFERENCE'),dated('CASE_DISPOSITION')]));
+});
