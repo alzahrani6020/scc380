@@ -12,7 +12,7 @@ import { REQUIRE_PERMISSIONS_KEY } from '../src/auth/guards/permissions.guard';
 const contracts = [
   { controller: PropertiesController, api: 'real-estate/properties', page: 'properties', methods: ['findAll', 'summary', 'findOne', 'create', 'update', 'remove'] },
   { controller: UnitsController, api: 'real-estate/units', page: 'units', methods: ['findAll', 'findOne', 'create', 'update', 'remove'] },
-  { controller: LeaseContractsController, api: 'real-estate/contracts', page: 'contracts', methods: ['findAll', 'findOne', 'create', 'update', 'remove', 'renew', 'activate', 'terminate', 'ejarSync'] },
+  { controller: LeaseContractsController, api: 'real-estate/contracts', page: 'contracts', methods: ['findAll', 'findOne', 'create', 'update', 'remove', 'renew', 'activate', 'paymentPreview', 'terminate', 'ejarSync'] },
   { controller: RentPaymentsController, api: 'real-estate/payments', page: 'payments', methods: ['findAll', 'findOne', 'create', 'update', 'remove', 'record', 'overdueReport'] },
 ] as const;
 
@@ -66,4 +66,6 @@ test('lease workspace discloses amount per installment and supports all payment 
   assert.ok(page.includes('قيمة كل دفعة إيجار'));
   assert.ok(page.includes('ليست إجمالي قيمة العقد'));
   assert.ok(page.includes("/real-estate/contracts/'+id+'/activate"));
+  assert.ok(page.includes("/real-estate/contracts/'+id+'/payment-preview"));
+  assert.ok(page.includes('totalScheduledAmount'));
 });
