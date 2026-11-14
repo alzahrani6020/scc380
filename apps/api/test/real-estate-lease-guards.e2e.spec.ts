@@ -45,7 +45,7 @@ test(
       assert.equal(scheduled.status, 'PENDING');
       const beforeCollection = await receivables.collectionSummary(a.id);
       assert.equal(beforeCollection.pendingCount, 1);
-      assert.equal(beforeCollection.pendingAmount, '1000');
+      assert.equal(beforeCollection.pendingAmount, '1000.00');
       assert.equal(beforeCollection.completedCount, 0);
       assert.equal(beforeCollection.overdueCount, 1);
       const anotherTenantSummary = await receivables.collectionSummary(b.id);
@@ -56,26 +56,47 @@ test(
       await assert.rejects(() => leases.findOne(b.id, contract.id));
       await assert.rejects(() => receivables.findOne(b.id, scheduled.id));
       await assert.rejects(() => receivables.recordPayment(b.id, scheduled.id, {
-        paidDate: '2026-01-02T00:00:00.000Z', amount: '1000.00',
+        paidDate: '2026-01-02T00:00:00.000Z', amount: '1000.00', idempotencyKey: 'foreign-'+run,
       }));
       await assert.rejects(() => leases.update(a.id, contract.id, { rentAmount: '2000' }), /financial terms/);
       await assert.rejects(() => leases.delete(a.id, contract.id), /draft contracts without scheduled/);
+      const firstPartial = await receivables.recordPayment(a.id, scheduled.id, {
+        paidDate: '2026-01-02T00:00:00.000Z', amount: '400.00',
+        idempotencyKey: 'partial-'+run, transactionRef: 'partial-bank-'+run,
+      });
+      assert.equal(firstPartial.status, 'PENDING');
+      assert.equal((await receivables.findOne(a.id, scheduled.id)).outstandingAmount, '600.00');
+      const partialSummary = await receivables.collectionSummary(a.id);
+      assert.equal(partialSummary.pendingAmount, '600.00');
+      assert.equal(partialSummary.completedAmount, '400.00');
+      assert.equal(partialSummary.overdueAmount, '600.00');
+
+      // Replays of the SAME key must not duplicate the receipt.
+      await receivables.recordPayment(a.id, scheduled.id, {
+        paidDate: '2026-01-02T00:00:00.000Z', amount: '400.00',
+        idempotencyKey: 'partial-'+run,
+      });
+      assert.equal(await prisma.rentCollection.count({ where: { tenantId: a.id, rentPaymentId: scheduled.id } }), 1);
       await assert.rejects(() => receivables.recordPayment(a.id, scheduled.id, {
-        paidDate: '2026-01-02T00:00:00.000Z', amount: '500',
-      }), /Partial or excess/);
+        paidDate: '2026-01-02T00:00:00.000Z', amount: '400.00',
+        idempotencyKey: 'other-'+run,
+      }), /exceeds outstanding/);
+
       const paid = await receivables.recordPayment(a.id, scheduled.id, {
-        paidDate: '2026-01-02T00:00:00.000Z', amount: '1000.00',
-        paymentMethod: 'BANK_TRANSFER', transactionRef: `lease-e2e-${run}`,
+        paidDate: '2026-01-02T00:00:00.000Z', amount: '600.00',
+        idempotencyKey: 'final-'+run, paymentMethod: 'BANK_TRANSFER',
+        transactionRef: `lease-e2e-${run}`,
       });
       assert.equal(paid.status, 'COMPLETED');
       assert.equal((await receivables.findOne(a.id, scheduled.id)).status, 'COMPLETED');
       const afterCollection = await receivables.collectionSummary(a.id);
       assert.equal(afterCollection.pendingCount, 0);
       assert.equal(afterCollection.completedCount, 1);
-      assert.equal(afterCollection.completedAmount, '1000');
+      assert.equal(afterCollection.completedAmount, '1000.00');
+      assert.equal(await prisma.rentCollection.count({ where: { tenantId: a.id, rentPaymentId: scheduled.id } }), 2);
       assert.equal(afterCollection.overdueCount, 0);
       await assert.rejects(() => receivables.recordPayment(a.id, scheduled.id, {
-        paidDate: '2026-01-02T00:00:00.000Z', amount: '1000.00',
+        paidDate: '2026-01-02T00:00:00.000Z', amount: '1000.00', idempotencyKey: 'duplicate-'+run,
       }), /Only pending/);
     } finally {
       await prisma.tenant.deleteMany({ where: { id: { in: [a.id, b.id] } } });
