@@ -76,7 +76,7 @@ test(
       assert.equal((await receivables.findOne(a.id, scheduled.id)).outstandingAmount, '600.00');
       await assert.rejects(() => receivables.update(a.id, scheduled.id, {
         dueDate: '2027-01-01T00:00:00.000Z',
-      }), /Cannot reschedule/);
+      }), /Cannot modify a receivable after collection or accounting posting/);
       assert.equal((await receivables.findOne(a.id, scheduled.id)).dueDate.toISOString().slice(0,10), '2026-01-01');
       const partialSummary = await receivables.collectionSummary(a.id);
       assert.equal(partialSummary.pendingAmount, '600.00');
