@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import api from '@/lib/api';
+import EmployeePicker from '@/components/hr/EmployeePicker';
 import { getRole } from '@/lib/auth';
 import { CheckCircle2, Circle, ListChecks, Plus, SkipForward } from 'lucide-react';
 import Button from '@/components/ui/Button';
@@ -11,7 +12,6 @@ import Select from '@/components/ui/Select';
 
 export default function HrLifecyclePage() {
   const [cases, setCases] = useState<any[]>([]);
-  const [employees, setEmployees] = useState<any[]>([]);
   const [type, setType] = useState('');
   const [open, setOpen] = useState(false);
   const [exitCase,setExitCase] = useState<any>(null);
@@ -23,14 +23,9 @@ export default function HrLifecyclePage() {
 
   const load = () => {
     const q = type ? '?type=' + type : '';
-    Promise.all([
-      api.get('/hr/lifecycle' + q).then(r => setCases(r.data.data || [])),
-      api.get('/hr/employees?limit=200').then(r => setEmployees(r.data.data || [])),
-    ]).catch(console.error);
+    api.get('/hr/lifecycle'+q).then(r=>setCases(r.data.data||[])).catch(console.error);
   };
   useEffect(() => { load(); }, [type]);
-
-  const employeesOptions = useMemo(() => employees.map(e => ({value:e.id,label:`${e.firstName} ${e.lastName} · ${e.employeeCode}`})),[employees]);
 
   const createCase = async () => {
     await api.post('/hr/lifecycle', {
@@ -125,7 +120,8 @@ export default function HrLifecyclePage() {
 
     <Modal isOpen={open} onClose={()=>setOpen(false)} title="إنشاء حالة دورة موظف" size="lg">
       <div className="space-y-4">
-        <Select label="الموظف" options={employeesOptions} value={form.employeeId||''} onChange={e=>setForm({...form,employeeId:e.target.value})} />
+        <EmployeePicker value={form.employeeId||''} required
+          onChange={employeeId=>setForm((prev:any)=>({...prev,employeeId}))}/>
         <Select label="النوع" options={[{value:'ONBOARDING',label:'انضمام'},{value:'OFFBOARDING',label:'مغادرة'}]} value={form.type} onChange={e=>setForm({...form,type:e.target.value})} />
         <Input label="التاريخ المستهدف" type="date" value={form.targetDate||''} onChange={e=>setForm({...form,targetDate:e.target.value})} />
         <Input label="ملاحظات" value={form.notes||''} onChange={e=>setForm({...form,notes:e.target.value})} />

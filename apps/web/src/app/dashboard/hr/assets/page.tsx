@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import api from '@/lib/api';
+import EmployeePicker from '@/components/hr/EmployeePicker';
 import { CheckCircle2, PackageCheck, Plus, RotateCcw, AlertTriangle, Landmark, X } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -11,7 +12,6 @@ import Select from '@/components/ui/Select';
 export default function HrAssetsPage() {
   const [assets, setAssets] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
-  const [employees, setEmployees] = useState<any[]>([]);
   const [assignments, setAssignments] = useState<any[]>([]);
   const [assetOpen, setAssetOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
@@ -27,15 +27,11 @@ export default function HrAssetsPage() {
   const load = () => Promise.all([
     api.get('/hr/assets').then(r => setAssets(r.data.data || [])),
     api.get('/hr/assets/categories').then(r => setCategories(r.data || [])),
-    api.get('/hr/employees?limit=200').then(r => setEmployees(r.data.data || [])),
     api.get('/hr/assets/custody/assignments').then(r => setAssignments(r.data.data || [])),
   ]).catch(console.error);
   useEffect(() => { load(); }, []);
 
   const categoryOptions = categories.map(c => ({ value: c.id, label: c.name }));
-  const employeeOptions = employees.filter(e => e.status === 'ACTIVE').map(e => ({
-    value: e.id, label: `${e.firstName} ${e.lastName} · ${e.employeeCode}`
-  }));
   const assetOptions = useMemo(() => assets
     .filter(a => a.status === 'ACTIVE' && !(a.custodyAssignments || []).length)
     .map(a => ({ value: a.id, label: `${a.name}${a.code ? ' · ' + a.code : ''}` })), [assets]);
@@ -215,7 +211,8 @@ export default function HrAssetsPage() {
     <Modal isOpen={assignOpen} onClose={() => setAssignOpen(false)} title="تسليم عهدة" size="lg">
       <div className="space-y-4">
         <Select label="الأصل المتاح" options={assetOptions} value={assignForm.assetId||''} onChange={e=>setAssignForm({...assignForm,assetId:e.target.value})} />
-        <Select label="الموظف" options={employeeOptions} value={assignForm.employeeId||''} onChange={e=>setAssignForm({...assignForm,employeeId:e.target.value})} />
+        <EmployeePicker activeOnly required value={assignForm.employeeId||''}
+          onChange={employeeId=>setAssignForm((prev:any)=>({...prev,employeeId}))}/>
         <Input label="موعد الاسترداد المتوقع" type="date" value={assignForm.expectedReturnAt||''} onChange={e=>setAssignForm({...assignForm,expectedReturnAt:e.target.value})} />
         <Input label="حالة الأصل عند التسليم" value={assignForm.conditionOut||''} onChange={e=>setAssignForm({...assignForm,conditionOut:e.target.value})} />
         <Input label="ملاحظات" value={assignForm.notes||''} onChange={e=>setAssignForm({...assignForm,notes:e.target.value})} />

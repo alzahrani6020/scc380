@@ -159,3 +159,20 @@ test('empty claims and disciplinary cases cannot be closed as if reviewed', () =
   assert.throws(()=>assertGovernanceClosure('DISCIPLINE',[]),/Disciplinary case disposition/);
   assert.doesNotThrow(()=>assertGovernanceClosure('DISCIPLINE',[dated('DISCIPLINE_DISPOSITION')]));
 });
+
+test('Makin settlement, custody and lifecycle workspaces use the searchable employee picker', () => {
+  const web=join(process.cwd(),'../web/src');
+  const picker=readFileSync(join(web,'components/hr/EmployeePicker.tsx'),'utf8');
+  assert.match(picker,/AsyncCombobox/);
+  assert.match(picker,/hr\/employees\?/);
+  assert.match(picker,/status.*ACTIVE/);
+  for(const page of [
+    'app/dashboard/hr/settlements/page.tsx',
+    'app/dashboard/hr/lifecycle/page.tsx',
+    'app/dashboard/hr/assets/page.tsx',
+  ]) {
+    const content=readFileSync(join(web,page),'utf8');
+    assert.match(content,/EmployeePicker/);
+    assert.doesNotMatch(content,/hr\/employees\?limit=200/);
+  }
+});
