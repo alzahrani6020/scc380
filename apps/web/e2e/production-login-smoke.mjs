@@ -23,7 +23,12 @@ try {
     const r = await fetch('/api/crm/contacts', { method: 'GET', credentials: 'omit', cache: 'no-store' });
     return r.status;
   });
-  assert.ok([401, 403].includes(forbidden), 'Anonymous CRM expected 401/403, got ' + forbidden);
+  if (forbidden === 429) {
+    outcome = 'BLOCKED';
+    console.error(JSON.stringify({ status: outcome, reason: 'HTTP 429 rate limiting prevents anonymous CRM authorization assertion', http: response.status(), anonymousCrmStatus: forbidden, realSessionRotation: 'UNKNOWN' }));
+    process.exitCode = 2;
+  } else {
+    assert.ok([401, 403].includes(forbidden), 'Anonymous CRM expected 401/403, got ' + forbidden);
   const unauthenticatedRefresh = await page.evaluate(async () => {
     const r = await fetch('/api/auth/refresh', {
       method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'omit',
@@ -31,9 +36,16 @@ try {
     });
     return r.status;
   });
-  assert.ok([400, 401, 422, 429].includes(unauthenticatedRefresh), 'Anonymous refresh expected 400/401/422/429, got ' + unauthenticatedRefresh);
-  outcome = 'PASS';
-  console.log(JSON.stringify({ status: outcome, url: base + '/auth/login', http: response.status(), emailInput: true, passwordInput: true, anonymousCrmStatus: forbidden, anonymousRefreshStatus: unauthenticatedRefresh, pageErrors: errors.length, realSessionRotation: 'UNKNOWN' }));
+    if (unauthenticatedRefresh === 429) {
+      outcome = 'BLOCKED';
+      console.error(JSON.stringify({ status: outcome, reason: 'HTTP 429 rate limiting prevents anonymous refresh assertion', anonymousCrmStatus: forbidden, anonymousRefreshStatus: unauthenticatedRefresh, realSessionRotation: 'UNKNOWN' }));
+      process.exitCode = 2;
+    } else {
+      assert.ok([400, 401, 422].includes(unauthenticatedRefresh), 'Anonymous refresh expected 400/401/422, got ' + unauthenticatedRefresh);
+      outcome = 'PASS';
+      console.log(JSON.stringify({ status: outcome, url: base + '/auth/login', http: response.status(), emailInput: true, passwordInput: true, anonymousCrmStatus: forbidden, anonymousRefreshStatus: unauthenticatedRefresh, pageErrors: errors.length, realSessionRotation: 'UNKNOWN' }));
+    }
+  }
 } catch (error) {
   console.error(JSON.stringify({ status: outcome, reason: String(error.message).slice(0, 500), realSessionRotation: 'UNKNOWN' }));
   process.exitCode = 1;
