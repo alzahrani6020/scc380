@@ -19,10 +19,13 @@ const makeHarness = (requestPath = '/auth/login') => {
     },
   };
   const filter = new LoginDiagnosticFilter({ httpAdapter: adapter } as any);
+  const request = { path: requestPath, method: 'POST' };
   const host = {
+    getArgByIndex: (index: number) => [request, response][index],
+    getArgs: () => [request, response],
     switchToHttp: () => ({
       getResponse: () => response,
-      getRequest: () => ({ path: requestPath, method: 'POST' }),
+      getRequest: () => request,
     }),
   };
   return { filter, response, headers, host };
