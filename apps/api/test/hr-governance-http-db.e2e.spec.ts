@@ -3,11 +3,18 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { Test } from '@nestjs/testing';
-import { ConfigModule } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
+import { Reflector } from '@nestjs/core';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ValidationPipe } from '@nestjs/common';
 import { hashPassword } from '@scc/auth';
 import { prisma } from '@scc/database';
 import { AuthModule } from '../src/auth/auth.module';
+import { AuthController } from '../src/auth/auth.controller';
+import { AuthService } from '../src/auth/auth.service';
+import { AuthRateLimitGuard } from '../src/auth/guards/auth-rate-limit.guard';
+import { JwtStrategy } from '../src/auth/strategies/jwt.strategy';
+import { LocalStrategy } from '../src/auth/strategies/local.strategy';
 import { PermissionsGuard } from '../src/auth/guards/permissions.guard';
 import { HrGovernanceController } from '../src/hr/hr-governance.controller';
 import { HrGovernanceService } from '../src/hr/hr-governance.service';
@@ -41,6 +48,14 @@ test('HTTP acceptance: password login, tenant-aware JWT, governance writes, read
       data: { tenantId: tenantA.id, employeeCode: 'HTTP-' + id, firstName: 'Acceptance', lastName: 'Employee', hireDate: new Date('2026-01-01T00:00:00Z') },
     });
 
+    // tsx executes without emitDecoratorMetadata; restore the constructor metadata
+    // required for Nest's real providers and guards in this isolated HTTP test.
+    Reflect.defineMetadata('design:paramtypes', [JwtService, ConfigService], AuthService);
+    Reflect.defineMetadata('design:paramtypes', [AuthService, AuthRateLimitGuard], AuthController);
+    Reflect.defineMetadata('design:paramtypes', [ConfigService], JwtStrategy);
+    Reflect.defineMetadata('design:paramtypes', [AuthService], LocalStrategy);
+    Reflect.defineMetadata('design:paramtypes', [HrGovernanceService], HrGovernanceController);
+    Reflect.defineMetadata('design:paramtypes', [Reflector], PermissionsGuard);
     const moduleRef = await Test.createTestingModule({
       imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }), AuthModule],
       controllers: [HrGovernanceController],
