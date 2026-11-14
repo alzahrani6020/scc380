@@ -24,6 +24,17 @@ $container="makkin-db-$stamp".ToLowerInvariant()
 $state=[ordered]@{engine='Makkin Acceptance v4';status='BLOCKED';commit=$null;
   functional='NOT_RUN';schemaDrift='NOT_RUN';production='UNKNOWN';
   backupRestore='NOT_VERIFIED';evidence=$EvidenceRoot;checks=@();remaining=@()}
+# Windows build tools may resolve a globally installed pnpm (e.g. 11.x) inside Turbo.
+# A temporary PATH-first shim pins all nested pnpm invocations to Corepack's
+# repository-required pnpm version, without changing user/global installation.
+$originalPath=$env:PATH
+if([System.IO.Path]::DirectorySeparatorChar -eq '\\'){
+  $shimDir=Join-Path $EvidenceRoot 'pnpm-shim'
+  New-Item -ItemType Directory -Path $shimDir -Force | Out-Null
+  $shimFile=Join-Path $shimDir 'pnpm.cmd'
+  [System.IO.File]::WriteAllText($shimFile, "@echo off\r\ncorepack pnpm %*\r\n", [System.Text.Encoding]::ASCII)
+  $env:PATH="$shimDir;$originalPath"
+}
 $oldEnv=@{}
 foreach($k in @('DATABASE_URL','DIRECT_URL','REAL_ESTATE_DB_E2E','CRM_DB_E2E','ACCOUNTING_DB_E2E')){
   $v=Get-Item -LiteralPath "Env:$k" -ErrorAction SilentlyContinue
@@ -156,13 +167,14 @@ try {
       }
     } catch {Check 'cleanup-docker' 'FAIL' $_.Exception.Message;$state.status='FAIL'}
   }
+  $env:PATH=$originalPath
   foreach($k in $oldEnv.Keys){
     if($oldEnv[$k].exists){[Environment]::SetEnvironmentVariable($k,$oldEnv[$k].value,'Process')}
     else{[Environment]::SetEnvironmentVariable($k,$null,'Process')}
   }
   if($madeTree){
     try {
-      & git -C $Repo worktree remove --force -- $tree *> (Join-Path $EvidenceRoot 'cleanup-worktree.log')
+      & git -c core.longpaths=true -C $Repo worktree remove --force -- $tree *> (Join-Path $EvidenceRoot 'cleanup-worktree.log')
       if($LASTEXITCODE -ne 0){Check 'cleanup-worktree' 'FAIL';$state.status='FAIL'}
     } catch {Check 'cleanup-worktree' 'FAIL' $_.Exception.Message;$state.status='FAIL'}
   }
