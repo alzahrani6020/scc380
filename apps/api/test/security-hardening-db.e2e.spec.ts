@@ -81,7 +81,18 @@ test('Redis-backed 2FA challenge can issue only one session', {
     const code = speakeasy.totp({ secret: otpSecret, encoding: 'base32' });
     const result = await auth.verify2FALoginAndIssueToken(pending.tempToken, code) as any;
     assert.ok(result.accessToken);
+    const issuedSessionId = (jwt.decode(result.accessToken) as any).sid;
+    const loginEvents = await prisma.auditLog.findMany({
+      where: { userId: user.id, action: 'AUTH_2FA_LOGIN_SUCCESS' },
+    });
+    assert.equal(loginEvents.length, 1);
+    assert.equal(loginEvents[0].entityId, issuedSessionId);
+    assert.deepEqual(loginEvents[0].newValues, { method: '2fa', sessionId: issuedSessionId });
+    assert.equal(JSON.stringify(loginEvents[0]).includes(pending.tempToken), false);
     await assert.rejects(() => auth.verify2FALoginAndIssueToken(pending.tempToken, code));
+    assert.equal(await prisma.auditLog.count({
+      where: { userId: user.id, action: 'AUTH_2FA_LOGIN_SUCCESS' },
+    }), 1);
     assert.equal(await prisma.session.count({ where: { userId: user.id } }), 1);
     const backup = 'ABCD1234EF567890';
     const backupHash = createHash('sha256').update(backup).digest('hex');
