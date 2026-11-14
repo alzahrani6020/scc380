@@ -186,6 +186,12 @@ test('HR offboarding rejects active employee user and sessions while preserving 
       }});
       const req:any={user:{tenantId:tenant.id,userId:'admin-'+run,role:'ADMIN'}};
       const offboarding=await lifecycle.create(req,{employeeId:employee.id,type:'OFFBOARDING'});
+      const emptyOnboarding=await lifecycle.create(req,{employeeId:employee.id,type:'ONBOARDING'});
+      await prisma.hrLifecycleTask.deleteMany({where:{tenantId:tenant.id,caseId:emptyOnboarding.id}});
+      await assert.rejects(
+        ()=>lifecycle.complete(req,emptyOnboarding.id),
+        /must contain at least one task/,
+      );
       for(const task of offboarding.tasks) {
         await lifecycle.updateTask(req,offboarding.id,task.id,{status:'DONE'});
       }
