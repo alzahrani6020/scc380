@@ -17,6 +17,7 @@ export const GOVERNANCE_WORKFLOWS: Record<string, { code: string; label: string 
     { code: 'INVESTIGATOR_ASSIGNED', label: 'تكليف المحقق' },
     { code: 'INTERVIEW', label: 'محضر الاستماع' },
     { code: 'FACT_FINDING', label: 'نتيجة التحقيق' },
+    { code: 'CUSTODY_LOSS_REVIEW', label: 'تقييم عهدة مفقودة أو متضررة' },
   ],
   EVIDENCE: [
     { code: 'EVIDENCE_REVIEW', label: 'فحص الدليل' },
@@ -597,7 +598,7 @@ export class HrGovernanceService {
   async workflowCatalog() { return GOVERNANCE_WORKFLOWS; }
 
   async addWorkflowAction(req: any, id: string, dto: {
-    code: string; narrative: string; amount?: number; dueDate?: string;
+    code: string; narrative: string; amount?: number; dueDate?: string; custodyAssignmentId?: string;
   }) {
     const tenantId = req.user?.tenantId;
     const actor = req.user?.userId || req.user?.sub || req.user?.id;
@@ -631,7 +632,7 @@ export class HrGovernanceService {
         select: { action: true, actorUserId: true },
       });
       assertGovernanceAction(record.category, dto.code, actor, history);
-      if (record.category === 'INVESTIGATIONS' && ['INTERVIEW','FACT_FINDING'].includes(dto.code) &&
+      if (record.category === 'INVESTIGATIONS' && ['INTERVIEW','FACT_FINDING','CUSTODY_LOSS_REVIEW'].includes(dto.code) &&
           record.assignedToId !== actor) {
         throw new ConflictException('Only the assigned investigator can record investigation findings');
       }
@@ -644,6 +645,21 @@ export class HrGovernanceService {
           event.action === responseType && event.actorUserId === employee.userId)) {
           throw new ConflictException('Verified employee self-service statement required before review');
         }
+      }
+      if (record.category==='INVESTIGATIONS' && dto.code==='CUSTODY_LOSS_REVIEW') {
+        if(!dto.custodyAssignmentId)throw new BadRequestException('Custody assignment ID is required');
+        const linked=await tx.assetCustodyAssignment.findFirst({
+          where:{tenantId,id:dto.custodyAssignmentId,employeeId:record.employeeId,status:'ACTIVE'},
+          select:{id:true},
+        });
+        if(!linked)throw new ConflictException('Custody assignment is not active for the investigated employee');
+        if(!history.some(e=>e.action==='FACT_FINDING')) {
+          throw new ConflictException('Investigation findings are required before asset loss review');
+        }
+        const originalEvidence=await tx.hrGovernanceEvidence.count({
+          where:{tenantId,caseId:id},
+        });
+        if(!originalEvidence)throw new ConflictException('Asset loss review requires original investigation evidence');
       }
       if (record.category === 'EVIDENCE' && dto.code === 'EVIDENCE_REVIEW') {
         const evidenceCount = await tx.hrGovernanceEvidence.count({ where: { tenantId, caseId: id } });
@@ -676,7 +692,10 @@ export class HrGovernanceService {
       if (updated.count !== 1) throw new ConflictException('Case closed during action submission');
       await tx.hrGovernanceEvent.create({
         data: { tenantId, caseId: id, actorUserId: actor, action: dto.code,
-          details: JSON.stringify({ narrative, amount: dto.amount ?? null, dueDate: dto.dueDate ?? null }) },
+          details: JSON.stringify({
+            narrative, amount: dto.amount ?? null, dueDate: dto.dueDate ?? null,
+            custodyAssignmentId: dto.code==='CUSTODY_LOSS_REVIEW' ? dto.custodyAssignmentId : null,
+          }) },
       });
       if (['NOTICE_PROPOSED','CLAIM_PROPOSED','SETTLEMENT_OFFER'].includes(dto.code)) {
         const recipient=await tx.employee.findFirst({

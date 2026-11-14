@@ -22,6 +22,7 @@ export default function HrAssetsPage() {
   const [closeItem, setCloseItem] = useState<any>(null);
   const [closeStatus, setCloseStatus] = useState<'LOST'|'DAMAGED'|null>(null);
   const [closeData, setCloseData] = useState<any>({});
+  const [investigationCases,setInvestigationCases] = useState<any[]>([]);
 
   const load = () => Promise.all([
     api.get('/hr/assets').then(r => setAssets(r.data.data || [])),
@@ -95,8 +96,19 @@ export default function HrAssetsPage() {
 
     setBusy(true);
     try {
-      const r = await api.get('/finance/chart-of-accounts');
+      const [r,investigations]=await Promise.all([
+        api.get('/finance/chart-of-accounts'),
+        api.get('/hr/governance?category=INVESTIGATIONS&employeeId='+
+          encodeURIComponent(item.employeeId)+'&limit=100'),
+      ]);
       setAccounts((r.data?.data || []).filter((account: any) => account.isActive !== false));
+      setInvestigationCases((investigations.data?.data||[]).filter((c:any)=>
+        ['RESOLVED','CLOSED'].includes(c.status) &&
+        (c.events||[]).some((event:any)=>{
+          if(event.action!=='CUSTODY_LOSS_REVIEW')return false;
+          try{return JSON.parse(event.details)?.custodyAssignmentId===item.id;}
+          catch{return false;}
+        })));
       setCloseItem(item);
       setCloseStatus(status);
       setCloseData({});
@@ -110,12 +122,14 @@ export default function HrAssetsPage() {
   const submitAccountingClose = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!closeItem || !closeStatus) return;
+    if(!closeData.governanceCaseId){alert('يجب اختيار ملف تحقيق مكتمل للعهدة');return;}
 
     const payload: any = {
       status: closeStatus,
       assetAccountId: closeData.assetAccountId,
       lossAccountId: closeData.lossAccountId,
       notes: closeData.notes || undefined,
+      governanceCaseId:closeData.governanceCaseId||undefined,
     };
     if (closeStatus === 'LOST') {
       payload.accumulatedDepreciationAccountId = closeData.accumulatedDepreciationAccountId;
@@ -211,6 +225,20 @@ export default function HrAssetsPage() {
 
     <Modal isOpen={!!closeItem && !!closeStatus} onClose={() => { setCloseItem(null); setCloseStatus(null); }} title={closeStatus === 'LOST' ? 'استبعاد أصل مفقود' : 'إثبات انخفاض قيمة أصل متضرر'} size="lg">
       <form onSubmit={submitAccountingClose} className="space-y-4">
+        <div className="text-sm text-amber-300">
+          لا يمكن إثبات أصل مفقود أو متضرر محاسبيًا دون تحقيق مكتمل يربط هذه العهدة تحديدًا
+          بالأدلة ونتيجة مراجعة المحقق. لا يعني ذلك إثبات مسؤولية مالية على الموظف.
+        </div>
+        {investigationCases.length===0&&<div className="text-sm text-amber-300">
+          لا توجد قضية تحقيق معتمدة تربط العهدة الحالية بالأدلة. يجب إنهاء التحقيق وتوثيق تقييم العهدة قبل الترحيل.
+        </div>}
+        <Select
+          label="ملف التحقيق المكتمل والمرتبط بالعهدة"
+          required
+          options={investigationCases.map(c=>({value:c.id,label:c.title+' · '+c.id.slice(-8)}))}
+          value={closeData.governanceCaseId||''}
+          onChange={e=>setCloseData({...closeData,governanceCaseId:e.target.value})}
+        />
         <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 text-sm text-slate-300">
           {closeStatus === 'LOST'
             ? 'سيتم إغلاق العهدة واستبعاد الأصل من الدفاتر في transaction واحدة. القيد: مدين مجمع الإهلاك + خسارة الاستبعاد، دائن حساب الأصل بالتكلفة التاريخية.'

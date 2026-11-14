@@ -28,6 +28,7 @@ class InvestigatorAssignmentDto {
 class WorkflowActionDto {
   @IsString() code: string;
   @IsString() @MinLength(10) @MaxLength(4000) narrative: string;
+  @IsString() @IsOptional() custodyAssignmentId?: string;
   @Type(() => Number) @IsNumber() @Min(0) @Max(1000000000) @IsOptional() amount?: number;
   @IsString() @IsOptional() dueDate?: string;
 }

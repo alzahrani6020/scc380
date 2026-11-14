@@ -157,6 +157,32 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
             code:'FACT_FINDING',narrative:'Investigator records findings after documented interview',
           });
           assert.equal(finding.events.at(-1)?.action,'FACT_FINDING');
+          const assetCategory=await prisma.fixedAssetCategory.create({data:{
+            tenantId:a.id,name:'Investigation Asset '+id,
+          }});
+          const investigatedAsset=await prisma.fixedAsset.create({data:{
+            tenantId:a.id,categoryId:assetCategory.id,name:'Custody Laptop',
+            code:'INV-CUSTODY-'+id,acquisitionCost:2000,currentValue:2000,
+            purchaseDate:new Date('2026-01-01T00:00:00Z'),
+          }});
+          const investigationCustody=await prisma.assetCustodyAssignment.create({data:{
+            tenantId:a.id,employeeId:employee.id,assetId:investigatedAsset.id,status:'ACTIVE',
+          }});
+          await assert.rejects(()=>service.addWorkflowAction(reviewerReq,caseFile.id,{
+            code:'CUSTODY_LOSS_REVIEW',narrative:'Missing assignment ID',
+          }),/Custody assignment ID is required/);
+          await service.addEvidence(reqA,caseFile.id,{
+            fileName:'investigation.pdf',mimeType:'application/pdf',
+            contentBase64:pdf.toString('base64'),description:'Documented custody investigation',
+          });
+          const custodyReview=await service.addWorkflowAction(reviewerReq,caseFile.id,{
+            code:'CUSTODY_LOSS_REVIEW',
+            narrative:'Verified custody incident based on investigation and original evidence',
+            custodyAssignmentId:investigationCustody.id,
+          });
+          assert.equal(custodyReview.events.at(-1)?.action,'CUSTODY_LOSS_REVIEW');
+          assert.equal(JSON.parse(custodyReview.events.at(-1)!.details).custodyAssignmentId,
+            investigationCustody.id);
         }
         assert.equal((await service.list(reqB,{category})).count,0);
         if(category==='CLAIMS') {
@@ -340,6 +366,9 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
       await prisma.hrGovernanceEvidence.deleteMany({where:{tenantId:a.id}});
       await prisma.hrGovernanceEvent.deleteMany({where:{tenantId:a.id}});
       await prisma.hrGovernanceCase.deleteMany({where:{tenantId:a.id}});
+      await prisma.assetCustodyAssignment.deleteMany({where:{tenantId:a.id}});
+      await prisma.fixedAsset.deleteMany({where:{tenantId:a.id}});
+      await prisma.fixedAssetCategory.deleteMany({where:{tenantId:a.id}});
       await prisma.user.deleteMany({where:{tenantId:a.id}});
       await prisma.tenant.deleteMany({where:{id:{in:[a.id,b.id]}}});
     }

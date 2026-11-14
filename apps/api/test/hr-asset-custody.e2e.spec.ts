@@ -48,6 +48,19 @@ test(
         conditionOut: 'GOOD',
       });
       assert.equal(assignment.status, 'ACTIVE');
+      await assert.rejects(
+        () => custody.closeAssignment(reqA,assignment.id,{status:'LOST'}),
+        /Completed investigation case required/,
+      );
+      await assert.rejects(
+        () => custody.closeAssignment(reqA,assignment.id,{status:'DAMAGED',
+          governanceCaseId:'missing-case-id',impairmentAmount:100}),
+        /Resolved investigation for custodian is required/,
+      );
+      const stillActive=await prisma.assetCustodyAssignment.findUniqueOrThrow({
+        where:{id:assignment.id},
+      });
+      assert.equal(stillActive.status,'ACTIVE');
 
       await assert.rejects(
         () => custody.assign(reqA, { assetId: asset.id, employeeId: employee.id }),

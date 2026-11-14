@@ -8,7 +8,7 @@ import AsyncCombobox from '@/components/ui/AsyncCombobox';
 
 const WORKFLOW_ACTIONS: Record<string, {code:string;label:string}[]> = {
   VIOLATIONS: [{code:'REPORT_DETAIL',label:'تفاصيل البلاغ'},{code:'REVIEW_FINDING',label:'نتيجة المراجعة'}],
-  INVESTIGATIONS: [{code:'INTERVIEW',label:'محضر استماع'},{code:'FACT_FINDING',label:'نتيجة التحقيق'}],
+  INVESTIGATIONS: [{code:'INTERVIEW',label:'محضر استماع'},{code:'FACT_FINDING',label:'نتيجة التحقيق'},{code:'CUSTODY_LOSS_REVIEW',label:'تقييم عهدة مفقودة أو متضررة'}],
   EVIDENCE: [{code:'EVIDENCE_REVIEW',label:'فحص دليل'},{code:'CHAIN_OF_CUSTODY',label:'سلسلة حيازة الدليل'}],
   DISCIPLINE: [{code:'NOTICE_PROPOSED',label:'إشعار مقترح'},{code:'FINAL_REVIEW',label:'مراجعة مستقلة'},{code:'APPEAL_REVIEWED',label:'مراجعة التظلم'}],
   CONFLICTS: [{code:'DISCLOSURE',label:'إفصاح'},{code:'MITIGATION_PLAN',label:'خطة معالجة'},{code:'MITIGATION_REVIEW',label:'تقييم المعالجة'}],
@@ -53,6 +53,7 @@ export default function GovernanceWorkspace() {
   const [actionNarrative,setActionNarrative] = useState('');
   const [actionAmount,setActionAmount] = useState('');
   const [actionDate,setActionDate] = useState('');
+  const [custodyAssignmentId,setCustodyAssignmentId] = useState('');
   const [evidence,setEvidence] = useState<any[]>([]);
   const [file,setFile] = useState<File|null>(null);
   const [evidenceDescription,setEvidenceDescription] = useState('');
@@ -128,7 +129,7 @@ export default function GovernanceWorkspace() {
         api.get('/hr/governance/'+id+'/context'),
       ]);
       setRelated(linked.data);setSelected(r.data);setInvestigatorUserId(r.data?.assignedToId||'');setEvidence(files.data||[]);setResolution('');setNote('');setFile(null);
-      setActionCode('');setActionNarrative('');setActionAmount('');setActionDate('');
+      setActionCode('');setActionNarrative('');setActionAmount('');setActionDate('');setCustodyAssignmentId('');
     }
     catch(e:any){setError(e.response?.data?.message||'تعذر فتح القضية');}
   };
@@ -181,8 +182,9 @@ export default function GovernanceWorkspace() {
       const body:any={code:actionCode,narrative:actionNarrative.trim()};
       if(actionAmount.trim())body.amount=Number(actionAmount);
       if(actionDate)body.dueDate=actionDate;
+      if(actionCode==='CUSTODY_LOSS_REVIEW')body.custodyAssignmentId=custodyAssignmentId;
       const r=await api.post('/hr/governance/'+selected.id+'/actions',body);
-      setSelected(r.data);setActionCode('');setActionNarrative('');setActionAmount('');setActionDate('');
+      setSelected(r.data);setActionCode('');setActionNarrative('');setActionAmount('');setActionDate('');setCustodyAssignmentId('');
       await load();
     }catch(e:any){setError(e.response?.data?.message||'تعذر حفظ الإجراء المتخصص');}
     finally{setSaving(false);}
@@ -355,6 +357,15 @@ export default function GovernanceWorkspace() {
             {(WORKFLOW_ACTIONS[space.category]||[]).map(item=><option key={item.code} value={item.code}>{item.label}</option>)}
           </select>
         </label>
+        {actionCode==='CUSTODY_LOSS_REVIEW'&&<label className="block text-sm text-slate-300">
+          العهدة المطلوب تقييمها
+          <select className={input} value={custodyAssignmentId}
+            onChange={e=>setCustodyAssignmentId(e.target.value)}>
+            <option value="">اختر العهدة النشطة</option>
+            {(related?.custody||[]).filter((a:any)=>a.status==='ACTIVE').map((a:any)=>
+              <option key={a.id} value={a.id}>{a.asset?.name||a.id} · {a.id.slice(-8)}</option>)}
+          </select>
+        </label>}
         <label className="block text-sm text-slate-300">المحضر أو التفاصيل
           <textarea value={actionNarrative} maxLength={4000} minLength={10}
             onChange={e=>setActionNarrative(e.target.value)} rows={4} className={input}/>
@@ -367,7 +378,9 @@ export default function GovernanceWorkspace() {
           <label className="block text-sm text-slate-300">تاريخ مرتبط بالإجراء (اختياري)
             <input type="date" value={actionDate} onChange={e=>setActionDate(e.target.value)} className={input}/>
           </label>}
-        <button type="button" onClick={addWorkflowAction} disabled={saving||!actionCode||actionNarrative.trim().length<10||(actionCode==='SETTLEMENT_OFFER'&&!actionAmount.trim())}
+        <button type="button" onClick={addWorkflowAction} disabled={saving||!actionCode||actionNarrative.trim().length<10||
+          (actionCode==='SETTLEMENT_OFFER'&&!actionAmount.trim())||
+          (actionCode==='CUSTODY_LOSS_REVIEW'&&!custodyAssignmentId)}
           className="rounded-lg border border-primary-500 px-3 py-2 text-white disabled:opacity-50">حفظ الإجراء في سجل القضية</button>
         <p className="text-xs text-slate-400">يُسجل الإجراء باسم المستخدم، دون تنفيذ اقتطاع أو جزاء أو دفع تلقائي.</p>
       </section>}
