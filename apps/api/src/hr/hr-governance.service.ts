@@ -83,6 +83,15 @@ export function assertGovernanceAction(
     const appeal = latest('APPEAL_SUBMITTED');
     if (!appeal) throw new ConflictException('No submitted appeal');
     if (appeal.actorUserId === actor) throw new ConflictException('Appeal must be independently reviewed');
+    if (latest('FINAL_REVIEW')?.actorUserId === actor) {
+      throw new ConflictException('Appeal reviewer must differ from the original decision reviewer');
+    }
+  }
+  if (category === 'VIOLATIONS' && code === 'REVIEW_FINDING') {
+    if (!latest('REPORT_DETAIL')) throw new ConflictException('Reported issue required before review');
+    if (latest('REPORT_DETAIL')?.actorUserId === actor) {
+      throw new ConflictException('Independent reviewer required for reported violations');
+    }
   }
   if (category === 'CLAIMS' && code === 'CLAIM_REVIEWED') {
     const claim = latest('CLAIM_PROPOSED');
@@ -94,8 +103,16 @@ export function assertGovernanceAction(
   if (category === 'CONFLICTS' && code === 'MITIGATION_REVIEW' && !latest('MITIGATION_PLAN')) {
     throw new ConflictException('Mitigation plan required before review');
   }
+  if (category === 'CONFLICTS' && code === 'MITIGATION_REVIEW' &&
+      latest('MITIGATION_PLAN')?.actorUserId === actor) {
+    throw new ConflictException('Independent reviewer required for conflict mitigation');
+  }
   if (category === 'COMPLIANCE' && code === 'CONTROL_VERIFIED' && !latest('CORRECTIVE_ACTION')) {
     throw new ConflictException('Corrective action required before verification');
+  }
+  if (category === 'COMPLIANCE' && code === 'CONTROL_VERIFIED' &&
+      latest('CORRECTIVE_ACTION')?.actorUserId === actor) {
+    throw new ConflictException('Independent verification required for compliance controls');
   }
   if (category === 'INVESTIGATIONS' && code === 'FACT_FINDING' && !latest('INTERVIEW')) {
     throw new ConflictException('Interview record required before investigation findings');

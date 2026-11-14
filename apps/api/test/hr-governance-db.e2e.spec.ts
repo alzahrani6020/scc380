@@ -74,6 +74,10 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
         id:'reviewer-'+id,tenantId:a.id,email:'reviewer-'+id+'@example.test',
         firstName:'Independent',lastName:'Investigator',role:'ADMIN',status:'ACTIVE',
       }});
+      await prisma.user.create({data:{
+        id:'appeal-reviewer-'+id,tenantId:a.id,email:'appeal-reviewer-'+id+'@example.test',
+        firstName:'Appeal',lastName:'Reviewer',role:'ADMIN',status:'ACTIVE',
+      }});
       const unlinkedOffboardingEmployee=await prisma.employee.create({data:{
         tenantId:a.id,employeeCode:'OFFBOARD-'+id,firstName:'Leaving',lastName:'Employee',
         hireDate:new Date('2026-01-01T00:00:00Z'),
@@ -86,6 +90,7 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
         ['COMPLIANCE','CONTROL_FINDING'],
       ] as const;
       const reviewerReq:any={user:{tenantId:a.id,userId:'reviewer-'+id,role:'ADMIN'}};
+      const appealReviewerReq:any={user:{tenantId:a.id,userId:'appeal-reviewer-'+id,role:'ADMIN'}};
 
       for(const [category,code] of categories) {
         const caseFile=await service.create(reqA,{
@@ -169,7 +174,10 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
             code:'APPEAL_SUBMITTED',narrative:'Formal appeal of proposed notice',
           });
           await assert.rejects(()=>service.transition(reqA,caseFile.id,'CLOSED','Closed early'),/unresolved employee appeal/);
-          await service.addWorkflowAction(reviewerReq,caseFile.id,{
+          await assert.rejects(()=>service.addWorkflowAction(reviewerReq,caseFile.id,{
+            code:'APPEAL_REVIEWED',narrative:'Original reviewer cannot decide the appeal',
+          }),/must differ from the original decision reviewer/);
+          await service.addWorkflowAction(appealReviewerReq,caseFile.id,{
             code:'APPEAL_REVIEWED',narrative:'Recorded independent response to appeal',
           });
         }
@@ -218,7 +226,10 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
         if(category==='VIOLATIONS') {
           await assert.rejects(()=>service.transition(reqA,caseFile.id,'CLOSED',
             'Attempt to close without review'),/Required governance action missing: REVIEW_FINDING/);
-          await service.addWorkflowAction(reqA,caseFile.id,{
+          await assert.rejects(()=>service.addWorkflowAction(reqA,caseFile.id,{
+            code:'REVIEW_FINDING',narrative:'Reporter must not review own allegation',
+          }),/Independent reviewer required/);
+          await service.addWorkflowAction(reviewerReq,caseFile.id,{
             code:'REVIEW_FINDING',narrative:'Recorded review of the reported issue',
           });
         }
@@ -226,7 +237,10 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
           await service.addWorkflowAction(reqA,caseFile.id,{
             code:'MITIGATION_PLAN',narrative:'Proposed mitigation of conflict of interest',
           });
-          await service.addWorkflowAction(reqA,caseFile.id,{
+          await assert.rejects(()=>service.addWorkflowAction(reqA,caseFile.id,{
+            code:'MITIGATION_REVIEW',narrative:'Author cannot independently verify own plan',
+          }),/Independent reviewer required/);
+          await service.addWorkflowAction(reviewerReq,caseFile.id,{
             code:'MITIGATION_REVIEW',narrative:'Verified conflict mitigation controls',
           });
         }
@@ -241,7 +255,10 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
           await service.addWorkflowAction(reqA,caseFile.id,{
             code:'CORRECTIVE_ACTION',narrative:'Corrective action approved for compliance finding',
           });
-          await service.addWorkflowAction(reqA,caseFile.id,{
+          await assert.rejects(()=>service.addWorkflowAction(reqA,caseFile.id,{
+            code:'CONTROL_VERIFIED',narrative:'Operator cannot verify own corrective action',
+          }),/Independent verification required/);
+          await service.addWorkflowAction(reviewerReq,caseFile.id,{
             code:'CONTROL_VERIFIED',narrative:'Verified the corrective measure and controls',
           });
         }
@@ -256,6 +273,7 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
       await prisma.hrGovernanceEvidence.deleteMany({where:{tenantId:a.id}});
       await prisma.hrGovernanceEvent.deleteMany({where:{tenantId:a.id}});
       await prisma.hrGovernanceCase.deleteMany({where:{tenantId:a.id}});
+      await prisma.user.deleteMany({where:{tenantId:a.id}});
       await prisma.tenant.deleteMany({where:{id:{in:[a.id,b.id]}}});
     }
   },
@@ -326,7 +344,7 @@ test('HR self-governance: only disclosed employee cases, private reply and indep
         code:'APPEAL_SUBMITTED',narrative:'Duplicate pending employee appeal',
       }),/already under review/);
       await assert.rejects(()=>svc.transition(admin,record.id,'CLOSED','Close prematurely'),/unresolved employee appeal/);
-      await svc.addWorkflowAction(reviewer,record.id,{
+      await svc.addWorkflowAction({ user: { tenantId: tenantA.id, userId: 'second-reviewer-'+run, role: 'ADMIN' } },record.id,{
         code:'APPEAL_REVIEWED',narrative:'Recorded independent appeal decision',
       });
       const closed=await svc.transition(admin,record.id,'CLOSED','Review and appeal documented');
@@ -335,6 +353,7 @@ test('HR self-governance: only disclosed employee cases, private reply and indep
       await prisma.hrGovernanceEvidence.deleteMany({where:{tenantId:tenantA.id}});
       await prisma.hrGovernanceEvent.deleteMany({where:{tenantId:tenantA.id}});
       await prisma.hrGovernanceCase.deleteMany({where:{tenantId:tenantA.id}});
+      await prisma.user.deleteMany({where:{tenantId:{in:[tenantA.id,tenantB.id]}}});
       await prisma.tenant.deleteMany({where:{id:{in:[tenantA.id,tenantB.id]}}});
     }
   },

@@ -111,3 +111,18 @@ test('category-specific closure requires documented governance actions', () => {
   assert.doesNotThrow(()=>assertGovernanceClosure('LEGAL',
     [dated('CASE_REFERENCE'),dated('CASE_DISPOSITION')]));
 });
+
+test('independent governance reviews cannot be signed by the action author', () => {
+  assert.throws(()=>assertGovernanceAction('VIOLATIONS','REVIEW_FINDING','author',
+    [recorded('REPORT_DETAIL','author')]),/Independent reviewer required/);
+  assert.doesNotThrow(()=>assertGovernanceAction('VIOLATIONS','REVIEW_FINDING','reviewer',
+    [recorded('REPORT_DETAIL','author')]));
+  assert.throws(()=>assertGovernanceAction('CONFLICTS','MITIGATION_REVIEW','author',
+    [recorded('MITIGATION_PLAN','author')]),/Independent reviewer required/);
+  assert.throws(()=>assertGovernanceAction('COMPLIANCE','CONTROL_VERIFIED','author',
+    [recorded('CORRECTIVE_ACTION','author')]),/Independent verification required/);
+  const appeal=[recorded('FINAL_REVIEW','first-reviewer'),recorded('APPEAL_SUBMITTED','employee')];
+  assert.throws(()=>assertGovernanceAction('DISCIPLINE','APPEAL_REVIEWED','first-reviewer',appeal),
+    /must differ from the original decision reviewer/);
+  assert.doesNotThrow(()=>assertGovernanceAction('DISCIPLINE','APPEAL_REVIEWED','second-reviewer',appeal));
+});
