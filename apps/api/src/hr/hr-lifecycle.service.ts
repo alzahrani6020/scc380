@@ -124,6 +124,9 @@ export class HrLifecycleService {
     if (['COMPLETED', 'CANCELLED'].includes(lifecycle.status)) {
       throw new ConflictException('Lifecycle case is closed');
     }
+    if (!lifecycle.tasks.length) {
+      throw new ConflictException('Lifecycle case must contain at least one task before completion');
+    }
     const incomplete = lifecycle.tasks.filter((task) =>
       lifecycle.type==='OFFBOARDING' ? task.status!=='DONE' : !['DONE','SKIPPED'].includes(task.status));
     if (incomplete.length) throw new ConflictException(
@@ -278,8 +281,10 @@ export class HrLifecycleService {
       }
     }
 
-    await prisma.hrLifecycleCase.update({
-      where: { id: caseId },
+    // A concurrent explicit completion or cancellation must never be undone
+    // by a stale task-status recomputation.
+    await prisma.hrLifecycleCase.updateMany({
+      where: { tenantId, id: caseId, status: { in: ['OPEN', 'IN_PROGRESS'] } },
       data: canComplete
         ? { status: 'COMPLETED', completedAt: new Date() }
         : { status: anyStarted ? 'IN_PROGRESS' : 'OPEN', completedAt: null },
