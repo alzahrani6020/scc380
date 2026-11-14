@@ -50,8 +50,34 @@ try {
     email: 'qa.autofill@example.test',
     password: 'test-only-placeholder'
   }, 'Login request must use actual DOM values');
+  // Reproduce the exact NestJS ValidationPipe array response shown in the
+  // screenshot. The UI must not concatenate raw English diagnostics.
+  const validationPage = await browser.newPage();
+  await validationPage.route('**/api/auth/login', async route => {
+    await route.fulfill({
+      status: 400, contentType: 'application/json',
+      body: JSON.stringify({
+        statusCode: 400,
+        message: [
+          'email must be shorter than or equal to 254 characters',
+          'email must be an email',
+          'password must be shorter than or equal to 128 characters',
+          'password must be longer than or equal to 1 characters',
+          'password must be a string',
+        ],
+        error: 'Bad Request'
+      })
+    });
+  });
+  await validationPage.goto('http://127.0.0.1:3000/auth/login', { waitUntil: 'domcontentloaded' });
+  await validationPage.locator('input[name="email"]').fill('qa.validation@example.test');
+  await validationPage.locator('input[name="password"]').fill('placeholder-test-only');
+  await validationPage.getByRole('button', { name: 'تسجيل الدخول', exact: true }).click();
+  await validationPage.getByText('لم يستقبل الخادم بيانات الدخول بالشكل المطلوب. تحقق من الحقول ثم حاول لاحقًا.', { exact: true }).waitFor({ timeout: 15000 });
+  assert.equal(await validationPage.getByText('email must be an email').count(), 0, 'Raw validation details must not leak to UI');
+  await validationPage.close();
   console.log(JSON.stringify({
-    status: 'PASS', scope: 'login-autofill-payload', requestBodyValidated: true,
+    status: 'PASS', scope: 'login-autofill-payload', requestBodyValidated: true, validationArrayLocalized: true,
     passwordNotLogged: true, productionRequests: 0
   }));
 } catch (err) {
