@@ -48,8 +48,7 @@ jobs:
       - run: pnpm --filter @scc/database build
       - name: Apply existing migrations to disposable DB only
         run: pnpm --filter @scc/database exec prisma migrate deploy --schema prisma/schema.prisma
-      - name: Reconcile Prisma models on disposable database only
-        run: pnpm --filter @scc/database exec prisma db push --schema prisma/schema.prisma --skip-generate
+      # Acceptance must exercise the migration history as deployed; db push would mask missing DDL.
       - name: Verify baseline fails closed against existing real-estate tables
         shell: bash
         run: |
