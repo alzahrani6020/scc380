@@ -239,7 +239,7 @@ export class HrLifecycleService {
         data:{status:'TERMINATED',terminatedAt:terminationDate,terminationReason:reason},
       });
       const changed=await tx.hrLifecycleCase.updateMany({
-        where:{tenantId,id,status:{in:['OPEN','IN_PROGRESS']}},
+        where:{tenantId,id,status:{in:['OPEN','IN_PROGRESS']},updatedAt:lifecycle.updatedAt},
         data:{status:'COMPLETED',completedAt:new Date()},
       });
       if(changed.count!==1)throw new ConflictException('Offboarding case changed concurrently');
