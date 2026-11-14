@@ -276,6 +276,87 @@ export class HrGovernanceService {
     }, { isolationLevel: 'Serializable' });
   }
 
+  private async selfEmployee(req: any) {
+    const tenantId = req.user?.tenantId;
+    const userId = req.user?.userId || req.user?.sub || req.user?.id;
+    if (!tenantId || !userId) throw new BadRequestException('Authenticated employee required');
+    const employee = await prisma.employee.findFirst({
+      where: { ...tenantWhere(tenantId), userId }, select: { id: true },
+    });
+    if (!employee) throw new NotFoundException('User is not linked to an employee profile');
+    return { tenantId, userId, employeeId: employee.id };
+  }
+
+  async selfCases(req: any) {
+    const { tenantId, employeeId } = await this.selfEmployee(req);
+    return prisma.hrGovernanceCase.findMany({
+      where: {
+        tenantId, employeeId, category: { in: ['DISCIPLINE', 'CLAIMS'] },
+        events: { some: { action: { in: ['NOTICE_PROPOSED', 'CLAIM_PROPOSED'] } } },
+      },
+      select: {
+        id: true, category: true, status: true, title: true, createdAt: true,
+        events: {
+          where: { action: { in: [
+            'NOTICE_PROPOSED', 'CLAIM_PROPOSED', 'FINAL_REVIEW', 'APPEAL_REVIEWED',
+            'EMPLOYEE_RESPONSE', 'APPEAL_SUBMITTED',
+          ] } },
+          select: { id: true, action: true, details: true, createdAt: true },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+  }
+
+  async selfResponse(req: any, caseId: string, dto: { code: string; narrative: string }) {
+    const { tenantId, userId, employeeId } = await this.selfEmployee(req);
+    const narrative = dto.narrative?.trim() || '';
+    if (!['EMPLOYEE_RESPONSE', 'APPEAL_SUBMITTED'].includes(dto.code)) {
+      throw new BadRequestException('Only employee response or appeal is permitted');
+    }
+    if (narrative.length < 10 || narrative.length > 4000) {
+      throw new BadRequestException('Employee response must be 10-4000 characters');
+    }
+    return prisma.$transaction(async tx => {
+      const record = await tx.hrGovernanceCase.findFirst({
+        where: { tenantId, id: caseId, employeeId, category: { in: ['DISCIPLINE','CLAIMS'] } },
+        select: { id: true, category: true, status: true },
+      });
+      if (!record) throw new NotFoundException('Disclosed employee case not found');
+      const history = await tx.hrGovernanceEvent.findMany({
+        where: { tenantId, caseId }, select: { action: true, actorUserId: true },
+        orderBy: { createdAt: 'asc' },
+      });
+      const latest = (action: string) => history.reduce((index, row, i) => row.action === action ? i : index, -1);
+      if (dto.code === 'EMPLOYEE_RESPONSE') {
+        const disclosure = record.category === 'DISCIPLINE' ? 'NOTICE_PROPOSED' : 'CLAIM_PROPOSED';
+        if (record.status !== 'IN_REVIEW' || latest(disclosure) < 0) {
+          throw new ConflictException('Case must be disclosed and under review before reply');
+        }
+      } else {
+        if (record.category !== 'DISCIPLINE' || !['IN_REVIEW','RESOLVED'].includes(record.status) ||
+          latest('FINAL_REVIEW') < 0) {
+          throw new ConflictException('Appeal requires a disclosed disciplinary review');
+        }
+        if (latest('APPEAL_SUBMITTED') > latest('APPEAL_REVIEWED')) {
+          throw new ConflictException('An employee appeal is already under review');
+        }
+      }
+      const changed = await tx.hrGovernanceCase.updateMany({
+        where: { tenantId, id: caseId, employeeId, status: record.status },
+        data: { updatedAt: new Date() },
+      });
+      if (changed.count !== 1) throw new ConflictException('Case changed during employee response');
+      await tx.hrGovernanceEvent.create({
+        data: { tenantId, caseId, actorUserId: userId, action: dto.code,
+          details: JSON.stringify({ narrative, submittedVia: 'EMPLOYEE_SELF_SERVICE' }) },
+      });
+      return { submitted: true, caseId, code: dto.code };
+    }, { isolationLevel: 'Serializable' });
+  }
+
   async relatedWorkspaces(req: any, id: string) {
     const tenantId=req.user?.tenantId;
     const current=await prisma.hrGovernanceCase.findFirst({

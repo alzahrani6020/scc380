@@ -28,6 +28,9 @@ export default function HrSelfServicePage() {
   const [requests, setRequests] = useState<any[]>([]);
   const [custody, setCustody] = useState<any[]>([]);
   const [performance, setPerformance] = useState<any[]>([]);
+  const [governanceCases, setGovernanceCases] = useState<any[]>([]);
+  const [caseReplies, setCaseReplies] = useState<Record<string,string>>({});
+  const [caseBusy, setCaseBusy] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [unlinked, setUnlinked] = useState(false);
   const [form, setForm] = useState<any>({ type: 'EMPLOYMENT_CERTIFICATE', subject: '' });
@@ -56,9 +59,10 @@ export default function HrSelfServicePage() {
         api.get('/hr/self/requests'),
         api.get('/hr/self/assets'),
         api.get('/hr/self/performance'),
+        api.get('/hr/self/governance'),
       ]);
-      const names = ['الرواتب', 'المستندات', 'الطلبات', 'العهد', 'تقييمات الأداء'];
-      const setters = [setPayroll, setDocuments, setRequests, setCustody, setPerformance];
+      const names = ['الرواتب', 'المستندات', 'الطلبات', 'العهد', 'تقييمات الأداء', 'الردود والتظلمات'];
+      const setters = [setPayroll, setDocuments, setRequests, setCustody, setPerformance, setGovernanceCases];
       const warnings: string[] = [];
       results.forEach((result, index) => {
         if (result.status === 'fulfilled') setters[index](result.value.data || []);
@@ -124,6 +128,23 @@ export default function HrSelfServicePage() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const formatCaseNarrative = (details: string) => {
+    try { const parsed=JSON.parse(details); return String(parsed?.narrative||details); }
+    catch { return details; }
+  };
+
+  const sendCaseResponse = async (caseId:string, code:'EMPLOYEE_RESPONSE'|'APPEAL_SUBMITTED') => {
+    const narrative=(caseReplies[caseId]||'').trim();
+    if(narrative.length<10)return;
+    setCaseBusy(caseId);
+    try {
+      await api.post('/hr/self/governance/'+caseId+'/actions',{code,narrative});
+      setCaseReplies(prev=>({...prev,[caseId]:''}));
+      await load();
+    }catch(e:any){alert(e.response?.data?.message||'تعذر حفظ الرد أو التظلم');}
+    finally{setCaseBusy('');}
   };
 
   const download = async (item: any) => {
@@ -196,6 +217,40 @@ export default function HrSelfServicePage() {
           </div>
         </div>
       </div>
+
+      <section className="scc-card space-y-4">
+        <h2 className="font-bold text-white">البلاغات المعلنة لك والردود والتظلمات</h2>
+        <p className="text-sm text-slate-400">تُعرض فقط القضايا التي تتعلق بملفك الوظيفي وكُشف لك عنها رسميًا داخل مكين. الرد لا يعني إقرارًا بصحة الاتهام أو الموافقة على خصم.</p>
+        {governanceCases.length===0?<p className="text-slate-500 text-sm">لا توجد قضايا معلنة لملفك.</p>:governanceCases.map((c:any)=>{
+          const review=c.events?.some((e:any)=>e.action==='FINAL_REVIEW');
+          const latestAppeal=(c.events||[]).map((e:any)=>e.action);
+          const hasAppeal=latestAppeal.lastIndexOf('APPEAL_SUBMITTED')>latestAppeal.lastIndexOf('APPEAL_REVIEWED');
+          const canReply=c.status==='IN_REVIEW';
+          const canAppeal=c.category==='DISCIPLINE'&&review&&!hasAppeal&&['IN_REVIEW','RESOLVED'].includes(c.status);
+          return <article key={c.id} className="rounded-lg border border-slate-700 p-4 space-y-3">
+            <h3 className="font-semibold text-white">{c.title}</h3>
+            <p className="text-sm text-slate-400">{c.category==='DISCIPLINE'?'إجراء وظيفي':'مطالبة'} · {c.status}</p>
+            <div className="space-y-1">
+              {(c.events||[]).map((e:any)=><div key={e.id} className="text-xs text-slate-300 border-t border-slate-800 pt-2">
+                <span className="text-primary-300">{e.action}: </span>{formatCaseNarrative(e.details)}
+              </div>)}
+            </div>
+            {(canReply||canAppeal)&&<>
+              <label className="block text-sm text-slate-300">إفادتك أو اعتراضك
+                <textarea rows={3} maxLength={4000} value={caseReplies[c.id]||''}
+                  onChange={e=>setCaseReplies(prev=>({...prev,[c.id]:e.target.value}))}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-900 p-2 text-white"/>
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {canReply&&<Button isLoading={caseBusy===c.id} disabled={caseBusy!==''||(caseReplies[c.id]||'').trim().length<10}
+                  onClick={()=>sendCaseResponse(c.id,'EMPLOYEE_RESPONSE')}>تقديم الإفادة</Button>}
+                {canAppeal&&<Button isLoading={caseBusy===c.id} disabled={caseBusy!==''||(caseReplies[c.id]||'').trim().length<10}
+                  onClick={()=>sendCaseResponse(c.id,'APPEAL_SUBMITTED')}>تقديم تظلم</Button>}
+              </div>
+            </>}
+          </article>;
+        })}
+      </section>
 
       <div className="scc-card">
         <h2 className="font-bold text-white flex items-center gap-2 mb-4"><WalletCards className="h-5 w-5 text-primary-400" /> آخر الرواتب</h2>

@@ -85,3 +85,25 @@ export class HrGovernanceController {
     return this.service.transition(req, id, dto.status, dto.resolution);
   }
 }
+
+
+class SelfGovernanceActionDto {
+  @IsIn(['EMPLOYEE_RESPONSE','APPEAL_SUBMITTED']) code: string;
+  @IsString() @MinLength(10) @MaxLength(4000) narrative: string;
+}
+
+@ApiTags('HR - Employee Governance Self Service')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
+@Controller('hr/self/governance')
+export class HrSelfGovernanceController {
+  constructor(private readonly service: HrGovernanceService) {}
+
+  @Get()
+  list(@Req() req: any) { return this.service.selfCases(req); }
+
+  @Post(':id/actions')
+  respond(@Req() req: any, @Param('id') id: string, @Body() dto: SelfGovernanceActionDto) {
+    return this.service.selfResponse(req, id, dto);
+  }
+}

@@ -126,3 +126,79 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
     }
   },
 );
+
+
+test('HR self-governance: only disclosed employee cases, private reply and independent appeal',
+  { skip: process.env.CRM_DB_E2E !== '1' ? 'CRM_DB_E2E=1 is required' : false },
+  async () => {
+    const run='self-gov-'+process.pid+'-'+Date.now();
+    const tenantA=await prisma.tenant.create({data:{name:'Self Governance A',slug:run+'-a'}});
+    const tenantB=await prisma.tenant.create({data:{name:'Self Governance B',slug:run+'-b'}});
+    const svc=new HrGovernanceService();
+    try {
+      const userA=await prisma.user.create({data:{
+        tenantId:tenantA.id,email:run+'-a@example.test',firstName:'Response',lastName:'Employee',
+        role:'USER',status:'ACTIVE',
+      }});
+      const userB=await prisma.user.create({data:{
+        tenantId:tenantB.id,email:run+'-b@example.test',firstName:'Other',lastName:'Employee',
+        role:'USER',status:'ACTIVE',
+      }});
+      const employee=await prisma.employee.create({data:{
+        tenantId:tenantA.id,userId:userA.id,employeeCode:'GOV-SELF-'+run,
+        firstName:'Review',lastName:'Recipient',hireDate:new Date('2026-01-01T00:00:00Z'),
+      }});
+      const admin:any={user:{tenantId:tenantA.id,userId:'admin-'+run,role:'ADMIN'}};
+      const reviewer:any={user:{tenantId:tenantA.id,userId:'reviewer-'+run,role:'ADMIN'}};
+      const self:any={user:{tenantId:tenantA.id,userId:userA.id,role:'USER'}};
+      const foreign:any={user:{tenantId:tenantB.id,userId:userB.id,role:'USER'}};
+      const record=await svc.create(admin,{
+        employeeId:employee.id,category:'DISCIPLINE',title:'Private disciplinary notice',
+        description:'A proposed notice must be disclosed before employee response',
+      });
+      assert.equal((await svc.selfCases(self)).length,0);
+      await svc.addWorkflowAction(admin,record.id,{
+        code:'NOTICE_PROPOSED',narrative:'Proposed notice communicated to employee',
+      });
+      const disclosed=await svc.selfCases(self);
+      assert.equal(disclosed.length,1);
+      assert.equal(disclosed[0].id,record.id);
+      assert.equal((await svc.selfCases(foreign)).length,0);
+      await assert.rejects(()=>svc.selfResponse(foreign,record.id,{
+        code:'EMPLOYEE_RESPONSE',narrative:'Foreign employee cannot respond',
+      }),/Disclosed employee case not found/);
+      await assert.rejects(()=>svc.selfResponse(self,record.id,{
+        code:'FINAL_REVIEW',narrative:'Employee cannot authorize review',
+      }),/Only employee response or appeal/);
+      await assert.rejects(()=>svc.selfResponse(self,record.id,{
+        code:'EMPLOYEE_RESPONSE',narrative:'Reply before review is forbidden',
+      }),/under review/);
+      await svc.transition(admin,record.id,'IN_REVIEW');
+      const reply=await svc.selfResponse(self,record.id,{
+        code:'EMPLOYEE_RESPONSE',narrative:'I dispute the proposed findings and provide clarification',
+      });
+      assert.equal(reply.submitted,true);
+      await svc.addWorkflowAction(reviewer,record.id,{
+        code:'FINAL_REVIEW',narrative:'Independent assessment following employee reply',
+      });
+      const appeal=await svc.selfResponse(self,record.id,{
+        code:'APPEAL_SUBMITTED',narrative:'I request reconsideration of the independent review',
+      });
+      assert.equal(appeal.code,'APPEAL_SUBMITTED');
+      await assert.rejects(()=>svc.selfResponse(self,record.id,{
+        code:'APPEAL_SUBMITTED',narrative:'Duplicate pending employee appeal',
+      }),/already under review/);
+      await assert.rejects(()=>svc.transition(admin,record.id,'CLOSED','Close prematurely'),/unresolved employee appeal/);
+      await svc.addWorkflowAction(reviewer,record.id,{
+        code:'APPEAL_REVIEWED',narrative:'Recorded independent appeal decision',
+      });
+      const closed=await svc.transition(admin,record.id,'CLOSED','Review and appeal documented');
+      assert.equal(closed.status,'CLOSED');
+    } finally {
+      await prisma.hrGovernanceEvidence.deleteMany({where:{tenantId:tenantA.id}});
+      await prisma.hrGovernanceEvent.deleteMany({where:{tenantId:tenantA.id}});
+      await prisma.hrGovernanceCase.deleteMany({where:{tenantId:tenantA.id}});
+      await prisma.tenant.deleteMany({where:{id:{in:[tenantA.id,tenantB.id]}}});
+    }
+  },
+);

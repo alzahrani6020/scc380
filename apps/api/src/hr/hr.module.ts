@@ -43,7 +43,7 @@ import { PerformanceController } from './performance.controller';
 import { PerformanceService } from './performance.service';
 import { TrainingController } from './training.controller';
 import { TrainingService } from './training.service';
-import { HrGovernanceController } from './hr-governance.controller';
+import { HrGovernanceController, HrSelfGovernanceController } from './hr-governance.controller';
 import { HrGovernanceService } from './hr-governance.service';
 
 @Module({
@@ -73,6 +73,7 @@ import { HrGovernanceService } from './hr-governance.service';
     PerformanceController,
     TrainingController,
     HrGovernanceController,
+    HrSelfGovernanceController,
   ],
   providers: [
     EmployeesService,
