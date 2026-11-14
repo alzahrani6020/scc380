@@ -62,6 +62,8 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'CLONE_RESTORE_FAILED' }
   $report.RESTORE='PASS_DISPOSABLE_CLONE'
   $localUrl = ('postgresql://makkin_restore:'+ $localPass +'@127.0.0.1:'+ $port +'/restore_test?schema=public')
+  $oldDirectUrl = [Environment]::GetEnvironmentVariable('DIRECT_URL','Process')
+  $oldDatabaseUrl = [Environment]::GetEnvironmentVariable('DATABASE_URL','Process')
   $env:DIRECT_URL = $localUrl
   $env:DATABASE_URL = $localUrl
   try {
@@ -85,8 +87,8 @@ try {
     $report.ALTER_TABLE_MARKERS = ([regex]::Matches($preview, '(?im)\bALTER\s+TABLE\b')).Count
     $report.STATUS='PASS_ANALYSIS_ONLY'
   } finally {
-    Remove-Item Env:DIRECT_URL -ErrorAction SilentlyContinue
-    Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue
+    [Environment]::SetEnvironmentVariable('DIRECT_URL',$oldDirectUrl,'Process')
+    [Environment]::SetEnvironmentVariable('DATABASE_URL',$oldDatabaseUrl,'Process')
     $localPass=$null; $localUrl=$null
   }
 } catch { $report.ERROR=$_.Exception.Message; $report.STATUS='FAIL' }
@@ -101,6 +103,7 @@ finally {
   Write-Host ('STATUS: '+$report.STATUS)
   Write-Host ('EVIDENCE: '+$output)
   Write-Host ('REVIEW_SHA: '+$ReviewSha)
+  Write-Host ('CHECKOUT_LEFT_FOR_REVIEW: '+$checkout)
   Write-Host ('BACKUP: '+$report.BACKUP+' RESTORE: '+$report.RESTORE+' DRIFT: '+$report.DRIFT)
   Write-Host ('REMAINING: Review SQL and reconcile migrations on an isolated clone; NO production changes performed')
   if($report.ERROR) { Write-Host ('ERROR: '+$report.ERROR) }
