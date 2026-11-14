@@ -51,7 +51,7 @@ function apiUrl(action: Exclude<Action, 'clear'>) {
         : null;
   if (!raw) return null;
   const base = raw.replace(/\/+$/, '');
-  return base.endsWith('/api') ? `${base}/auth/${action}` : `${base}/api/auth/${action}`;
+  return base.endsWith('/api') ? `${base.slice(0, -4)}/auth/${action}` : `${base}/auth/${action}`;
 }
 
 export async function POST(request: NextRequest) {
