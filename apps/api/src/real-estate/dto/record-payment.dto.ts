@@ -1,6 +1,11 @@
-import { IsString, IsOptional, IsDecimal, IsDateString } from 'class-validator';
+import { IsString, IsOptional, IsDecimal, IsDateString, Length, Matches } from 'class-validator';
 
 export class RecordPaymentDto {
+  @IsString()
+  @Length(8, 128)
+  @Matches(/^[A-Za-z0-9_-]+$/)
+  idempotencyKey: string;
+
   @IsDateString()
   paidDate: string;
 

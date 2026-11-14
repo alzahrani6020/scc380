@@ -1,0 +1,133 @@
+name: Real Estate DB Acceptance
+
+on:
+  pull_request:
+    paths:
+      - 'apps/api/src/real-estate/**'
+      - 'apps/api/test/real-estate-db-acceptance.e2e.spec.ts'
+      - 'apps/api/test/real-estate-lease-guards.e2e.spec.ts'
+      - 'apps/api/test/real-estate-rent-accounting.e2e.spec.ts'
+      - 'apps/api/src/accounting-core/account-mapping.service.ts'
+      - 'apps/web/src/app/dashboard/real-estate/**'
+      - 'packages/database/**'
+      - '.github/workflows/real-estate-db-acceptance.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  real-estate-db-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: scc
+          POSTGRES_PASSWORD: scc
+          POSTGRES_DB: scc_real_estate_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U scc -d scc_real_estate_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://scc:scc@127.0.0.1:5432/scc_real_estate_test
+      DIRECT_URL: postgresql://scc:scc@127.0.0.1:5432/scc_real_estate_test
+      REAL_ESTATE_DB_E2E: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: corepack enable && corepack prepare pnpm@8.15.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @scc/database db:generate
+      - run: pnpm --filter @scc/database build
+      - name: Apply existing migrations to disposable DB only
+        run: pnpm --filter @scc/database exec prisma migrate deploy --schema prisma/schema.prisma
+      # Acceptance must exercise the migration history as deployed; db push would mask missing DDL.
+      - name: Assert real-estate migration objects exist (read-only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          PGPASSWORD=scc psql -h 127.0.0.1 -U scc -d "${DATABASE_URL##*/}" -X -v ON_ERROR_STOP=1 <<'SQL'
+          DO $audit$
+          DECLARE missing text;
+          BEGIN
+            SELECT string_agg(required.object_name, ', ' ORDER BY required.object_name)
+            INTO missing
+            FROM (VALUES
+              ('properties'), ('units'), ('lease_contracts'),
+              ('rent_payments'), ('rent_collections'),
+              ('contract_documents'), ('property_expenses')
+            ) required(object_name)
+            WHERE to_regclass('public.' || required.object_name) IS NULL;
+            IF missing IS NOT NULL THEN
+              RAISE EXCEPTION 'Real-estate tables missing after migrations: %', missing;
+            END IF;
+            IF NOT EXISTS (
+              SELECT 1 FROM pg_constraint
+              WHERE conname = 'rent_collections_rentPaymentId_tenantId_fkey' AND contype = 'f'
+            ) THEN
+              RAISE EXCEPTION 'Tenant-consistent rent collection FK missing';
+            END IF;
+            IF NOT EXISTS (
+              SELECT 1 FROM pg_indexes
+              WHERE schemaname = 'public' AND indexname = 'rent_collections_tenantId_idempotencyKey_key'
+            ) THEN
+              RAISE EXCEPTION 'Rent collection idempotency unique index missing';
+            END IF;
+          END $audit$;
+          SQL
+      - name: Verify baseline fails closed against existing real-estate tables
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The previous migration step created 'properties' in disposable PostgreSQL.
+          # Applying the greenfield script again MUST fail before any destructive SQL.
+          if PGPASSWORD=scc psql -h 127.0.0.1 -U scc -d scc_real_estate_test -X -v ON_ERROR_STOP=1 -f packages/database/prisma/migrations/20261113223000_real_estate_greenfield_baseline/migration.sql > /tmp/re-baseline.out 2>&1; then
+            echo "FAIL: greenfield baseline unexpectedly accepted existing tables"
+            exit 1
+          fi
+          if ! grep -q 'Real-estate tables already exist: reconcile existing schema' /tmp/re-baseline.out; then
+            echo "FAIL: greenfield baseline rejected database for an unexpected reason"
+            sed -n '1,35p' /tmp/re-baseline.out
+            exit 1
+          fi
+          PGPASSWORD=scc psql -h 127.0.0.1 -U scc -d scc_real_estate_test -X -v ON_ERROR_STOP=1 -Atc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('properties','rent_payments','rent_collections')" | grep -qx '3'
+          echo "PASS: baseline rejected existing estate schema without removing tables"
+      - name: Exercise property and unit lifecycle in isolated database
+        run: pnpm --filter @scc/api exec tsx --test test/real-estate-db-acceptance.e2e.spec.ts
+      - name: Exercise lease and receivable guardrails in isolated database
+        run: pnpm --filter @scc/api exec tsx --test test/real-estate-lease-guards.e2e.spec.ts
+      - name: Verify balanced real-estate accounting postings
+        run: pnpm --filter @scc/api exec tsx --test test/real-estate-rent-accounting.e2e.spec.ts
+      - name: Generate non-executable Prisma drift SQL preview on isolated database
+        shell: bash
+        run: |
+          set -euo pipefail
+          # This produces a SQL plan for review; it NEVER executes the plan.
+          pnpm --filter @scc/database exec prisma migrate diff \
+            --from-url "$DIRECT_URL" \
+            --to-schema-datamodel prisma/schema.prisma \
+            --script > "$RUNNER_TEMP/makkin-schema-drift-preview.sql"
+          test -s "$RUNNER_TEMP/makkin-schema-drift-preview.sql"
+          echo "SQL preview generated from disposable DB only; NOT EXECUTED"
+          sha256sum "$RUNNER_TEMP/makkin-schema-drift-preview.sql"
+          # Report counts without printing the entire schema or secrets to CI logs.
+          node -e 'const fs=require("node:fs"); const x=fs.readFileSync(process.argv[1],"utf8"); for(const [n,r] of [["CREATE TABLE",/\bCREATE TABLE\b/gi],["CREATE TYPE",/\bCREATE TYPE\b/gi],["CREATE INDEX",/\bCREATE (?:UNIQUE )?INDEX\b/gi],["ALTER TABLE",/\bALTER TABLE\b/gi],["DROP",/\bDROP\b/gi],["DELETE",/\bDELETE FROM\b/gi],["TRUNCATE",/\bTRUNCATE\b/gi]])console.log(n+": "+(x.match(r)||[]).length);' "$RUNNER_TEMP/makkin-schema-drift-preview.sql"
+      - name: Retain non-executable diff for migration review (one day)
+        uses: actions/upload-artifact@v4
+        with:
+          name: makkin-schema-drift-preview
+          path: ${{ runner.temp }}/makkin-schema-drift-preview.sql
+          retention-days: 1
+          if-no-files-found: error
+      - name: Detect schema drift after migrations (no db push)
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm --filter @scc/database exec prisma migrate diff --from-url "$DIRECT_URL" --to-schema-datamodel prisma/schema.prisma --exit-code

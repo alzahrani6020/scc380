@@ -1,0 +1,167 @@
+name: Makkin Acceptance Engine Safety
+on:
+  pull_request:
+    paths:
+      - 'scripts/makkin/**'
+      - '.github/workflows/makkin-acceptance-engine-safety.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  powershell-safety:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Parse all Makkin PowerShell scripts without executing
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $found = Get-ChildItem scripts/makkin -Filter '*.ps1'
+          if ($found.Count -lt 2) { throw 'Expected engine and restore validator scripts' }
+          foreach ($file in $found) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              $file.FullName, [ref]$tokens, [ref]$errors
+            )
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error "$($file.Name): $_" }
+              throw "PowerShell syntax invalid: $($file.Name)"
+            }
+            Write-Host "PASS PowerShell parser: $($file.Name)"
+          }
+      - name: Verify fail-closed behavior without touching Docker or production
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP 'makkin-negative-engine'
+          & pwsh -NoProfile -File scripts/makkin/makkin-acceptance-v4.ps1 `
+            -Repo (Join-Path $env:RUNNER_TEMP 'not-a-repository') `
+            -ExpectedCommit ('0' * 40) -EvidenceRoot $evidence
+          if ($LASTEXITCODE -eq 0) { throw 'Engine unexpectedly succeeded with nonexistent repository' }
+          $result = Get-Content (Join-Path $evidence 'result.json') -Raw | ConvertFrom-Json
+          if ($result.status -ne 'BLOCKED' -or $result.production -ne 'UNKNOWN') {
+            throw 'Engine fail-closed/production status mismatch'
+          }
+          $restoreEvidence = Join-Path $env:RUNNER_TEMP 'makkin-negative-restore'
+          & pwsh -NoProfile -File scripts/makkin/backup-restore-validator.ps1 `
+            -BackupFile (Join-Path $env:RUNNER_TEMP 'no-such-backup.dump') `
+            -EvidenceRoot $restoreEvidence
+          if ($LASTEXITCODE -eq 0) { throw 'Restore validator unexpectedly succeeded without archive' }
+          $restore = Get-Content (Join-Path $restoreEvidence 'result.json') -Raw | ConvertFrom-Json
+          if ($restore.status -ne 'FAIL' -or $restore.production -ne 'NOT_CONNECTED') {
+            throw 'Restore validator safety status mismatch'
+          }
+          Write-Host 'PASS: both scripts fail closed without credentials or network activity'
+          $global:LASTEXITCODE = 0 # subprocesses must fail; this validation step passed
+
+      - name: Preflight must refuse absent production connection and emit no archive
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP 'makkin-prod-preflight-negative'
+          foreach ($key in @('PGHOST','PGPORT','PGDATABASE','PGUSER','PGPASSWORD','PGSERVICE','PGSERVICEFILE','PGPASSFILE')) {
+            [Environment]::SetEnvironmentVariable($key,$null,'Process')
+          }
+          & pwsh -NoProfile -File scripts/makkin/render-production-preflight.ps1 `
+            -EvidenceRoot $evidence
+          if ($LASTEXITCODE -eq 0) { throw 'Production preflight unexpectedly passed without connection' }
+          $result = Get-Content (Join-Path $evidence 'result.json') -Raw | ConvertFrom-Json
+          if ($result.status -ne 'BLOCKED' -or $result.inventory -ne 'NOT_RUN' -or
+              $result.backup -ne 'NOT_RUN' -or $result.productionWrite -ne 'NEVER') {
+            throw 'Production preflight failed closed incorrectly'
+          }
+          if (Test-Path (Join-Path $evidence 'production-backup.dump')) {
+            throw 'Backup file unexpectedly exists during a negative test'
+          }
+          Write-Host 'PASS: no credentials, no production access and no backup file'
+          $global:LASTEXITCODE = 0
+
+      - name: Set up Node for pinned worktree build
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Activate pinned pnpm
+        shell: bash
+        run: corepack enable && corepack prepare pnpm@8.15.0 --activate
+      - name: Run SHA-pinned Makkin engine build in detached worktree (no production)
+        shell: pwsh
+        env:
+          MAKKIN_EXPECTED_SHA: ${{ github.event.pull_request.head.sha }}
+          MAKKIN_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP 'makkin-v4-full-build'
+          & pwsh -NoProfile -File scripts/makkin/makkin-acceptance-v4.ps1 `
+            -Repo $env:GITHUB_WORKSPACE -Branch $env:MAKKIN_BRANCH `
+            -ExpectedCommit $env:MAKKIN_EXPECTED_SHA -EvidenceRoot $evidence -UseLocalCommit
+          if ($LASTEXITCODE -ne 0) { throw 'Makkin engine failed SHA-pinned build' }
+          $result = Get-Content (Join-Path $evidence 'result.json') -Raw | ConvertFrom-Json
+          if ($result.commit -ne $env:MAKKIN_EXPECTED_SHA -or
+              $result.status -ne 'PARTIAL' -or
+              $result.production -ne 'UNKNOWN' -or
+              $result.schemaDrift -ne 'NOT_RUN') {
+            throw 'Build evidence/production status unexpected'
+          }
+          foreach ($name in @('install','generate','database-build','api-build','web-build')) {
+            if (-not @($result.checks | Where-Object { $_.name -eq $name -and $_.status -eq 'PASS' }).Count) {
+              throw "Required detached-worktree check missing or failed: $name"
+            }
+          }
+          Write-Host 'PASS: SHA-pinned detached worktree built and production remains UNKNOWN'
+
+      - name: Restore a synthetic offline PostgreSQL 17 archive
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $id = "makkin-fixture-$env:GITHUB_RUN_ID"
+          $fixture = Join-Path $env:RUNNER_TEMP 'makkin-fixture.dump'
+          $evidence = Join-Path $env:RUNNER_TEMP 'makkin-restore-positive'
+          $created = $false
+          try {
+            & docker run -d --name $id --network none `
+              -e POSTGRES_USER=fixture -e POSTGRES_PASSWORD=test_only `
+              -e POSTGRES_DB=fixture postgres:17-alpine | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw 'Fixture container startup failed' }
+            $created = $true
+            $ready = $false
+            for ($i = 0; $i -lt 60; $i++) {
+              & docker exec $id pg_isready -h 127.0.0.1 -U fixture -d fixture *> $null
+              if ($LASTEXITCODE -eq 0) { $ready = $true; break }
+              Start-Sleep -Seconds 1
+            }
+            if (-not $ready) { throw 'Fixture DB not ready' }
+            & docker exec $id psql -U fixture -d fixture -v ON_ERROR_STOP=1 `
+              -c 'CREATE TABLE public.makkin_restore_fixture (id integer PRIMARY KEY); INSERT INTO public.makkin_restore_fixture(id) VALUES (1);'
+            if ($LASTEXITCODE -ne 0) { throw 'Fixture database preparation failed' }
+            & docker exec $id pg_dump -Fc -U fixture -d fixture -f /seed.dump
+            if ($LASTEXITCODE -ne 0) { throw 'Fixture dump failed' }
+            & docker cp "${id}:/seed.dump" $fixture
+            if ($LASTEXITCODE -ne 0) { throw 'Fixture copy failed' }
+          } finally {
+            if ($created) { & docker rm -f $id | Out-Null }
+          }
+          & pwsh -NoProfile -File scripts/makkin/backup-restore-validator.ps1 `
+            -BackupFile $fixture -EvidenceRoot $evidence
+          if ($LASTEXITCODE -ne 0) {
+            $restoreFailure = Get-Content (Join-Path $evidence 'result.json') -Raw | ConvertFrom-Json
+            Write-Host "Synthetic fixture failure: $($restoreFailure.error)"
+            foreach ($name in @('container.log','copy.log','archive-list.log','restore.log','cleanup.log')) {
+              $log = Join-Path $evidence $name
+              if (Test-Path -LiteralPath $log) {
+                Write-Host "=== $name ==="
+                Get-Content -LiteralPath $log -Tail 30
+              }
+            }
+            throw 'Isolated restore validator failed on synthetic fixture'
+          }
+          $result = Get-Content (Join-Path $evidence 'result.json') -Raw | ConvertFrom-Json
+          if ($result.status -ne 'PASS' -or $result.restore -ne 'PASS' -or
+              $result.tableCount -lt 1 -or $result.production -ne 'NOT_CONNECTED') {
+            throw 'Synthetic restore evidence mismatch'
+          }
+          Write-Host 'PASS synthetic offline pg_dump backup/restore; production backup NOT verified'
