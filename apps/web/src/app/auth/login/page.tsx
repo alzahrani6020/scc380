@@ -20,6 +20,7 @@ export default function LoginPage() {
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [retrySeconds, setRetrySeconds] = useState(0);
 
   // Prefill the remembered email when the user chose "تذكرني" previously
   useEffect(() => {
@@ -39,8 +40,15 @@ export default function LoginPage() {
       .catch(() => clearAuth());
   }, [router]);
 
+  useEffect(() => {
+    if (retrySeconds <= 0) return;
+    const timer = window.setTimeout(() => setRetrySeconds(seconds => Math.max(0, seconds - 1)), 1000);
+    return () => window.clearTimeout(timer);
+  }, [retrySeconds]);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading || retrySeconds > 0) return;
     setLoading(true); setError('');
     try {
       const initial = await api.post('/auth/login', { email, password });
@@ -75,7 +83,17 @@ export default function LoginPage() {
       // to save/fill the credentials on the next visit
       window.location.href = '/dashboard';
     } catch (err: any) {
-      setError(err.response?.data?.message || err.message || 'فشل تسجيل الدخول');
+      if (err?.response?.status === 429) {
+        const serverDelay = Number(err.response?.data?.retryAfter ?? err.response?.headers?.['retry-after']);
+        if (Number.isFinite(serverDelay) && serverDelay > 0) {
+          setRetrySeconds(Math.min(Math.ceil(serverDelay), 3600));
+        }
+        setError('تم تقييد محاولات تسجيل الدخول مؤقتًا لحماية الحساب. انتظر قبل إعادة المحاولة.');
+      } else if (err?.response?.status === 401) {
+        setError('البريد الإلكتروني أو كلمة المرور غير صحيحة.');
+      } else {
+        setError(typeof err?.response?.data?.message === 'string' ? err.response.data.message : 'تعذر تسجيل الدخول. تحقق من الاتصال وحاول لاحقًا.');
+      }
     } finally { setLoading(false); }
   };
 
@@ -129,6 +147,7 @@ export default function LoginPage() {
           {error && (
             <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm text-center">
               {error}
+              {retrySeconds > 0 && <p className="mt-2" role="status">يمكن إعادة المحاولة بعد {Math.ceil(retrySeconds / 60)} دقيقة تقريبًا.</p>}
             </div>
           )}
 
@@ -204,8 +223,8 @@ export default function LoginPage() {
               </Link>
             </div>
 
-            <button type="submit" disabled={loading} className="w-full bg-primary-600 hover:bg-primary-500 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-lg shadow-primary-600/20 flex items-center justify-center gap-2">
-              {loading ? 'جاري الدخول...' : 'تسجيل الدخول'}
+            <button type="submit" disabled={loading || retrySeconds > 0} className="w-full bg-primary-600 hover:bg-primary-500 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-lg shadow-primary-600/20 flex items-center justify-center gap-2">
+              {loading ? 'جاري الدخول...' : retrySeconds > 0 ? 'تسجيل الدخول متاح بعد انتهاء الانتظار' : 'تسجيل الدخول'}
               <ChevronLeft className="h-4 w-4" />
             </button>
           </form>
