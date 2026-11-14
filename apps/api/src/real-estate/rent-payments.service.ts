@@ -107,36 +107,44 @@ export class RentPaymentsService {
   }
 
   async update(tenantId: string, id: string, dto: any) {
-    const existing = await prisma.rentPayment.findFirst({ where: withTenant({ id }, tenantId) });
-    if (!existing) throw new NotFoundException('Payment not found');
-    if (existing.status !== PaymentStatus.PENDING) {
-      throw new ConflictException('Settled rent receivables cannot be edited');
-    }
     const immutable = ['contractId', 'propertyId', 'unitId', 'amount', 'status', 'paidDate', 'invoiceId', 'ejarPaymentRef'];
     if (immutable.some((key) => dto[key] !== undefined)) {
       throw new BadRequestException('Cannot edit rent receivable identity, amount or settlement state');
     }
+    const data = { ...dto };
     if (dto.dueDate !== undefined) {
-      const proposed = new Date(dto.dueDate);
-      if (Number.isNaN(proposed.getTime())) throw new BadRequestException('Invalid due date');
-      if (proposed.getTime() !== existing.dueDate.getTime()) {
+      const date = new Date(dto.dueDate);
+      if (Number.isNaN(date.getTime())) throw new BadRequestException('Invalid due date');
+      data.dueDate = date;
+    }
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const existing = await tx.rentPayment.findFirst({ where: withTenant({ id }, tenantId) });
+        if (!existing) throw new NotFoundException('Payment not found');
+        if (existing.status !== PaymentStatus.PENDING) {
+          throw new ConflictException('Settled rent receivables cannot be edited');
+        }
         const [receiptCount, accrualCount] = await Promise.all([
-          prisma.rentCollection.count({ where: { tenantId, rentPaymentId: id } }),
-          prisma.journalEntryHeader.count({
+          tx.rentCollection.count({ where: { tenantId, rentPaymentId: id } }),
+          tx.journalEntryHeader.count({
             where: { tenantId, sourceType: 'RENT_RECEIVABLE', sourceId: id },
           }),
         ]);
         if (receiptCount > 0 || accrualCount > 0) {
-          throw new ConflictException('Cannot reschedule a receivable after collection or accounting posting');
+          throw new ConflictException('Cannot modify a receivable after collection or accounting posting');
         }
+        const updated = await tx.rentPayment.updateMany({
+          where: withTenant({ id, status: PaymentStatus.PENDING }, tenantId), data,
+        });
+        if (updated.count !== 1) throw new ConflictException('Receivable state changed during update');
+        return tx.rentPayment.findFirstOrThrow({ where: withTenant({ id }, tenantId) });
+      }, { isolationLevel: 'Serializable' });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
+        throw new ConflictException('Concurrent financial operation; reload receivable before editing');
       }
+      throw error;
     }
-    const data = { ...dto };
-    if (dto.dueDate) data.dueDate = new Date(dto.dueDate);
-    return prisma.rentPayment.update({
-      where: { id, tenantId, status: PaymentStatus.PENDING },
-      data,
-    });
   }
 
   async delete(tenantId: string, id: string) {
