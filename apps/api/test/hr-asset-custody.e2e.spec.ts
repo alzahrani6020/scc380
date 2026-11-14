@@ -90,6 +90,15 @@ test(
         conditionIn: 'GOOD',
       });
       assert.equal(returned.status, 'RETURNED');
+      await assert.rejects(
+        () => custody.closeAssignment(reqA, assignment.id, {
+          status: 'RETURNED',conditionIn:'DUPLICATE',
+        }),
+        /already closed/,
+      );
+      assert.equal(await prisma.assetCustodyAssignment.count({
+        where:{tenantId:tenantA.id,id:assignment.id,status:'RETURNED'},
+      }),1);
 
       await assert.rejects(
         () => lifecycle.complete(reqA, offboarding.id),

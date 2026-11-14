@@ -152,6 +152,14 @@ export class HrAssetCustodyService {
       });
       if (!assignment) throw new NotFoundException('Custody assignment not found');
       if (assignment.status !== 'ACTIVE') throw new ConflictException('Custody assignment is already closed');
+      // Claim the assignment before posting any financial entry. A concurrent
+      // close must not derecognize or impair the same asset twice.
+      const claimed=await tx.assetCustodyAssignment.updateMany({
+        where:{tenantId,id,status:'ACTIVE'},
+        data:{status:dto.status,returnedAt:new Date()},
+      });
+      if(claimed.count!==1)throw new ConflictException('Custody assignment was concurrently closed');
+
       if(dto.status==='LOST'||dto.status==='DAMAGED') {
         if(!dto.governanceCaseId) {
           throw new BadRequestException('Completed investigation case required for loss or impairment');
@@ -286,7 +294,7 @@ export class HrAssetCustodyService {
           employee: { select: { id: true, employeeCode: true, firstName: true, lastName: true } },
         },
       });
-    });
+    }, { isolationLevel:'Serializable' });
   }
 
   async selfAssignments(req: any) {
