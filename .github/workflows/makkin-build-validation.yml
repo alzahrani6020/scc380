@@ -6,6 +6,8 @@ on:
       - work/makkin-governance-completion-20261114
     paths:
       - 'packages/types/**'
+      - 'apps/web/test/**'
+      - 'apps/web/src/app/dashboard/hr/governance/**'
       - 'pnpm-lock.yaml'
       - 'package.json'
       - '.github/workflows/makkin-build-validation.yml'
@@ -37,6 +39,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build declarations without bypassing DTS
         run: pnpm --filter @scc/types build
+      - name: Regression test for governance contract request races
+        run: node --test apps/web/test/governance-contract-race.test.cjs
 
 
   validate-monorepo:
