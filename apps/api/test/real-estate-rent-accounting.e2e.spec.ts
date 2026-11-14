@@ -94,6 +94,38 @@ test(
       assert.equal(await prisma.journalEntryHeader.count({
         where: { tenantId: a.id, sourceType: 'RENT_RECEIVABLE' },
       }), 1);
+
+      // A cash receipt dated before the receivable accrual must not post
+      // as an ordinary AR settlement; it requires advance-payment policy.
+      const advanceUnit = await units.create(a.id, {
+        propertyId: property.id, unitNumber: 'ADV1',
+      });
+      const advanceLease = await leases.create(a.id, {
+        propertyId: property.id, unitId: advanceUnit.id,
+        lessorName: 'Landlord', lessorIdNumber: '123',
+        lesseeName: 'Advance tenant', lesseeIdNumber: '789',
+        startDate: '2026-01-01T00:00:00.000Z',
+        endDate: '2026-02-01T00:00:00.000Z',
+        rentAmount: '200.00', paymentFrequency: 'MONTHLY', status: 'ACTIVE',
+      });
+      const advanceDue = (await leases.findOne(a.id, advanceLease.id)).payments[0];
+      await receipts.recordPayment(a.id, advanceDue.id, {
+        paidDate: '2025-12-31T00:00:00.000Z',
+        amount: '50.00', idempotencyKey: 'advance-'+token,
+        paymentMethod: 'CASH',
+      });
+      const advanceReceipt = await prisma.rentCollection.findFirstOrThrow({
+        where: { tenantId: a.id, rentPaymentId: advanceDue.id },
+      });
+      await journals.postAccrual(a.id, advanceDue.id);
+      await assert.rejects(
+        () => journals.postCollection(a.id, advanceReceipt.id),
+        /predates rent accrual/,
+      );
+      assert.equal(await prisma.journalEntryHeader.count({
+        where: { tenantId: a.id, sourceType: 'RENT_COLLECTION', sourceId: advanceReceipt.id },
+      }), 0);
+
     } finally {
       await prisma.rentCollection.deleteMany({ where: { tenantId: { in: [a.id, b.id] } } });
       await prisma.tenant.deleteMany({ where: { id: { in: [a.id, b.id] } } });
