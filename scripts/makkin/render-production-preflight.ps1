@@ -9,6 +9,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $stamp = (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + $PID
+if ($CreateBackup -and !$EvidenceRoot) { throw 'Choose an explicit encrypted/local secure -EvidenceRoot for production backups' }
 if (!$EvidenceRoot) { $EvidenceRoot = Join-Path ([IO.Path]::GetTempPath()) "makkin-prod-preflight-$stamp" }
 New-Item -ItemType Directory -Path $EvidenceRoot -Force | Out-Null
 $result = [ordered]@{
@@ -56,6 +57,7 @@ try {
   $result.inventory = 'PASS'
   $result.files += $inventory
   if ($CreateBackup) {
+    if (Test-Path -LiteralPath $archive) { throw 'Backup file already exists; refusing to overwrite' }
     # pg_dump itself is read-only on the source server; the destination is a local file.
     $env:PGOPTIONS = $oldOptions
     & pg_dump --no-password --format=custom --no-owner --no-acl --file=$archive 2>&1 | Out-Null
