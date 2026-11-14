@@ -103,6 +103,7 @@ test(
         paidDate: '2026-01-02T00:00:00.000Z', amount: '1000.00', idempotencyKey: 'duplicate-'+run,
       }), /Only pending/);
     } finally {
+      await prisma.rentCollection.deleteMany({ where: { tenantId: { in: [a.id, b.id] } } });
       await prisma.tenant.deleteMany({ where: { id: { in: [a.id, b.id] } } });
       await prisma.$disconnect();
     }
