@@ -69,7 +69,12 @@ export class RentPaymentsService {
       select: { sourceId: true, id: true },
     });
     const journals = new Map(posted.map(row => [row.sourceId, row.id]));
+    const accrued = await prisma.journalEntryHeader.findFirst({
+      where: { tenantId, sourceType: 'RENT_RECEIVABLE', sourceId: id, status: 'POSTED' },
+      select: { id: true },
+    });
     return {
+      accrualJournalId: accrued?.id ?? null,
       receivableId: id,
       faceAmount: receivable.amount.toFixed(2),
       count: rows.length,
