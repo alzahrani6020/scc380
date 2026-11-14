@@ -12,6 +12,10 @@ export class AuthRateLimitGuard implements CanActivate {
   private static readonly loginWindowMs = 15 * 60 * 1000;
   private static readonly failedAccountLimit = 10;
   private static readonly failedSourceLimit = 60;
+  // Bounded in-flight checks and adaptive delay prevent the failure-only
+  // policy from becoming an unbounded password-hash brute-force endpoint.
+  private static readonly activeLogins = new Map<string, number>();
+
 
   canActivate(context: ExecutionContext): boolean {
     const req = context.switchToHttp().getRequest<Request>();
@@ -50,6 +54,46 @@ export class AuthRateLimitGuard implements CanActivate {
    * attacker exhausted the victim's budget. This limits failed attempts
    * without turning failure tracking into an account-lockout primitive.
    */
+  async beginLogin(req: Request, email: unknown): Promise<() => void> {
+    const ip = this.clientIp(req);
+    const normalized = typeof email === 'string' ? email.trim().toLowerCase().slice(0, 254) : '';
+    const hash = normalized ? createHash('sha256').update(normalized).digest('hex') : 'malformed';
+    const identityKey = `login:active:identity:${hash}`;
+    const sourceKey = `login:active:source:${ip}`;
+    const active = AuthRateLimitGuard.activeLogins;
+    // Short-lived concurrency limiting is separate from account lockout;
+    // it bounds hashing load while allowing genuine login after the slot frees.
+    if ((active.get(identityKey) || 0) >= 3 || (active.get(sourceKey) || 0) >= 20) {
+      this.reject(1);
+    }
+    active.set(identityKey, (active.get(identityKey) || 0) + 1);
+    active.set(sourceKey, (active.get(sourceKey) || 0) + 1);
+    const release = () => {
+      for (const key of [identityKey, sourceKey]) {
+        const left = (active.get(key) || 1) - 1;
+        if (left <= 0) active.delete(key);
+        else active.set(key, left);
+      }
+    };
+    try {
+      const identityFailures = AuthRateLimitGuard.failedLogins.get(`auth:failed:identity:${hash}`);
+      const sourceFailures = AuthRateLimitGuard.failedLogins.get(`auth:failed:source:${ip}`);
+      const now = Date.now();
+      const failureCount = Math.max(
+        identityFailures && identityFailures.resetAt > now ? identityFailures.count : 0,
+        sourceFailures && sourceFailures.resetAt > now ? sourceFailures.count / 6 : 0,
+      );
+      // Legitimate credentials are still verified; repeated bad credentials
+      // incur progressive cost so observing 429 never enables fast guessing.
+      const delayMs = failureCount >= 30 ? 10000 : failureCount >= 15 ? 3000 : failureCount >= 10 ? 1000 : 0;
+      if (delayMs) await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+      return release;
+    } catch (error) {
+      release();
+      throw error;
+    }
+  }
+
   recordFailedLogin(req: Request, email: unknown): void {
     const ip = this.clientIp(req);
     const normalized = typeof email === 'string'
