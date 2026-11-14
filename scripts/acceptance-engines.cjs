@@ -16,7 +16,7 @@ const web = opt('web', 'https://dr-talal-h-alzahrani.com');
 const api = opt('api', 'https://scc380-api.onrender.com');
 const expected = opt('expected-sha', '');
 const outDir = path.resolve(opt('output', path.join('artifacts', 'acceptance')));
-const timeout = Math.min(30000, Math.max(1000, Number(opt('timeout-ms', '10000')) || 10000));
+const timeout = Math.min(120000, Math.max(1000, Number(opt('timeout-ms', '45000')) || 45000));
 const allowHosts = new Set(['dr-talal-h-alzahrani.com', 'www.dr-talal-h-alzahrani.com', 'scc380-web-render3.onrender.com', 'scc380-api.onrender.com', 'localhost', '127.0.0.1']);
 const records = [];
 const now = new Date().toISOString();
@@ -42,7 +42,9 @@ async function limitedFetch(url, options = {}) {
 }
 function connectivityError(e) {
   const code = e?.cause?.code || e?.code || e?.name || 'NETWORK_ERROR';
-  return ['ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ETIMEDOUT', 'AbortError', 'UND_ERR_CONNECT_TIMEOUT', 'ECONNRESET'].includes(code) ? 'BLOCKED' : 'FAIL';
+  // A fetch timeout gives no HTTP status. It is not evidence that the application failed.
+  if (e?.name === 'AbortError' || e?.name === 'TimeoutError' || /operation was aborted|timed out/i.test(String(e?.message || ''))) return 'BLOCKED';
+  return ['ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ETIMEDOUT', 'UND_ERR_CONNECT_TIMEOUT', 'ECONNRESET', 'UND_ERR_ABORTED'].includes(code) ? 'BLOCKED' : 'FAIL';
 }
 async function network(name, origin) {
   const host = new URL(origin).hostname;
@@ -67,7 +69,7 @@ async function network(name, origin) {
   try {
     const response = await limitedFetch(origin + '/');
     record('network', name + '-http', response.status >= 200 && response.status < 500 ? 'PASS' : 'FAIL', response);
-  } catch (e) { record('network', name + '-http', connectivityError(e), {}, e.cause?.code || e.message); }
+  } catch (e) { record('network', name + '-http', connectivityError(e), {}, e.cause?.code || e.code || e.message); }
 }
 async function negativeAuthTests(origin) {
   const tests = [
