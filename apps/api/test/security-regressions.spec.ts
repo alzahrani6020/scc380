@@ -229,6 +229,17 @@ test('2FA temp login challenge is Redis-backed and single-use', () => {
   assert.match(auth, /challenge store unavailable/);
 });
 
+test('local browser API and Next session proxy use Nest routes without an implicit /api prefix', () => {
+  const client = src('../web/src/lib/api.ts');
+  const nextConfig = src('../web/next.config.js');
+  const proxy = src('../web/src/app/api/auth/session/route.ts');
+  const nest = src('main.ts');
+  assert.match(nextConfig, /NEXT_PUBLIC_API_URL: process\.env\.NEXT_PUBLIC_API_URL \|\| 'http:\/\/localhost:3001'/);
+  assert.match(client, /baseURL: process\.env\.NEXT_PUBLIC_API_URL \|\| 'http:\/\/localhost:3001'/);
+  assert.match(proxy, /return \`\$\{base\}\/auth\/\$\{action\}\`/);
+  assert.doesNotMatch(nest, /setGlobalPrefix\(['"]api['"]\)/);
+});
+
 test('Next auth session proxy protects refresh cookie and enforces same-origin CSRF', () => {
   const route = src('../web/src/app/api/auth/session/route.ts');
   const auth = src('../web/src/lib/auth.ts');
