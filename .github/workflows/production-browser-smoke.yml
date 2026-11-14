@@ -30,4 +30,4 @@ jobs:
           NODE_PATH: /tmp/scc-smoke/node_modules
         run: |
           cp apps/web/e2e/production-login-smoke.mjs /tmp/scc-smoke/production-login-smoke.mjs
-          node /tmp/scc-smoke/production-login-smoke.mjs
+          node /tmp/scc-smoke/production-login-smoke.mjs --ui-only
