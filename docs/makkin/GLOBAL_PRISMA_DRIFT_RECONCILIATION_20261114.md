@@ -40,3 +40,20 @@
 Render hosted MCP read-only PostgreSQL access was refused because production `ipAllowList=[]`. Do not open external network access to force a test. Render service logs showing "No pending migrations to apply" concern the **currently deployed migration folder**, not the proposed Prisma model and are not proof of full schema match.
 
 **STATUS: PARTIAL** — functional property acceptance passes in isolation; global drift and production recovery gates remain blocked.
+
+
+## Production-origin offline restore: evidence received 2026-11-15
+
+The operator ran the guarded backup tool and locally restored the actual production-origin backup.
+
+- Secure local evidence directory: `C:\Users\vip\makkin-secure-backup\makkin-f4e347a80ff9`. **Private; never commit or upload.**
+- Output: `drift-result-d1deb7156b63.json`, pinned review SHA `468f35baf7495ad924f8377c29c7484035b796a7`.
+- `BACKUP=PASS_VERIFIED_HASH`, `RESTORE=PASS_DISPOSABLE_CLONE`, `DRIFT=PRESENT_REVIEW_REQUIRED`, `STATUS=PASS_ANALYSIS_ONLY`.
+- SQL review file: `production-vs-schema-d1deb7156b63.sql`. Operator reported exactly 5 `DROP INDEX`, 5 `ALTER COLUMN "updatedAt" DROP DEFAULT`, 1 `CREATE TABLE "rent_collections"`, 4 index creations, and 2 FK additions. These are **SQL preview statements, not approved changes**.
+- All 5 dropped-index suggestions are **financial**, not the real-estate fix. Preserve them. Preserve existing financial defaults until dependent write paths are evaluated.
+- This restore lacks `rent_collections` although PR #184 contains `20261114043000_rent_collections_ledger` and `20261114111500_rent_collection_fk_name_reconcile` migration files. This means production's applied migration history and/or database objects do **not** match the reviewed PR branch, and the greenfield baseline intentionally aborts if old estate tables exist. **Do not run `prisma migrate deploy` against production for this PR.**
+- The read-only inspector `scripts/makkin/production-restore-estate-readonly-gate.sql` was added to inspect the restored clone: existing objects, migration ledger, FK/index names, defaults, and enum values. It is NOT an approval for DDL.
+
+Next safe engineering decision: inspect the full local diff and the restored `_prisma_migrations` history; design a separate additive migration for `rent_collections` with prerequisite checks (existing `rent_payments`, tenant-consistency, preexisting index names, privileges). Test on a **fresh disposable restore** and a **migration-applied disposable DB**. The historical greenfield migration cannot be applied to an estate production schema, and must be replaced/segregated via an approved history reconciliation, not marked applied blindly. Keep PR Draft, CI drift checks enabled, and production unchanged.
+
+Note: the local evidence output is reported by the operator; the private dump and full SQL diff are not available to GitHub or this reviewer, so precise production migration ledger compatibility and approval remain UNKNOWN.
