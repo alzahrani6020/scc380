@@ -14,6 +14,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Parse all Makkin PowerShell scripts without executing
         shell: pwsh
         run: |
@@ -74,7 +76,7 @@ jobs:
           $evidence = Join-Path $env:RUNNER_TEMP 'makkin-v4-full-build'
           & pwsh -NoProfile -File scripts/makkin/makkin-acceptance-v4.ps1 `
             -Repo $env:GITHUB_WORKSPACE -Branch $env:MAKKIN_BRANCH `
-            -ExpectedCommit $env:MAKKIN_EXPECTED_SHA -EvidenceRoot $evidence
+            -ExpectedCommit $env:MAKKIN_EXPECTED_SHA -EvidenceRoot $evidence -UseLocalCommit
           if ($LASTEXITCODE -ne 0) { throw 'Makkin engine failed SHA-pinned build' }
           $result = Get-Content (Join-Path $evidence 'result.json') -Raw | ConvertFrom-Json
           if ($result.commit -ne $env:MAKKIN_EXPECTED_SHA -or
