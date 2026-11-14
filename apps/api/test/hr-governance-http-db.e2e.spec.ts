@@ -136,6 +136,13 @@ test('HTTP acceptance: password login, tenant-aware JWT, governance writes, read
     assert.ok(auditCount >= 2, 'Governance mutations must be recorded in the HTTP audit log');
   } finally {
     if (app) await app.close();
+    // Governance rows have restrictive tenant foreign keys. Delete only the
+    // synthetic test tenant's children, in referential order.
+    if (tenantA) {
+      await prisma.hrGovernanceEvidence.deleteMany({ where: { tenantId: tenantA.id } });
+      await prisma.hrGovernanceEvent.deleteMany({ where: { tenantId: tenantA.id } });
+      await prisma.hrGovernanceCase.deleteMany({ where: { tenantId: tenantA.id } });
+    }
     for (const tenant of [tenantA, tenantB]) {
       if (tenant) await prisma.tenant.delete({ where: { id: tenant.id } });
     }
