@@ -1,0 +1,57 @@
+name: Makkin Acceptance Engine Safety
+on:
+  pull_request:
+    paths:
+      - 'scripts/makkin/**'
+      - '.github/workflows/makkin-acceptance-engine-safety.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  powershell-safety:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse all Makkin PowerShell scripts without executing
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $found = Get-ChildItem scripts/makkin -Filter '*.ps1'
+          if ($found.Count -lt 2) { throw 'Expected engine and restore validator scripts' }
+          foreach ($file in $found) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              $file.FullName, [ref]$tokens, [ref]$errors
+            )
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error "$($file.Name): $_" }
+              throw "PowerShell syntax invalid: $($file.Name)"
+            }
+            Write-Host "PASS PowerShell parser: $($file.Name)"
+          }
+      - name: Verify fail-closed behavior without touching Docker or production
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP 'makkin-negative-engine'
+          & pwsh -NoProfile -File scripts/makkin/makkin-acceptance-v4.ps1 `
+            -Repo (Join-Path $env:RUNNER_TEMP 'not-a-repository') `
+            -ExpectedCommit ('0' * 40) -EvidenceRoot $evidence
+          if ($LASTEXITCODE -eq 0) { throw 'Engine unexpectedly succeeded with nonexistent repository' }
+          $result = Get-Content (Join-Path $evidence 'result.json') -Raw | ConvertFrom-Json
+          if ($result.status -ne 'BLOCKED' -or $result.production -ne 'UNKNOWN') {
+            throw 'Engine fail-closed/production status mismatch'
+          }
+          $restoreEvidence = Join-Path $env:RUNNER_TEMP 'makkin-negative-restore'
+          & pwsh -NoProfile -File scripts/makkin/backup-restore-validator.ps1 `
+            -BackupFile (Join-Path $env:RUNNER_TEMP 'no-such-backup.dump') `
+            -EvidenceRoot $restoreEvidence
+          if ($LASTEXITCODE -eq 0) { throw 'Restore validator unexpectedly succeeded without archive' }
+          $restore = Get-Content (Join-Path $restoreEvidence 'result.json') -Raw | ConvertFrom-Json
+          if ($restore.status -ne 'FAIL' -or $restore.production -ne 'NOT_CONNECTED') {
+            throw 'Restore validator safety status mismatch'
+          }
+          Write-Host 'PASS: both scripts fail closed without credentials or network activity'
