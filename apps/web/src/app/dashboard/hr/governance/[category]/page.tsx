@@ -104,9 +104,12 @@ export default function GovernanceWorkspace() {
   useEffect(()=>{
     setContracts([]);
     if(!form.employeeId) return;
-    api.get('/hr/contracts?employeeId='+encodeURIComponent(form.employeeId))
-      .then(r=>setContracts(r.data?.data||[]))
-      .catch(()=>setContracts([]));
+    const controller = new AbortController();
+    let active = true;
+    api.get('/hr/contracts?employeeId='+encodeURIComponent(form.employeeId),{signal:controller.signal})
+      .then(r=>{if(active)setContracts(r.data?.data||[]);})
+      .catch(()=>{if(active)setContracts([]);});
+    return ()=>{active=false;controller.abort();};
   },[form.employeeId]);
 
   const submit = async (e:React.FormEvent) => {
