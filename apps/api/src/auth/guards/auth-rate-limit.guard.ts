@@ -16,8 +16,8 @@ export class AuthRateLimitGuard implements CanActivate {
     const now = Date.now();
     const isLogin = path.endsWith('/login');
     // A Web reverse proxy may make unrelated users share req.ip.
-    // Keep a conservative per-account+source limit AND an independent,
-    // higher-cost source-wide anti-spray guard. Never trust raw XFF.
+    // Bound login attempts per identity across ALL client IPs, and retain
+    // a stricter source-wide anti-spray ceiling. Never trust raw XFF.
     const normalizedEmail =
       isLogin && typeof req.body?.email === 'string'
         ? req.body.email.trim().toLowerCase().slice(0, 254)
@@ -27,8 +27,8 @@ export class AuthRateLimitGuard implements CanActivate {
       : '';
     const scopes = isLogin && accountHash
       ? [
-          { key: `login:identity:${ip}:${accountHash}`, limit, windowMs },
-          { key: `login:source:${ip}`, limit: 300, windowMs },
+          { key: `login:identity:${accountHash}`, limit, windowMs },
+          { key: `login:source:${ip}`, limit: 60, windowMs },
         ]
       : [{ key: `${ip}:${path}`, limit, windowMs }];
 
