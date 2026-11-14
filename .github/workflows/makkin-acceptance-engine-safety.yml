@@ -147,7 +147,11 @@ jobs:
           }
           & pwsh -NoProfile -File scripts/makkin/backup-restore-validator.ps1 `
             -BackupFile $fixture -EvidenceRoot $evidence
-          if ($LASTEXITCODE -ne 0) { throw 'Isolated restore validator failed on synthetic fixture' }
+          if ($LASTEXITCODE -ne 0) {
+            $restoreFailure = Get-Content (Join-Path $evidence 'result.json') -Raw | ConvertFrom-Json
+            Write-Host "Synthetic fixture failure: $($restoreFailure.error)"
+            throw 'Isolated restore validator failed on synthetic fixture'
+          }
           $result = Get-Content (Join-Path $evidence 'result.json') -Raw | ConvertFrom-Json
           if ($result.status -ne 'PASS' -or $result.restore -ne 'PASS' -or
               $result.tableCount -lt 1 -or $result.production -ne 'NOT_CONNECTED') {
