@@ -55,3 +55,4 @@ jobs:
             throw 'Restore validator safety status mismatch'
           }
           Write-Host 'PASS: both scripts fail closed without credentials or network activity'
+          $global:LASTEXITCODE = 0 # subprocesses must fail; this validation step passed
