@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { Test } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
-import { Reflector } from '@nestjs/core';
+import { HttpAdapterHost, Reflector } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ValidationPipe } from '@nestjs/common';
 import { hashPassword } from '@scc/auth';
@@ -13,6 +13,7 @@ import { AuthModule } from '../src/auth/auth.module';
 import { AuthController } from '../src/auth/auth.controller';
 import { AuthService } from '../src/auth/auth.service';
 import { AuthRateLimitGuard } from '../src/auth/guards/auth-rate-limit.guard';
+import { LoginDiagnosticFilter } from '../src/auth/filters/login-diagnostic.filter';
 import { JwtStrategy } from '../src/auth/strategies/jwt.strategy';
 import { LocalStrategy } from '../src/auth/strategies/local.strategy';
 import { PermissionsGuard } from '../src/auth/guards/permissions.guard';
@@ -54,6 +55,7 @@ test('HTTP acceptance: password login, tenant-aware JWT, governance writes, read
     Reflect.defineMetadata('design:paramtypes', [AuthService, AuthRateLimitGuard], AuthController);
     Reflect.defineMetadata('design:paramtypes', [ConfigService], JwtStrategy);
     Reflect.defineMetadata('design:paramtypes', [AuthService], LocalStrategy);
+    Reflect.defineMetadata('design:paramtypes', [HttpAdapterHost], LoginDiagnosticFilter);
     Reflect.defineMetadata('design:paramtypes', [HrGovernanceService], HrGovernanceController);
     Reflect.defineMetadata('design:paramtypes', [Reflector], PermissionsGuard);
     const moduleRef = await Test.createTestingModule({
