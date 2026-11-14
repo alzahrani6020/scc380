@@ -2186,6 +2186,7 @@ model RentPayment {
   updatedAt     DateTime  @updatedAt
 
   @@index([tenantId])
+  @@unique([id, tenantId])
   @@index([contractId])
   @@index([status])
   @@index([dueDate])
@@ -2197,7 +2198,7 @@ model RentCollection {
   tenantId        String
   tenant          Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   rentPaymentId   String
-  rentPayment     RentPayment @relation(fields: [rentPaymentId], references: [id], onDelete: Restrict)
+  rentPayment     RentPayment @relation(fields: [rentPaymentId, tenantId], references: [id, tenantId], onDelete: Restrict)
   amount          Decimal     @db.Decimal(18, 2)
   collectedAt     DateTime
   paymentMethod   String?
