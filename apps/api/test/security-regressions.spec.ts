@@ -290,6 +290,22 @@ test('logout and refresh failure locally clear HttpOnly cookies without claiming
   assert.match(security, /sessionAuth\('clear'\)/);
 });
 
+test('login attempts are persisted with safe failure metadata and restricted to super admin', () => {
+  const auth = src('src/auth/auth.service.ts');
+  const controller = src('src/auth/auth.controller.ts');
+  const reader = src('src/security/login-attempts.service.ts');
+  assert.match(auth, /async recordFailedLogin\(/);
+  assert.match(auth, /prisma\.loginAttempt\.create\(/);
+  assert.match(auth, /success: false/);
+  assert.match(auth, /success: true/);
+  assert.match(controller, /instanceof UnauthorizedException/);
+  assert.match(controller, /recordFailedLogin\(req, 'INVALID_CREDENTIALS'\)/);
+  assert.match(controller, /recordFailedLogin\(req, 'INVALID_GOOGLE_CREDENTIAL'\)/);
+  assert.match(controller, /recordFailedLogin\(req, 'INVALID_2FA'\)/);
+  assert.match(reader, /throw new ForbiddenException\('Super admin only'\)/);
+  assert.doesNotMatch(auth, /failureReason:[^\n]*password/);
+});
+
 test('audit logging redacts raw case evidence and employee document uploads', () => {
   const protectedBody = sanitizeBody({
     employeeId: 'employee-1',
