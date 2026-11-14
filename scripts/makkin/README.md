@@ -6,7 +6,8 @@ This folder provides **self-built**, offline safety and acceptance tooling for S
 
 - `makkin-acceptance-v4.ps1` — SHA-pinned detached-worktree build and optional PostgreSQL 17 estate/HR E2E tests. Applies migrations to a disposable localhost-only container; checks whole-schema drift using Prisma and **does not use db push**. Restores inherited environment variables.
 - `backup-restore-validator.ps1` — restores a **user-supplied** pg_dump custom/tar archive to a one-time `--network none` PostgreSQL 17 container, checks restored table count, removes the container. Never collects the backup from production.
-- `production-schema-inventory.sql` — read-only catalog inventory of property tables, constraints, indexes and `_prisma_migrations`. It must be executed separately through an **approved private, least-privilege connection**. It is not run by the local acceptance engine.
+- `production-schema-inventory.sql` — read-only property/lease tables, constraints, indexes and `_prisma_migrations` catalog.
+- `global-schema-readonly-inventory.sql` — read-only complete public schema metadata (tables, columns, enums, foreign keys, indexes, migration names/checksums), without reading tenant records. The production preflight requires both inventories; neither is run by the isolated acceptance engine.
 
 ## Prerequisites
 
@@ -41,7 +42,7 @@ Never provide a production `DATABASE_URL` to the isolated engine; it sets its ow
 
 **Never run this with GitHub CI secrets or upload the resulting evidence.** The production catalog inventory and backup may contain sensitive business information. Only run this from a machine that is already authorized to connect privately to Render PostgreSQL. Do not open the Render database publicly or send connection passwords to ChatGPT.
 
-New `render-production-preflight.ps1` checks: the exact expected database name `scc_main_qbf1`, locally configured `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER` and verified TLS (`PGSSLMODE=verify-full` or `verify-ca`); PostgreSQL CLI tools; and a read-only table/migration inventory. Existing local libpq credentials (for example secured pgpass settings) remain in the local process and are not printed by the script. The tool **does not configure database connectivity**.
+New `render-production-preflight.ps1` checks: the exact expected database name `scc_main_qbf1`, locally configured `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER` and verified TLS (`PGSSLMODE=verify-full` or `verify-ca`); PostgreSQL CLI tools; and two read-only catalog inventories covering the property subsystem and complete public schema/migration history. Existing local libpq credentials (for example secured pgpass settings) remain in the local process and are not printed by the script. The tool **does not configure database connectivity**.
 
 ```powershell
 # Execute only after configuring approved private Render access and local libpq credentials.
