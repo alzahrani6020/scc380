@@ -74,8 +74,12 @@ test(
       // Replays of the SAME key must not duplicate the receipt.
       await receivables.recordPayment(a.id, scheduled.id, {
         paidDate: '2026-01-02T00:00:00.000Z', amount: '400.00',
-        idempotencyKey: 'partial-'+run,
+        idempotencyKey: 'partial-'+run, transactionRef: 'partial-bank-'+run,
       });
+      await assert.rejects(() => receivables.recordPayment(a.id, scheduled.id, {
+        paidDate: '2026-01-03T00:00:00.000Z', amount: '400.00',
+        idempotencyKey: 'partial-'+run, transactionRef: 'partial-bank-'+run,
+      }), /Idempotency key/);
       assert.equal(await prisma.rentCollection.count({ where: { tenantId: a.id, rentPaymentId: scheduled.id } }), 1);
       await assert.rejects(() => receivables.recordPayment(a.id, scheduled.id, {
         paidDate: '2026-01-02T00:00:00.000Z', amount: '400.00',
