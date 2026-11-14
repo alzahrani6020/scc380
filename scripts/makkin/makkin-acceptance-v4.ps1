@@ -16,7 +16,10 @@ $stamp=(Get-Date -Format 'yyyyMMdd-HHmmss')+'-'+$PID
 $tempRoot=[System.IO.Path]::GetTempPath()
 if(!$EvidenceRoot){$EvidenceRoot=Join-Path $tempRoot "makkin-v4-$stamp"}
 New-Item -ItemType Directory -Path $EvidenceRoot -Force | Out-Null
-$tree=Join-Path $tempRoot "makkin-tree-$stamp"
+# Keep Windows npm/Prisma build paths short; do not use the deep AppData Temp tree.
+# Never reuse or delete an existing worktree path.
+$tree=Join-Path (Split-Path -Parent $Repo) "mk-$($PID)-$(Get-Date -Format 'HHmmss')"
+if(Test-Path -LiteralPath $tree){throw "Worktree target already exists: $tree"}
 $container="makkin-db-$stamp".ToLowerInvariant()
 $state=[ordered]@{engine='Makkin Acceptance v4';status='BLOCKED';commit=$null;
   functional='NOT_RUN';schemaDrift='NOT_RUN';production='UNKNOWN';
