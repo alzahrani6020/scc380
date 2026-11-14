@@ -54,8 +54,23 @@ try {
   if (!(Test-Path -LiteralPath $inventory) -or (Get-Item $inventory).Length -eq 0) {
     throw 'Catalog inventory was empty'
   }
+  # Whole-schema inventory is mandatory for any future global drift reconciliation.
+  # Do not mistake estate-only success for production readiness.
+  $globalSql = Join-Path $PSScriptRoot 'global-schema-readonly-inventory.sql'
+  if (!(Test-Path -LiteralPath $globalSql -PathType Leaf)) {
+    throw 'Whole-schema read-only inventory SQL missing'
+  }
+  $globalInventory = Join-Path $EvidenceRoot 'global-schema-catalog.txt'
+  & psql -X -w -v ON_ERROR_STOP=1 -f $globalSql -o $globalInventory 2>&1 | Out-Null
+  if ($LASTEXITCODE -ne 0) {
+    throw 'Whole-schema read-only inventory failed; review local permissions'
+  }
+  if (!(Test-Path -LiteralPath $globalInventory) -or (Get-Item $globalInventory).Length -eq 0) {
+    throw 'Whole-schema read-only inventory was empty'
+  }
   $result.inventory = 'PASS'
   $result.files += $inventory
+  $result.files += $globalInventory
   if ($CreateBackup) {
     if (Test-Path -LiteralPath $archive) { throw 'Backup file already exists; refusing to overwrite' }
     # pg_dump itself is read-only on the source server; the destination is a local file.
