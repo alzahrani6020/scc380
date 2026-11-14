@@ -128,6 +128,7 @@ jobs:
             test/security-hardening-db.e2e.spec.ts \
             test/hr-db-backed.e2e.spec.ts \
             test/hr-governance-db.e2e.spec.ts \
+            test/hr-governance-http-db.e2e.spec.ts \
             test/hr-asset-custody.e2e.spec.ts \
             test/hr-financial-lifecycle.e2e.spec.ts \
             test/hr-self-service-lifecycle.e2e.spec.ts
