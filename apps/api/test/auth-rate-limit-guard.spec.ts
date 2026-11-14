@@ -71,3 +71,31 @@ test('non-login endpoints retain original independent limits and forged XFF is i
   for (let n = 0; n < 30; n++) assert.equal(status(() => guard.canActivate(makeContext(makeRequest(refreshIp, undefined, '/auth/refresh')))), 200);
   assert.equal(status(() => guard.canActivate(makeContext(makeRequest(refreshIp, undefined, '/auth/refresh')))), 429);
 });
+
+test('login concurrency safety: limit same identity to three simultaneous password verifications', async () => {
+  const req = makeRequest('192.0.2.111', 'parallel@example.test');
+  const releases: Array<() => void> = [];
+  for (let i = 0; i < 3; i++) releases.push(await guard.beginLogin(req as any, 'parallel@example.test'));
+  try {
+    assert.equal(await (async () => {
+      try { const extra = await guard.beginLogin(makeRequest('192.0.2.112', 'PARALLEL@example.test') as any, 'PARALLEL@example.test'); extra(); return 200; }
+      catch (e) { if (e instanceof HttpException) return e.getStatus(); throw e; }
+    })(), 429);
+  } finally { for (const release of releases) release(); }
+  const after = await guard.beginLogin(req as any, 'parallel@example.test');
+  after();
+});
+
+test('login concurrency safety: allow unrelated accounts but cap twenty concurrent checks per source', async () => {
+  const ip = '192.0.2.112';
+  const releases: Array<() => void> = [];
+  for (let i = 0; i < 20; i++) releases.push(await guard.beginLogin(makeRequest(ip, `active-${i}@example.test`) as any, `active-${i}@example.test`));
+  try {
+    assert.equal(await (async () => {
+      try { const extra = await guard.beginLogin(makeRequest(ip, 'active-extra@example.test') as any, 'active-extra@example.test'); extra(); return 200; }
+      catch (e) { if (e instanceof HttpException) return e.getStatus(); throw e; }
+    })(), 429);
+  } finally { releases.forEach(release => release()); }
+  const after = await guard.beginLogin(makeRequest(ip, 'new@example.test') as any, 'new@example.test');
+  after();
+});
