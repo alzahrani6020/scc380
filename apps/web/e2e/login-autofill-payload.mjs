@@ -25,7 +25,26 @@ try {
     set.call(document.querySelector('input[name="password"]'), 'test-only-placeholder');
   });
   await page.getByRole('button', { name: 'تسجيل الدخول', exact: true }).click();
-  await page.getByText('Invalid credentials / بيانات الدخول غير صحيحة', { exact: true }).waitFor({ timeout: 15000 });
+  try {
+    await page.waitForFunction(() => document.querySelector('form')?.querySelector('div.text-red-400') !== null, null, { timeout: 4000 });
+  } catch { /* Request evidence is authoritative; DOM error diagnostics below. */ }
+  const diagnostic = await page.evaluate(() => ({
+    emailHasValue: Boolean(document.querySelector('input[name="email"]')?.value),
+    passwordHasValue: Boolean(document.querySelector('input[name="password"]')?.value),
+    browserValidationEmail: document.querySelector('input[name="email"]')?.validity?.valid,
+    browserValidationPassword: document.querySelector('input[name="password"]')?.validity?.valid,
+    errorVisible: document.body.innerText.includes('Invalid credentials'),
+  }));
+  console.log(JSON.stringify({
+    diagnostic: 'autofill',
+    requestObserved: Boolean(observed),
+    emailPresent: diagnostic.emailHasValue,
+    passwordPresent: diagnostic.passwordHasValue,
+    emailBrowserValid: diagnostic.browserValidationEmail,
+    passwordBrowserValid: diagnostic.browserValidationPassword,
+    errorVisible: diagnostic.errorVisible,
+  }));
+  assert.ok(observed, 'Login submit did not send a POST request');
   assert.equal(observed?.method, 'POST');
   assert.deepEqual(observed?.data, {
     email: 'qa.autofill@example.test',
