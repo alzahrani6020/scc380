@@ -135,6 +135,7 @@ model Tenant {
   units           Unit[]
   leaseContracts  LeaseContract[]
   rentPayments    RentPayment[]
+  rentCollections RentCollection[]
   contractDocuments ContractDocument[]
   propertyExpenses PropertyExpense[]
   hrGovernanceCases HrGovernanceCase[]
@@ -2173,6 +2174,7 @@ model RentPayment {
   dueDate       DateTime
   paidDate      DateTime?
   amount        Decimal   @db.Decimal(18, 2)
+  collections   RentCollection[]
   status        PaymentStatus @default(PENDING)
   paymentMethod String?
   transactionRef String?
@@ -2184,10 +2186,31 @@ model RentPayment {
   updatedAt     DateTime  @updatedAt
 
   @@index([tenantId])
+  @@unique([id, tenantId])
   @@index([contractId])
   @@index([status])
   @@index([dueDate])
   @@map("rent_payments")
+}
+
+model RentCollection {
+  id              String      @id @default(cuid())
+  tenantId        String
+  tenant          Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  rentPaymentId   String
+  rentPayment     RentPayment @relation(fields: [rentPaymentId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  amount          Decimal     @db.Decimal(18, 2)
+  collectedAt     DateTime
+  paymentMethod   String?
+  transactionRef  String?
+  bankReference   String?
+  idempotencyKey  String
+  createdAt       DateTime    @default(now())
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, rentPaymentId])
+  @@index([tenantId, collectedAt])
+  @@map("rent_collections")
 }
 
 model ContractDocument {
