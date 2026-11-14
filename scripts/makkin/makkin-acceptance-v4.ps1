@@ -49,6 +49,10 @@ function Run([string]$name,[string]$exe,[string[]]$args,[string]$cwd,[bool]$requ
   return $true
 }
 try {
+  # Do not allow build/test processes to inherit a live database URL.
+  $env:DATABASE_URL='postgresql://makkin:local_only@127.0.0.1:1/not_connected?schema=public'
+  $env:DIRECT_URL=$env:DATABASE_URL
+  $env:REAL_ESTATE_DB_E2E='0';$env:CRM_DB_E2E='0';$env:ACCOUNTING_DB_E2E='0'
   if($RunHrTests -and !$RunDatabaseTests){throw 'HR database tests require -RunDatabaseTests'}
   if($DatabasePort -lt 1024 -or $DatabasePort -gt 65535){throw 'Invalid database port'}
   foreach($exe in @('git','node','corepack')){
