@@ -33,11 +33,19 @@ test('login: independent identities behind one reverse proxy do not share the 10
 
 test('login: source-wide anti-spray limit remains effective and no raw forwarded IP is trusted', () => {
   const ip = '192.0.2.29';
-  for (let i = 0; i < 300; i++) {
+  for (let i = 0; i < 60; i++) {
     assert.equal(allowed(ip, `spray-${i}@example.test`), true, `Request ${i + 1} should be allowed`);
   }
   assert.equal(allowed(ip, 'next@example.test'), false, 'Source-wide limit must still block credential spraying');
   assert.equal(allowed('192.0.2.30', 'next@example.test'), true, 'Different verified request IP must be independent');
+});
+
+test('login: distributed requests for same account share global 10-attempt limit', () => {
+  for (let i = 0; i < 10; i++) {
+    assert.equal(allowed(`198.51.100.${i+1}`, 'target@example.test'), true);
+  }
+  assert.equal(allowed('203.0.113.15', 'TARGET@example.test'), false,
+    'Distributed guessing must not reset the account-wide budget');
 });
 
 test('login malformed email retains conservative 10-request limiter', () => {
