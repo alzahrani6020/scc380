@@ -52,7 +52,10 @@ test('final settlement has approval/payment lifecycle and idempotent accounting 
   assert.match(service, /status:\s*'PAID'/);
   assert.match(service, /source:\s*'SETTLEMENT'/);
   assert.match(service, /sourceType:\s*'END_SERVICE_SETTLEMENT'/);
-  assert.match(service, /terminationDate:\s*settlement\.lastWorkingDate/);
+  // Recording payment is separate from the HR offboarding lifecycle.
+  assert.doesNotMatch(service, /terminationDate:\s*settlement\.lastWorkingDate/);
+  assert.match(service, /paymentReference:reference/);
+  assert.match(service, /paymentRecordedById:actor/);
 });
 
 test('loans/settlement migration is additive and has amount constraints', () => {
