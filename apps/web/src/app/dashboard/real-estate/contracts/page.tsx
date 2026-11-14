@@ -40,7 +40,7 @@ export default function ContractsPage(){
    setOpen(false);await load();
  }catch(err){console.error(err);setFormError(true)}finally{setSaving(false)}};
  const remove=async(id:string)=>{if(!confirm('حذف العقد؟'))return;setActionError(false);try{await api.delete('/real-estate/contracts/'+id);await load()}catch(err){console.error(err);setActionError(true)}};
- const activate=async(id:string)=>{if(!confirm('تفعيل العقد وإنشاء استحقاقاته؟'))return;setActionError(false);try{await api.post('/real-estate/contracts/'+id+'/activate');await load()}catch(err){console.error(err);setActionError(true)}};
+ const activate=async(id:string)=>{if(!confirm('هل تؤكد التفعيل؟ سيُنشئ النظام استحقاقًا بقيمة كل دفعة مسجلة في العقد، وفق الدورية المحددة. راجع القيمة والدورية قبل المتابعة.'))return;setActionError(false);try{await api.post('/real-estate/contracts/'+id+'/activate');await load()}catch(err){console.error(err);setActionError(true)}};
  const terminate=async(id:string)=>{if(!confirm('إنهاء العقد؟'))return;setActionError(false);try{await api.post('/real-estate/contracts/'+id+'/terminate');await load()}catch(err){console.error(err);setActionError(true)}};
  const syncEjar=async(id:string)=>{setActionError(false);try{await api.post('/real-estate/contracts/'+id+'/ejar-sync');await load()}catch(err){console.error(err);setActionError(true)}};
 
@@ -51,7 +51,7 @@ export default function ContractsPage(){
   {loading?<div className="h-64 flex items-center justify-center"><RefreshCw className="h-8 w-8 animate-spin text-primary-400"/></div>:loadError?<div role="alert" className="rounded-lg border border-red-800 p-4 text-red-200">تعذر تحميل العقود والعقارات والوحدات. تحقق من الاتصال والصلاحيات ثم أعد تحميل الصفحة.</div>:<div className="space-y-3">{items.map(x=><div key={x.id} className="scc-card-hover">
    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
     <div><p className="text-white font-bold">{x.lesseeName}</p><p className="text-slate-400 text-sm">{x.property?.name||'—'} · وحدة {x.unit?.unitNumber||'—'}</p><p className="text-slate-500 text-xs mt-1">{new Date(x.startDate).toLocaleDateString('ar-SA')} — {new Date(x.endDate).toLocaleDateString('ar-SA')}</p></div>
-    <div className="flex items-center gap-3 flex-wrap"><span className="text-primary-400 font-bold">{Number(x.rentAmount).toLocaleString()} ر.س</span><span className="text-xs text-slate-400">{statuses.find(s=>s.value===x.status)?.label||x.status}</span><span className="text-xs text-slate-500">{x._count?.payments||0} دفعة</span></div>
+    <div className="flex items-center gap-3 flex-wrap"><span className="text-primary-400 font-bold">{Number(x.rentAmount).toLocaleString()} ر.س / دفعة</span><span className="text-xs text-slate-400">{statuses.find(s=>s.value===x.status)?.label||x.status}</span><span className="text-xs text-slate-500">{x._count?.payments||0} دفعة</span></div>
    </div>
    <div className="mt-4 flex gap-3 flex-wrap"><button onClick={()=>edit(x)} className="text-primary-400 text-sm">تعديل</button>{x.status==='DRAFT'&&<button onClick={()=>activate(x.id)} className="text-emerald-400 text-sm">تفعيل العقد</button>}{x.status==='ACTIVE'&&<button onClick={()=>terminate(x.id)} className="text-amber-400 text-sm">إنهاء</button>}{x.status==='ACTIVE'&&<button onClick={()=>syncEjar(x.id)} className="text-emerald-400 text-sm">تسجيل العقد في إيجار</button>}{x.status==='DRAFT'&&<button onClick={()=>remove(x.id)} className="text-red-400" title="الحذف متاح فقط للمسودات الخالية من الاستحقاقات"><Trash2 className="h-4 w-4"/></button>}</div>
   </div>)}</div>}
@@ -66,8 +66,9 @@ export default function ContractsPage(){
     <Input label="هوية المستأجر" required value={form.lesseeIdNumber||''} onChange={e=>setForm({...form,lesseeIdNumber:e.target.value})}/>
     <Input label="من" type="date" required value={form.startDate||''} onChange={e=>setForm({...form,startDate:e.target.value})}/>
     <Input label="إلى" type="date" required value={form.endDate||''} onChange={e=>setForm({...form,endDate:e.target.value})}/>
-    <Input label="قيمة الإيجار" type="number" required value={form.rentAmount||''} onChange={e=>setForm({...form,rentAmount:e.target.value})}/>
+    <Input label="قيمة كل دفعة إيجار (ر.س)" type="number" required value={form.rentAmount||''} onChange={e=>setForm({...form,rentAmount:e.target.value})}/>
     <Select label="دورية السداد" options={frequencies} value={form.paymentFrequency||'MONTHLY'} onChange={e=>setForm({...form,paymentFrequency:e.target.value})}/>
+    <p className="text-amber-200 text-sm md:col-span-2">القيمة المدخلة هي قيمة الدفعة الواحدة، وليست إجمالي قيمة العقد. عند تفعيل العقد تُنشأ دفعات متكررة بالمبلغ نفسه حسب دورية السداد وحتى قبل تاريخ الانتهاء.</p>
     <Input label="التأمين" type="number" value={form.securityDeposit||''} onChange={e=>setForm({...form,securityDeposit:e.target.value})}/>
     <Input label="رقم عقد إيجار" value={form.ejarContractNumber||''} onChange={e=>setForm({...form,ejarContractNumber:e.target.value})}/>
    </div>
