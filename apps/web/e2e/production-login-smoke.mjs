@@ -18,33 +18,41 @@ try {
   assert.equal(await loginButton.count(), 1, 'Login submit button missing');
   assert.ok(await loginButton.isEnabled(), 'Login submit disabled without attempting authentication');
   assert.equal(errors.length, 0, 'Browser runtime errors: ' + errors.join('; '));
-  // Check routing/authorization through browser's own network path, without credentials.
-  const forbidden = await page.evaluate(async () => {
-    const r = await fetch('/api/crm/contacts', { method: 'GET', credentials: 'omit', cache: 'no-store' });
-    return r.status;
-  });
-  if (forbidden === 429) {
-    outcome = 'BLOCKED';
-    console.error(JSON.stringify({ status: outcome, reason: 'HTTP 429 rate limiting prevents anonymous CRM authorization assertion', http: response.status(), anonymousCrmStatus: forbidden, realSessionRotation: 'UNKNOWN' }));
-    process.exitCode = 2;
+  const uiEvidence = { status: 'PASS', scope: 'login-ui', url: base + '/auth/login', http: response.status(), emailInput: true, passwordInput: true, loginButtonEnabled: true, pageErrors: errors.length };
+  console.log(JSON.stringify(uiEvidence));
+  if (process.argv.includes('--ui-only')) {
+    // The UI gate does not claim authorization or token rotation has been tested.
+    console.log(JSON.stringify({ status: 'UNKNOWN', scope: 'anonymous-security', reason: 'not requested in UI-only mode' }));
+    console.log(JSON.stringify({ status: 'UNKNOWN', scope: 'real-session-rotation', reason: 'requires a dedicated authorized test identity' }));
   } else {
-    assert.ok([401, 403].includes(forbidden), 'Anonymous CRM expected 401/403, got ' + forbidden);
-  const unauthenticatedRefresh = await page.evaluate(async () => {
-    const r = await fetch('/api/auth/refresh', {
-      method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'omit',
-      body: '{}', cache: 'no-store'
+    // One bounded unauthenticated probe per endpoint; never retry on 429.
+    const forbidden = await page.evaluate(async () => {
+      const r = await fetch('/api/crm/contacts', { method: 'GET', credentials: 'omit', cache: 'no-store' });
+      return r.status;
     });
-    return r.status;
-  });
-    if (unauthenticatedRefresh === 429) {
+    if (forbidden === 429) {
       outcome = 'BLOCKED';
-      console.error(JSON.stringify({ status: outcome, reason: 'HTTP 429 rate limiting prevents anonymous refresh assertion', anonymousCrmStatus: forbidden, anonymousRefreshStatus: unauthenticatedRefresh, realSessionRotation: 'UNKNOWN' }));
+      console.error(JSON.stringify({ status: outcome, scope: 'anonymous-security', reason: 'HTTP 429 rate limiting prevents CRM authorization assertion', anonymousCrmStatus: forbidden }));
       process.exitCode = 2;
     } else {
-      assert.ok([400, 401, 422].includes(unauthenticatedRefresh), 'Anonymous refresh expected 400/401/422, got ' + unauthenticatedRefresh);
-      outcome = 'PASS';
-      console.log(JSON.stringify({ status: outcome, url: base + '/auth/login', http: response.status(), emailInput: true, passwordInput: true, anonymousCrmStatus: forbidden, anonymousRefreshStatus: unauthenticatedRefresh, pageErrors: errors.length, realSessionRotation: 'UNKNOWN' }));
+      assert.ok([401, 403].includes(forbidden), 'Anonymous CRM expected 401/403, got ' + forbidden);
+      const refresh = await page.evaluate(async () => {
+        const r = await fetch('/api/auth/refresh', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          credentials: 'omit', body: '{}', cache: 'no-store'
+        });
+        return r.status;
+      });
+      if (refresh === 429) {
+        outcome = 'BLOCKED';
+        console.error(JSON.stringify({ status: outcome, scope: 'anonymous-security', reason: 'HTTP 429 rate limiting prevents refresh assertion', anonymousCrmStatus: forbidden, anonymousRefreshStatus: refresh }));
+        process.exitCode = 2;
+      } else {
+        assert.ok([400, 401, 422].includes(refresh), 'Anonymous refresh expected 400/401/422, got ' + refresh);
+        console.log(JSON.stringify({ status: 'PASS', scope: 'anonymous-security', anonymousCrmStatus: forbidden, anonymousRefreshStatus: refresh }));
+      }
     }
+    console.log(JSON.stringify({ status: 'UNKNOWN', scope: 'real-session-rotation', reason: 'requires a dedicated authorized test identity' }));
   }
 } catch (error) {
   console.error(JSON.stringify({ status: outcome, reason: String(error.message).slice(0, 500), realSessionRotation: 'UNKNOWN' }));
