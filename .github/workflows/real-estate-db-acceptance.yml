@@ -49,6 +49,11 @@ jobs:
       - name: Apply existing migrations to disposable DB only
         run: pnpm --filter @scc/database exec prisma migrate deploy --schema prisma/schema.prisma
       # Acceptance must exercise the migration history as deployed; db push would mask missing DDL.
+      - name: Detect schema drift after migrations (no db push)
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm --filter @scc/database exec prisma migrate diff --from-url "$DIRECT_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
       - name: Verify baseline fails closed against existing real-estate tables
         shell: bash
         run: |
