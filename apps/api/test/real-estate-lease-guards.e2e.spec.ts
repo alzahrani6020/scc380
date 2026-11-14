@@ -43,6 +43,14 @@ test(
       const scheduled = readBack.payments[0];
       assert.equal(scheduled.tenantId, a.id);
       assert.equal(scheduled.status, 'PENDING');
+      const beforeCollection = await receivables.collectionSummary(a.id);
+      assert.equal(beforeCollection.pendingCount, 1);
+      assert.equal(beforeCollection.pendingAmount, '1000');
+      assert.equal(beforeCollection.completedCount, 0);
+      assert.equal(beforeCollection.overdueCount, 1);
+      const anotherTenantSummary = await receivables.collectionSummary(b.id);
+      assert.equal(anotherTenantSummary.pendingCount, 0);
+      assert.equal(anotherTenantSummary.completedCount, 0);
       assert.equal((await receivables.findAll(b.id)).count, 0);
       assert.equal((await leases.findAll(b.id)).count, 0);
       await assert.rejects(() => leases.findOne(b.id, contract.id));
@@ -61,6 +69,11 @@ test(
       });
       assert.equal(paid.status, 'COMPLETED');
       assert.equal((await receivables.findOne(a.id, scheduled.id)).status, 'COMPLETED');
+      const afterCollection = await receivables.collectionSummary(a.id);
+      assert.equal(afterCollection.pendingCount, 0);
+      assert.equal(afterCollection.completedCount, 1);
+      assert.equal(afterCollection.completedAmount, '1000');
+      assert.equal(afterCollection.overdueCount, 0);
       await assert.rejects(() => receivables.recordPayment(a.id, scheduled.id, {
         paidDate: '2026-01-02T00:00:00.000Z', amount: '1000.00',
       }), /Only pending/);
