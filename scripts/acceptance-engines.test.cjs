@@ -48,3 +48,26 @@ test('auth route probes catch routing regressions and preserve UNKNOWN for real 
     fs.rmSync(folder, { recursive: true, force: true });
   }
 });
+
+test('HTTP abort is BLOCKED, never a confirmed application FAIL', { timeout: 25000 }, async () => {
+  const server = createServer((_req, _res) => { /* Deliberately never responds */ });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const origin = 'http://127.0.0.1:' + server.address().port;
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'scc-timeout-'));
+  try {
+    const code = await new Promise((resolve, reject) => {
+      const proc = spawn(process.execPath, [runner, '--web', origin, '--api', origin, '--output', folder, '--timeout-ms', '1000'], { stdio: 'ignore' });
+      proc.once('error', reject);
+      proc.once('exit', resolve);
+    });
+    const report = JSON.parse(fs.readFileSync(path.join(folder, 'result.json'), 'utf8'));
+    assert.equal(code, 2);
+    assert.equal(report.status, 'PARTIAL');
+    assert.equal(report.records.find(x => x.name === 'api-http').status, 'BLOCKED');
+    assert.equal(report.records.find(x => x.name === 'web-http').status, 'BLOCKED');
+  } finally {
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+    fs.rmSync(folder, { recursive: true, force: true });
+  }
+});
