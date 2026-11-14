@@ -12,7 +12,7 @@ import { REQUIRE_PERMISSIONS_KEY } from '../src/auth/guards/permissions.guard';
 const contracts = [
   { controller: PropertiesController, api: 'real-estate/properties', page: 'properties', methods: ['findAll', 'summary', 'findOne', 'create', 'update', 'remove'] },
   { controller: UnitsController, api: 'real-estate/units', page: 'units', methods: ['findAll', 'findOne', 'create', 'update', 'remove'] },
-  { controller: LeaseContractsController, api: 'real-estate/contracts', page: 'contracts', methods: ['findAll', 'findOne', 'create', 'update', 'remove', 'renew', 'terminate', 'ejarSync'] },
+  { controller: LeaseContractsController, api: 'real-estate/contracts', page: 'contracts', methods: ['findAll', 'findOne', 'create', 'update', 'remove', 'renew', 'activate', 'terminate', 'ejarSync'] },
   { controller: RentPaymentsController, api: 'real-estate/payments', page: 'payments', methods: ['findAll', 'findOne', 'create', 'update', 'remove', 'record', 'overdueReport'] },
 ] as const;
 
@@ -51,4 +51,19 @@ test('unit form enum strings match Prisma schema and guard vacancy states', () =
   for (const match of statusLine.matchAll(/value:'([^']+)'/g)) assert.ok(statuses.has(match[1]), `invalid UnitStatus ${match[1]}`);
   assert.ok(typeLine.includes("value:'LAND_PLOT'"));
   assert.ok(statusLine.includes("value:'UNDER_MAINTENANCE'"));
+});
+
+test('lease workspace discloses amount per installment and supports all payment frequencies', () => {
+  const schema = readFileSync(join(__dirname, '../../../packages/database/prisma/schema.prisma'), 'utf8');
+  const page = readFileSync(join(__dirname, '../../web/src/app/dashboard/real-estate/contracts/page.tsx'), 'utf8');
+  const start = schema.indexOf('enum PaymentFrequency {');
+  assert.ok(start >= 0);
+  const end = schema.indexOf('}', start);
+  const allowed = schema.slice(start + 'enum PaymentFrequency {'.length, end).split('\n').map(s => s.trim()).filter(Boolean);
+  const line = page.split('\n').find(s => s.startsWith('const frequencies=')) || '';
+  const presented = [...line.matchAll(/value:'([^']+)'/g)].map(m => m[1]);
+  assert.deepEqual(new Set(presented), new Set(allowed));
+  assert.ok(page.includes('قيمة كل دفعة إيجار'));
+  assert.ok(page.includes('ليست إجمالي قيمة العقد'));
+  assert.ok(page.includes("/real-estate/contracts/'+id+'/activate"));
 });
