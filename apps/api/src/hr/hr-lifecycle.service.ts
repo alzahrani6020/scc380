@@ -72,14 +72,21 @@ export class HrLifecycleService {
     if (!lifecycle) throw new NotFoundException('HR lifecycle case not found');
     if (['COMPLETED', 'CANCELLED'].includes(lifecycle.status)) throw new ConflictException('Lifecycle case is closed');
     await this.assertAssignedUser(tenantId, dto.assignedToId);
-    const max = await prisma.hrLifecycleTask.aggregate({ where: { caseId }, _max: { order: true } });
-    return prisma.hrLifecycleTask.create({
-      data: {
-        tenantId, caseId, title: dto.title, description: dto.description || null,
-        assignedToId: dto.assignedToId || null, dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
-        order: dto.order ?? ((max._max.order || 0) + 1),
-      },
-    });
+    return prisma.$transaction(async tx => {
+      const claimed = await tx.hrLifecycleCase.updateMany({
+        where: { tenantId, id: caseId, status: { in: ['OPEN', 'IN_PROGRESS'] } },
+        data: { updatedAt: new Date() },
+      });
+      if (claimed.count !== 1) throw new ConflictException('Lifecycle case is closed');
+      const max = await tx.hrLifecycleTask.aggregate({ where: { tenantId, caseId }, _max: { order: true } });
+      return tx.hrLifecycleTask.create({
+        data: {
+          tenantId, caseId, title: dto.title, description: dto.description || null,
+          assignedToId: dto.assignedToId || null, dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
+          order: dto.order ?? ((max._max.order || 0) + 1),
+        },
+      });
+    }, { isolationLevel: 'Serializable' });
   }
 
   async updateTask(req: any, caseId: string, taskId: string, dto: any) {
@@ -109,7 +116,14 @@ export class HrLifecycleService {
       data.completedById = null;
     }
 
-    await prisma.hrLifecycleTask.update({ where: { id: taskId }, data });
+    await prisma.$transaction(async tx => {
+      const claimed = await tx.hrLifecycleCase.updateMany({
+        where: { tenantId, id: caseId, status: { in: ['OPEN', 'IN_PROGRESS'] } },
+        data: { updatedAt: new Date() },
+      });
+      if (claimed.count !== 1) throw new ConflictException('Lifecycle case is closed');
+      await tx.hrLifecycleTask.update({ where: { id: taskId, tenantId, caseId }, data });
+    }, { isolationLevel: 'Serializable' });
     await this.recomputeCase(caseId, tenantId);
     return this.findOne(req, caseId);
   }
@@ -151,7 +165,7 @@ export class HrLifecycleService {
 
     const scope = { ...tenantWhere(tenantId), id };
     const updated = await prisma.hrLifecycleCase.updateMany({
-      where: { ...scope, status: { in: ['OPEN', 'IN_PROGRESS'] } },
+      where: { ...scope, status: { in: ['OPEN', 'IN_PROGRESS'] }, updatedAt: lifecycle.updatedAt },
       data: { status: 'COMPLETED', completedAt: new Date() },
     });
     if (updated.count !== 1) throw new ConflictException('Lifecycle case is closed');
