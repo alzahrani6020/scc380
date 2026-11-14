@@ -36,3 +36,26 @@ These scripts have not been executed under the user's Windows PowerShell + Docke
 ## Safety
 
 Never provide a production `DATABASE_URL` to the isolated engine; it sets its own disposable database URL only after the Docker test container is ready. The inventory SQL is read-only and must not be confused with permission to modify the production database.
+
+## Production read-only preflight from a trusted Windows PowerShell session
+
+**Never run this with GitHub CI secrets or upload the resulting evidence.** The production catalog inventory and backup may contain sensitive business information. Only run this from a machine that is already authorized to connect privately to Render PostgreSQL. Do not open the Render database publicly or send connection passwords to ChatGPT.
+
+New `render-production-preflight.ps1` checks: the exact expected database name `scc_main_qbf1`, locally configured `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER` and verified TLS (`PGSSLMODE=verify-full` or `verify-ca`); PostgreSQL CLI tools; and a read-only table/migration inventory. Existing local libpq credentials (for example secured pgpass settings) remain in the local process and are not printed by the script. The tool **does not configure database connectivity**.
+
+```powershell
+# Execute only after configuring approved private Render access and local libpq credentials.
+$env:PGDATABASE = 'scc_main_qbf1'
+$env:PGSSLMODE = 'verify-full' # trust/hostname verification must be correctly configured
+.\scripts\makkin\render-production-preflight.ps1
+```
+
+For an explicitly authorized production backup, choose a protected, preferably encrypted directory on the local machine. It will contain potentially sensitive production data. Confirm enough space, legal retention, and access controls **before** requesting a backup.
+
+```powershell
+.\scripts\makkin\render-production-preflight.ps1 -CreateBackup -VerifyRestore -EvidenceRoot 'C:\Secure\MakkinEvidence\prod-20261114'
+```
+
+The script refuses backup writes to an implicit temporary directory, does not overwrite an existing backup, and validates the exported pg_dump archive; `-VerifyRestore` additionally runs a disposable offline PostgreSQL 17 restore with no external network. A green result does **not** by itself prove production readiness or schema alignment. Production `pg_dump` may impose load; plan the run appropriately. Protect and retain the resulting backup securely; do not attach it to a public pull request.
+
+**Critical STOP:** Render production is known to block external MCP access due to an empty IP allowlist. PowerShell cannot bypass that access boundary. Unless a trusted approved local route is available, this preflight must return `BLOCKED`; do not weaken the network allowlist to force a pass.
