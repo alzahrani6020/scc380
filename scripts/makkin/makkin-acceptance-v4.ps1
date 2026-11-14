@@ -5,6 +5,7 @@ param(
   [string]$Repo = 'C:\Users\vip\scc380',
   [string]$Branch = 'fix/real-estate-verified-main-20261114',
   [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-fA-F]{40}$')][string]$ExpectedCommit,
+  [switch]$UseLocalCommit,
   [switch]$RunDatabaseTests,
   [switch]$RunHrTests,
   [string]$EvidenceRoot = '',
@@ -60,8 +61,16 @@ try {
     if(!(Get-Command $exe -ErrorAction SilentlyContinue)){throw "Missing prerequisite $exe"}
   }
   if(!(Test-Path (Join-Path $Repo '.git'))){throw 'Repository .git not found'}
-  [void](Run 'fetch' 'git' @('-C',$Repo,'fetch','--no-tags','origin',$Branch) $Repo)
-  $sha=(& git -C $Repo rev-parse FETCH_HEAD).Trim()
+  if($UseLocalCommit){
+    # CI checkout of the PR merge ref contains the head commit as a parent.
+    # This mode is allowed only when an external trusted caller pins ExpectedCommit.
+    $sha=(& git -C $Repo rev-parse --verify "$ExpectedCommit^{commit}" 2>$null).Trim()
+    if($LASTEXITCODE -ne 0){throw 'Pinned commit is not present in local Git object store'}
+    Check 'local-commit' 'PASS' "sha=$sha"
+  } else {
+    [void](Run 'fetch' 'git' @('-C',$Repo,'fetch','--no-tags','origin',$Branch) $Repo)
+    $sha=(& git -C $Repo rev-parse FETCH_HEAD).Trim()
+  }
   if($LASTEXITCODE -ne 0 -or $sha.ToLowerInvariant() -ne $ExpectedCommit.ToLowerInvariant()){
     throw "Branch SHA differs: expected $ExpectedCommit got $sha"
   }
