@@ -1,0 +1,39 @@
+name: Makkin build validation (no deploy)
+
+on:
+  push:
+    branches:
+      - work/makkin-governance-completion-20261114
+    paths:
+      - 'packages/types/**'
+      - 'pnpm-lock.yaml'
+      - 'package.json'
+      - '.github/workflows/makkin-build-validation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: makkin-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-types:
+    name: pnpm frozen install and type declarations
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Enable exact project pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@8.15.0 --activate
+          test "$(pnpm --version)" = "8.15.0"
+      - name: Install without modifying lockfile
+        run: pnpm install --frozen-lockfile
+      - name: Build declarations without bypassing DTS
+        run: pnpm --filter @scc/types build
