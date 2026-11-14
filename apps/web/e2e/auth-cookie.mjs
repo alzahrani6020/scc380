@@ -6,7 +6,7 @@ let nextRefresh = 1;
 let legacyConsumed = false;
 let lastLogout = '';
 const server = createServer(async (req, res) => {
-  if (req.method !== 'POST' || !req.url?.startsWith('/api/auth/')) {
+  if (req.method !== 'POST' || !req.url?.startsWith('/auth/')) {
     res.writeHead(404).end();
     return;
   }
