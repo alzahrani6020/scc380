@@ -114,6 +114,33 @@ export class RentPaymentsService {
     return prisma.rentPayment.findFirstOrThrow({ where: withTenant({ id }, tenantId) });
   }
 
+  async collectionSummary(tenantId: string) {
+    const now = new Date();
+    const pending = withTenant({ status: PaymentStatus.PENDING }, tenantId);
+    const completed = withTenant({ status: PaymentStatus.COMPLETED }, tenantId);
+    const overdue = withTenant({ status: PaymentStatus.PENDING, dueDate: { lt: now } }, tenantId);
+    const [pendingTotal, completedTotal, overdueTotal, pendingCount, completedCount, overdueCount] =
+      await Promise.all([
+        prisma.rentPayment.aggregate({ where: pending, _sum: { amount: true } }),
+        prisma.rentPayment.aggregate({ where: completed, _sum: { amount: true } }),
+        prisma.rentPayment.aggregate({ where: overdue, _sum: { amount: true } }),
+        prisma.rentPayment.count({ where: pending }),
+        prisma.rentPayment.count({ where: completed }),
+        prisma.rentPayment.count({ where: overdue }),
+      ]);
+    return {
+      asOf: now.toISOString(),
+      currency: 'SAR',
+      pendingAmount: (pendingTotal._sum.amount ?? 0).toString(),
+      completedAmount: (completedTotal._sum.amount ?? 0).toString(),
+      overdueAmount: (overdueTotal._sum.amount ?? 0).toString(),
+      pendingCount,
+      completedCount,
+      overdueCount,
+      // Excludes FAILED/REFUNDED; no partial settlement ledger exists yet.
+    };
+  }
+
   async overdueReport(tenantId: string) {
     const where = withTenant({ status: 'PENDING', dueDate: { lt: new Date() } }, tenantId);
     const [data, totalAmount] = await Promise.all([
