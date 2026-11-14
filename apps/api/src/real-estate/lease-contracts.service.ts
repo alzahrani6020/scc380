@@ -293,7 +293,7 @@ export class LeaseContractsService {
       unitId: contract.unitId,
       dueDate,
       amount: contract.rentAmount,
-      status: 'PENDING',
+      status: 'PENDING' as const,
     }));
     if (payments.length) await db.rentPayment.createMany({ data: payments });
   }
