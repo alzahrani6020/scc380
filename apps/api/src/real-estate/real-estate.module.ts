@@ -24,6 +24,7 @@ import { EjarService } from './ejar.service';
     UnitsService,
     LeaseContractsService,
     RentPaymentsService,
+    RentAccountingService,
     EjarService,
   ],
   exports: [
