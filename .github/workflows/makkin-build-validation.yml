@@ -60,3 +60,52 @@ jobs:
         run: pnpm --filter @scc/database db:generate
       - name: Build complete monorepo
         run: pnpm build
+
+  validate-hr-database:
+    name: HR and governance isolated PostgreSQL acceptance
+    needs: validate-monorepo
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: makkin_ci
+          POSTGRES_PASSWORD: makkin_ci_only
+          POSTGRES_DB: makkin_acceptance
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U makkin_ci -d makkin_acceptance"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://makkin_ci:makkin_ci_only@localhost:5432/makkin_acceptance?schema=public
+      DIRECT_URL: postgresql://makkin_ci:makkin_ci_only@localhost:5432/makkin_acceptance?schema=public
+      CRM_DB_E2E: '1'
+      ACCOUNTING_DB_E2E: '1'
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Use project pnpm version
+        run: |
+          corepack enable
+          corepack prepare pnpm@8.15.0 --activate
+          test "$(pnpm --version)" = "8.15.0"
+      - name: Frozen dependency install
+        run: pnpm install --frozen-lockfile
+      - name: Generate Prisma client
+        run: pnpm --filter @scc/database db:generate
+      - name: Apply existing migrations to disposable PostgreSQL only
+        run: pnpm exec prisma migrate deploy --schema packages/database/prisma/schema.prisma
+      - name: Run HR database-backed acceptance tests
+        run: |
+          pnpm --filter @scc/api exec tsx --test --test-concurrency=1 \
+            test/hr-governance-db.e2e.spec.ts \
+            test/hr-asset-custody.e2e.spec.ts \
+            test/hr-financial-lifecycle.e2e.spec.ts \
+            test/hr-self-service-lifecycle.e2e.spec.ts
