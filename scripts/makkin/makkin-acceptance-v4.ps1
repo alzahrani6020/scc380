@@ -44,6 +44,7 @@ function Run([string]$name,[string]$exe,[string[]]$args,[string]$cwd,[bool]$requ
   } finally {Pop-Location}
   if($exit -ne 0){
     Check $name 'FAIL' "exit=$exit log=$log"
+    if($name -eq 'worktree'){Get-Content -LiteralPath $log -Tail 20 | ForEach-Object { Write-Host "git-worktree: $_" }}
     if($required){throw "$name failed (exit=$exit)"}
     return $false
   }
