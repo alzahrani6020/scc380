@@ -1,5 +1,6 @@
 import { CanActivate, ExecutionContext, HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import type { Request } from 'express';
+import { createHash } from 'node:crypto';
 
 type Bucket = { count: number; resetAt: number };
 
@@ -12,20 +13,38 @@ export class AuthRateLimitGuard implements CanActivate {
     const path = req.path || req.url || 'unknown';
     const ip = this.clientIp(req);
     const { limit, windowMs } = this.policy(path);
-    const key = `${ip}:${path}`;
     const now = Date.now();
+    const isLogin = path.endsWith('/login');
+    // A Web reverse proxy may make unrelated users share req.ip.
+    // Keep a conservative per-account+source limit AND an independent,
+    // higher-cost source-wide anti-spray guard. Never trust raw XFF.
+    const normalizedEmail =
+      isLogin && typeof req.body?.email === 'string'
+        ? req.body.email.trim().toLowerCase().slice(0, 254)
+        : '';
+    const accountHash = normalizedEmail
+      ? createHash('sha256').update(normalizedEmail).digest('hex')
+      : '';
+    const scopes = isLogin && accountHash
+      ? [
+          { key: `login:identity:${ip}:${accountHash}`, limit, windowMs },
+          { key: `login:source:${ip}`, limit: 300, windowMs },
+        ]
+      : [{ key: `${ip}:${path}`, limit, windowMs }];
 
-    const existing = AuthRateLimitGuard.buckets.get(key);
-    const bucket: Bucket =
-      !existing || existing.resetAt <= now
-        ? { count: 0, resetAt: now + windowMs }
-        : existing;
-
-    bucket.count += 1;
-    AuthRateLimitGuard.buckets.set(key, bucket);
-
-    if (bucket.count > limit) {
-      const retryAfter = Math.max(1, Math.ceil((bucket.resetAt - now) / 1000));
+    // Evaluate every scope before incrementing to avoid consuming an
+    // unrelated account bucket when a broad source limit is already hit.
+    const nextBuckets = scopes.map((scope) => {
+      const existing = AuthRateLimitGuard.buckets.get(scope.key);
+      const bucket: Bucket =
+        !existing || existing.resetAt <= now
+          ? { count: 0, resetAt: now + scope.windowMs }
+          : existing;
+      return { ...scope, bucket };
+    });
+    const blocked = nextBuckets.find(({ bucket, limit: scopeLimit }) => bucket.count >= scopeLimit);
+    if (blocked) {
+      const retryAfter = Math.max(1, Math.ceil((blocked.bucket.resetAt - now) / 1000));
       throw new HttpException(
         {
           statusCode: HttpStatus.TOO_MANY_REQUESTS,
@@ -35,6 +54,10 @@ export class AuthRateLimitGuard implements CanActivate {
         },
         HttpStatus.TOO_MANY_REQUESTS,
       );
+    }
+    for (const scope of nextBuckets) {
+      scope.bucket.count += 1;
+      AuthRateLimitGuard.buckets.set(scope.key, scope.bucket);
     }
 
     // Opportunistic cleanup to prevent unbounded memory growth.
