@@ -14,28 +14,30 @@ export class AuthController {
   @UseGuards(AuthRateLimitGuard)
   @Post('login')
   async login(@Body() body: LoginDto, @Request() req: any, @Headers('x-tenant-slug') tenantSlug?: string) {
-    let user: Awaited<ReturnType<AuthService['authenticate']>>;
+    const release = await this.authRateLimit.beginLogin(req, body.email);
     try {
-      user = await this.authService.authenticate(body.email, body.password, tenantSlug);
-    } catch (error) {
-      // Only rejected credentials count as failed logins. Never count server
-      // errors, malformed requests, or successful password verification.
-      if (error instanceof UnauthorizedException) {
-        this.authRateLimit.recordFailedLogin(req, body.email);
+      let user: Awaited<ReturnType<AuthService['authenticate']>>;
+      try {
+        user = await this.authService.authenticate(body.email, body.password, tenantSlug);
+      } catch (error) {
+        if (error instanceof UnauthorizedException) {
+          this.authRateLimit.recordFailedLogin(req, body.email);
+        }
+        throw error;
       }
-      throw error;
+      const result = await this.authService.login(
+        user.id,
+        user.email,
+        user.role,
+        user.tenantId || undefined,
+        tenantSlug,
+        req,
+      );
+      this.authRateLimit.clearSuccessfulLogin(body.email);
+      return result;
+    } finally {
+      release();
     }
-
-    const result = await this.authService.login(
-      user.id,
-      user.email,
-      user.role,
-      user.tenantId || undefined,
-      tenantSlug,
-      req,
-    );
-    this.authRateLimit.clearSuccessfulLogin(body.email);
-    return result;
   }
 
   @UseGuards(AuthRateLimitGuard)
