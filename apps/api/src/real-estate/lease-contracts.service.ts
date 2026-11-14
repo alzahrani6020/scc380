@@ -229,7 +229,7 @@ export class LeaseContractsService {
     return contract;
   }
 
-  private async generatePaymentSchedule(contract: any, db: Pick<typeof prisma, 'rentPayment'> = prisma) {
+  private paymentDueDates(contract: any): Date[] {
     const start = new Date(contract.startDate);
     const end = new Date(contract.endDate);
     this.assertLeaseDates(start.toISOString(), end.toISOString());
@@ -257,22 +257,44 @@ export class LeaseContractsService {
       return target;
     };
 
-    const payments = [];
+    const dates: Date[] = [];
     for (let step = 0; ; step++) {
       const dueDate = dueAt(step);
       if (dueDate >= end) break;
-      payments.push({
-        tenantId: contract.tenantId,
-        contractId: contract.id,
-        propertyId: contract.propertyId,
-        unitId: contract.unitId,
-        dueDate,
-        amount: contract.rentAmount,
-        status: 'PENDING',
-      });
-      if (payments.length > 1200) throw new BadRequestException('Lease schedule exceeds supported length');
+      dates.push(dueDate);
+      if (dates.length > 1200) throw new BadRequestException('Lease schedule exceeds supported length');
     }
-    if (payments.length) await db.rentPayment.createMany({ data: payments });
+    return dates;
+  }
 
+  async previewPayments(tenantId: string, id: string) {
+    const contract = await prisma.leaseContract.findFirst({
+      where: withTenant({ id }, tenantId),
+    });
+    if (!contract) throw new NotFoundException('Contract not found');
+    const dueDates = this.paymentDueDates(contract);
+    const amount = contract.rentAmount;
+    return {
+      contractId: id,
+      paymentFrequency: contract.paymentFrequency,
+      amountPerInstallment: amount.toFixed(2),
+      installmentCount: dueDates.length,
+      totalScheduledAmount: amount.mul(dueDates.length).toFixed(2),
+      firstDueDate: dueDates[0]?.toISOString() || null,
+      lastDueDate: dueDates[dueDates.length - 1]?.toISOString() || null,
+    };
+  }
+
+  private async generatePaymentSchedule(contract: any, db: Pick<typeof prisma, 'rentPayment'> = prisma) {
+    const payments = this.paymentDueDates(contract).map(dueDate => ({
+      tenantId: contract.tenantId,
+      contractId: contract.id,
+      propertyId: contract.propertyId,
+      unitId: contract.unitId,
+      dueDate,
+      amount: contract.rentAmount,
+      status: 'PENDING',
+    }));
+    if (payments.length) await db.rentPayment.createMany({ data: payments });
   }
 }
