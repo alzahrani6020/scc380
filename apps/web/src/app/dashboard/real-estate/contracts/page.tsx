@@ -40,7 +40,7 @@ export default function ContractsPage(){
    setOpen(false);await load();
  }catch(err){console.error(err);setFormError(true)}finally{setSaving(false)}};
  const remove=async(id:string)=>{if(!confirm('حذف العقد؟'))return;setActionError(false);try{await api.delete('/real-estate/contracts/'+id);await load()}catch(err){console.error(err);setActionError(true)}};
- const activate=async(id:string)=>{if(!confirm('هل تؤكد التفعيل؟ سيُنشئ النظام استحقاقًا بقيمة كل دفعة مسجلة في العقد، وفق الدورية المحددة. راجع القيمة والدورية قبل المتابعة.'))return;setActionError(false);try{await api.post('/real-estate/contracts/'+id+'/activate');await load()}catch(err){console.error(err);setActionError(true)}};
+ const activate=async(id:string)=>{setActionError(false);try{const response=await api.get('/real-estate/contracts/'+id+'/payment-preview');const p=response.data;if(!confirm(`تأكيد تفعيل العقد؟\nعدد الدفعات: ${p.installmentCount}\nقيمة الدفعة: ${p.amountPerInstallment} ر.س\nإجمالي الاستحقاقات: ${p.totalScheduledAmount} ر.س\nأول استحقاق: ${p.firstDueDate?.slice(0,10)||'—'}\nآخر استحقاق: ${p.lastDueDate?.slice(0,10)||'—'}\nسيصبح العقد نشطًا وتُنشأ الاستحقاقات عند الموافقة.`))return;await api.post('/real-estate/contracts/'+id+'/activate');await load()}catch(err){console.error(err);setActionError(true)}};
  const terminate=async(id:string)=>{if(!confirm('إنهاء العقد؟'))return;setActionError(false);try{await api.post('/real-estate/contracts/'+id+'/terminate');await load()}catch(err){console.error(err);setActionError(true)}};
  const syncEjar=async(id:string)=>{setActionError(false);try{await api.post('/real-estate/contracts/'+id+'/ejar-sync');await load()}catch(err){console.error(err);setActionError(true)}};
 
