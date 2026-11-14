@@ -166,6 +166,20 @@ test('session APIs only expose current active sessions without token material', 
 });
 
 
+test('auth lifecycle audit is atomic and never logs credentials or invalid retries', () => {
+  const auth = src('src/auth/auth.service.ts');
+  const controller = src('src/auth/auth.controller.ts');
+  assert.match(auth, /AUTH_LOGIN_SUCCESS/);
+  assert.match(auth, /AUTH_2FA_LOGIN_SUCCESS/);
+  assert.match(auth, /AUTH_LOGOUT_SUCCESS/);
+  assert.match(auth, /AUTH_LOGOUT_ALL_SUCCESS/);
+  assert.match(auth, /method: 'password' \| 'google'/);
+  assert.match(auth, /return this\.login\(user\.id, user\.email, user\.role, user\.tenantId \|\| undefined, undefined, req, 'google'\)/);
+  assert.match(controller, /logoutAll\(req\.user\.userId, req\.user\.tenantId \?\? null\)/);
+  assert.match(auth, /await prisma\.\$transaction\(async \(tx\) =>/);
+  assert.doesNotMatch(auth, /newValues:\s*\{[^}]*\b(?:refreshToken|accessToken|password|credential)\s*:/);
+});
+
 test('security audit writes are transactional and never include key or token values', () => {
   const keys = src('src/security/api-keys.service.ts');
   const sessions = src('src/security/sessions.service.ts');
