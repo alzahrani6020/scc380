@@ -12,9 +12,10 @@ param(
 )
 $ErrorActionPreference='Stop'
 $stamp=(Get-Date -Format 'yyyyMMdd-HHmmss')+'-'+$PID
-if(!$EvidenceRoot){$EvidenceRoot=Join-Path $env:TEMP "makkin-v4-$stamp"}
+$tempRoot=[System.IO.Path]::GetTempPath()
+if(!$EvidenceRoot){$EvidenceRoot=Join-Path $tempRoot "makkin-v4-$stamp"}
 New-Item -ItemType Directory -Path $EvidenceRoot -Force | Out-Null
-$tree=Join-Path $env:TEMP "makkin-tree-$stamp"
+$tree=Join-Path $tempRoot "makkin-tree-$stamp"
 $container="makkin-db-$stamp".ToLowerInvariant()
 $state=[ordered]@{engine='Makkin Acceptance v4';status='BLOCKED';commit=$null;
   functional='NOT_RUN';schemaDrift='NOT_RUN';production='UNKNOWN';
