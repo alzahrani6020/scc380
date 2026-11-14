@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UseGuards, Request, Get, Headers, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Request, Get, Headers, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -9,13 +9,24 @@ import { LoginDto } from './dto/login.dto';
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private authService: AuthService) {}
+  constructor(private authService: AuthService, private authRateLimit: AuthRateLimitGuard) {}
 
   @UseGuards(AuthRateLimitGuard)
   @Post('login')
   async login(@Body() body: LoginDto, @Request() req: any, @Headers('x-tenant-slug') tenantSlug?: string) {
-    const user = await this.authService.authenticate(body.email, body.password, tenantSlug);
-    return this.authService.login(
+    let user: Awaited<ReturnType<AuthService['authenticate']>>;
+    try {
+      user = await this.authService.authenticate(body.email, body.password, tenantSlug);
+    } catch (error) {
+      // Only rejected credentials count as failed logins. Never count server
+      // errors, malformed requests, or successful password verification.
+      if (error instanceof UnauthorizedException) {
+        this.authRateLimit.recordFailedLogin(req, body.email);
+      }
+      throw error;
+    }
+
+    const result = await this.authService.login(
       user.id,
       user.email,
       user.role,
@@ -23,6 +34,8 @@ export class AuthController {
       tenantSlug,
       req,
     );
+    this.authRateLimit.clearSuccessfulLogin(body.email);
+    return result;
   }
 
   @UseGuards(AuthRateLimitGuard)
