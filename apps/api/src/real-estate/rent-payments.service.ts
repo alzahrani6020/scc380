@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { prisma, withTenant } from '@scc/database';
-import { PaymentStatus } from '@prisma/client';
+import { PaymentStatus, Prisma } from '@prisma/client';
 
 @Injectable()
 export class RentPaymentsService {
@@ -81,37 +81,67 @@ export class RentPaymentsService {
     throw new ConflictException('Rent receivables cannot be deleted without an auditable reversal workflow');
   }
 
-  async recordPayment(tenantId: string, id: string, dto: { paidDate: string; amount: string; paymentMethod?: string; transactionRef?: string; bankReference?: string }) {
-    const existing = await prisma.rentPayment.findFirst({ where: withTenant({ id }, tenantId) });
-    if (!existing) throw new NotFoundException('Payment not found');
-
-    if (existing.status !== PaymentStatus.PENDING) {
-      throw new ConflictException('Only pending rent receivables can be settled');
+  async recordPayment(
+    tenantId: string, id: string,
+    dto: { paidDate: string; amount: string; idempotencyKey: string; paymentMethod?: string; transactionRef?: string; bankReference?: string },
+  ) {
+    if (!dto.idempotencyKey || dto.idempotencyKey.length > 128 || !/^[A-Za-z0-9_-]+$/.test(dto.idempotencyKey)) {
+      throw new BadRequestException('A stable idempotency key is required');
     }
-    const paidAmount = Number(dto.amount);
-    const expectedAmount = Number(existing.amount);
-    if (!Number.isFinite(paidAmount) || paidAmount <= 0 || !Number.isFinite(expectedAmount) || expectedAmount <= 0) {
-      throw new BadRequestException('Payment amounts must be finite and positive');
+    if (!/^\\d+(\\.\\d{1,2})?$/.test(dto.amount)) {
+      throw new BadRequestException('Payment amount must have no more than two decimal places');
     }
-    // RentPayment has no paid-amount ledger. Until a separate collection ledger is
-    // introduced, reject partial/overpayments rather than corrupt the receivable.
-    if (Math.round(paidAmount * 100) !== Math.round(expectedAmount * 100)) {
-      throw new BadRequestException('Partial or excess payments require a payment ledger and cannot be recorded here');
-    }
+    const amount = new Prisma.Decimal(dto.amount);
+    if (amount.lte(0)) throw new BadRequestException('Payment must be positive');
     const paidDate = new Date(dto.paidDate);
     if (Number.isNaN(paidDate.getTime())) throw new BadRequestException('Invalid paid date');
-    const result = await prisma.rentPayment.updateMany({
-      where: withTenant({ id, status: PaymentStatus.PENDING, amount: existing.amount }, tenantId),
-      data: {
-        paidDate,
-        status: PaymentStatus.COMPLETED,
-        paymentMethod: dto.paymentMethod,
-        transactionRef: dto.transactionRef,
-        bankReference: dto.bankReference,
-      },
-    });
-    if (result.count !== 1) throw new ConflictException('Payment was modified or settled concurrently');
-    return prisma.rentPayment.findFirstOrThrow({ where: withTenant({ id }, tenantId) });
+
+    return prisma.$transaction(async (tx) => {
+      const existing = await tx.rentPayment.findFirst({ where: withTenant({ id }, tenantId) });
+      if (!existing) throw new NotFoundException('Payment not found');
+
+      const priorRequest = await tx.rentCollection.findUnique({
+        where: { tenantId_idempotencyKey: { tenantId, idempotencyKey: dto.idempotencyKey } },
+      });
+      if (priorRequest) {
+        if (priorRequest.rentPaymentId !== id || !priorRequest.amount.equals(amount)) {
+          throw new ConflictException('Idempotency key already belongs to a different payment');
+        }
+        // Retry of the same request is a read, never a second collection.
+        return tx.rentPayment.findFirstOrThrow({ where: withTenant({ id }, tenantId) });
+      }
+      if (existing.status !== PaymentStatus.PENDING) {
+        throw new ConflictException('Only pending rent receivables can be settled');
+      }
+      const collected = await tx.rentCollection.aggregate({
+        where: { tenantId, rentPaymentId: id }, _sum: { amount: true },
+      });
+      const previous = collected._sum.amount ?? new Prisma.Decimal(0);
+      const remaining = existing.amount.minus(previous);
+      if (remaining.lte(0) || amount.gt(remaining)) {
+        throw new ConflictException('Collection exceeds outstanding receivable');
+      }
+      await tx.rentCollection.create({
+        data: {
+          tenantId, rentPaymentId: id, amount, collectedAt: paidDate,
+          idempotencyKey: dto.idempotencyKey, paymentMethod: dto.paymentMethod,
+          transactionRef: dto.transactionRef, bankReference: dto.bankReference,
+        },
+      });
+      const settled = amount.equals(remaining);
+      if (settled) {
+        const claimed = await tx.rentPayment.updateMany({
+          where: withTenant({ id, status: PaymentStatus.PENDING }, tenantId),
+          data: {
+            status: PaymentStatus.COMPLETED, paidDate,
+            paymentMethod: dto.paymentMethod, transactionRef: dto.transactionRef,
+            bankReference: dto.bankReference,
+          },
+        });
+        if (claimed.count !== 1) throw new ConflictException('Receivable was settled concurrently');
+      }
+      return tx.rentPayment.findFirstOrThrow({ where: withTenant({ id }, tenantId) });
+    }, { isolationLevel: 'Serializable' });
   }
 
   async collectionSummary(tenantId: string) {
