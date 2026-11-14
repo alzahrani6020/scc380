@@ -59,6 +59,28 @@ jobs:
           Write-Host 'PASS: both scripts fail closed without credentials or network activity'
           $global:LASTEXITCODE = 0 # subprocesses must fail; this validation step passed
 
+      - name: Preflight must refuse absent production connection and emit no archive
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP 'makkin-prod-preflight-negative'
+          foreach ($key in @('PGHOST','PGPORT','PGDATABASE','PGUSER','PGPASSWORD','PGSERVICE','PGSERVICEFILE','PGPASSFILE')) {
+            [Environment]::SetEnvironmentVariable($key,$null,'Process')
+          }
+          & pwsh -NoProfile -File scripts/makkin/render-production-preflight.ps1 `
+            -EvidenceRoot $evidence
+          if ($LASTEXITCODE -eq 0) { throw 'Production preflight unexpectedly passed without connection' }
+          $result = Get-Content (Join-Path $evidence 'result.json') -Raw | ConvertFrom-Json
+          if ($result.status -ne 'BLOCKED' -or $result.inventory -ne 'NOT_RUN' -or
+              $result.backup -ne 'NOT_RUN' -or $result.productionWrite -ne 'NEVER') {
+            throw 'Production preflight failed closed incorrectly'
+          }
+          if (Test-Path (Join-Path $evidence 'production-backup.dump')) {
+            throw 'Backup file unexpectedly exists during a negative test'
+          }
+          Write-Host 'PASS: no credentials, no production access and no backup file'
+          $global:LASTEXITCODE = 0
+
       - name: Set up Node for pinned worktree build
         uses: actions/setup-node@v4
         with:
