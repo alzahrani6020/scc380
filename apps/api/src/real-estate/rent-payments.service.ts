@@ -142,7 +142,8 @@ export class RentPaymentsService {
     const paidDate = new Date(dto.paidDate);
     if (Number.isNaN(paidDate.getTime())) throw new BadRequestException('Invalid paid date');
 
-    return prisma.$transaction(async (tx) => {
+    try {
+      return await prisma.$transaction(async (tx) => {
       const existing = await tx.rentPayment.findFirst({ where: withTenant({ id }, tenantId) });
       if (!existing) throw new NotFoundException('Payment not found');
 
@@ -188,6 +189,15 @@ export class RentPaymentsService {
       }
       return tx.rentPayment.findFirstOrThrow({ where: withTenant({ id }, tenantId) });
     }, { isolationLevel: 'Serializable' });
+    } catch (error) {
+      // Concurrency conflicts must not become ambiguous HTTP 500s or trigger
+      // an automatic second financial write. Client may retry with SAME key.
+      if (error instanceof Prisma.PrismaClientKnownRequestError &&
+          (error.code === 'P2034' || error.code === 'P2002')) {
+        throw new ConflictException('Concurrent collection or duplicate request; verify receipt history before retrying');
+      }
+      throw error;
+    }
   }
 
   async collectionSummary(tenantId: string) {
