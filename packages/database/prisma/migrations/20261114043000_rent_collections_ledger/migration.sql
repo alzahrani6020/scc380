@@ -14,6 +14,8 @@ CREATE TABLE "rent_collections" (
     CONSTRAINT "rent_collections_amount_positive" CHECK ("amount" > 0)
 );
 
+CREATE UNIQUE INDEX "rent_payments_id_tenantId_key" ON "rent_payments"("id", "tenantId");
+
 CREATE UNIQUE INDEX "rent_collections_tenantId_idempotencyKey_key"
 ON "rent_collections" ("tenantId", "idempotencyKey");
 CREATE INDEX "rent_collections_tenantId_rentPaymentId_idx"
@@ -27,4 +29,4 @@ FOREIGN KEY ("tenantId") REFERENCES "tenants"("id") ON DELETE CASCADE ON UPDATE 
 
 ALTER TABLE "rent_collections"
 ADD CONSTRAINT "rent_collections_rentPaymentId_fkey"
-FOREIGN KEY ("rentPaymentId") REFERENCES "rent_payments"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+FOREIGN KEY ("rentPaymentId", "tenantId") REFERENCES "rent_payments"("id", "tenantId") ON DELETE RESTRICT ON UPDATE CASCADE;
