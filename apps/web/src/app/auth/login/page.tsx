@@ -46,7 +46,7 @@ export default function LoginPage() {
     return () => window.clearTimeout(timer);
   }, [retrySeconds]);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (loading || retrySeconds > 0) return;
     // Read submitted DOM values rather than relying solely on React state:
