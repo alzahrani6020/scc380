@@ -45,6 +45,39 @@ jobs:
       - name: Apply existing migrations to disposable DB
         run: pnpm --filter @scc/database exec prisma migrate deploy --schema prisma/schema.prisma
       # Acceptance must exercise the migration history as deployed; db push would mask missing DDL.
+      - name: Assert real-estate migration objects exist (read-only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          PGPASSWORD=scc psql -h 127.0.0.1 -U scc -d "${DATABASE_URL##*/}" -X -v ON_ERROR_STOP=1 <<'SQL'
+          DO $
+          DECLARE missing text;
+          BEGIN
+            SELECT string_agg(required.object_name, ', ' ORDER BY required.object_name)
+            INTO missing
+            FROM (VALUES
+              ('properties'), ('units'), ('lease_contracts'),
+              ('rent_payments'), ('rent_collections'),
+              ('contract_documents'), ('property_expenses')
+            ) required(object_name)
+            WHERE to_regclass('public.' || required.object_name) IS NULL;
+            IF missing IS NOT NULL THEN
+              RAISE EXCEPTION 'Real-estate tables missing after migrations: %', missing;
+            END IF;
+            IF NOT EXISTS (
+              SELECT 1 FROM pg_constraint
+              WHERE conname = 'rent_collections_rentPaymentId_fkey' AND contype = 'f'
+            ) THEN
+              RAISE EXCEPTION 'Tenant-consistent rent collection FK missing';
+            END IF;
+            IF NOT EXISTS (
+              SELECT 1 FROM pg_indexes
+              WHERE schemaname = 'public' AND indexname = 'rent_collections_tenantId_idempotencyKey_key'
+            ) THEN
+              RAISE EXCEPTION 'Rent collection idempotency unique index missing';
+            END IF;
+          END $;
+          SQL
       - name: Detect schema drift after migrations (no db push)
         shell: bash
         run: |
