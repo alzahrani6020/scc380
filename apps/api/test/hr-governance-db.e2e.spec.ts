@@ -67,6 +67,19 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
       assert.equal(reviewing.status,'IN_REVIEW');
       const noted = await service.addNote(reqA,record.id,'Employee response received');
       assert.equal(noted.events.length,4);
+      await assert.rejects(
+        ()=>service.transition(reqA,record.id,'CLOSED','Premature close without review'),
+        /Required governance action missing: REPORT_DETAIL/,
+      );
+      await service.addWorkflowAction(reqA,record.id,{
+        code:'REPORT_DETAIL',narrative:'Documented original report reviewed by HR',
+      });
+      const independentReviewer:any={user:{
+        tenantId:a.id,userId:'reviewer-'+id,role:'ADMIN',
+      }};
+      await service.addWorkflowAction(independentReviewer,record.id,{
+        code:'REVIEW_FINDING',narrative:'Independent review did not substantiate the allegation',
+      });
       await assert.rejects(()=>service.transition(reqA,record.id,'CLOSED'),/rationale is required/);
       const resolved = await service.transition(reqA,record.id,'RESOLVED','No substantiated violation');
       assert.equal(resolved.status,'RESOLVED');
@@ -78,7 +91,7 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
       await assert.rejects(()=>service.addEvidence(reqA,record.id,{
         fileName:'late.pdf',mimeType:'application/pdf',contentBase64:pdf.toString('base64'),
       }),/Closed cases are read only/);
-      assert.equal(await prisma.hrGovernanceEvent.count({where:{tenantId:a.id,caseId:record.id}}),6);
+      assert.equal(await prisma.hrGovernanceEvent.count({where:{tenantId:a.id,caseId:record.id}}),8);
       const subjectUser=await prisma.user.create({data:{
         tenantId:a.id,email:'governance-'+id+'@example.test',firstName:'Case',lastName:'Subject',
         role:'USER',status:'ACTIVE',
@@ -421,7 +434,7 @@ test('HR self-governance: only disclosed employee cases, private reply and indep
       }),/Disclosed employee case not found/);
       await assert.rejects(()=>svc.selfResponse(self,record.id,{
         code:'FINAL_REVIEW',narrative:'Employee cannot authorize review',
-      }),/Only employee response or appeal/);
+      }),/Only employee response/);
       await assert.rejects(()=>svc.selfResponse(self,record.id,{
         code:'EMPLOYEE_RESPONSE',narrative:'Reply before review is forbidden',
       }),/under review/);
