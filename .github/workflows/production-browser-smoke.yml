@@ -1,0 +1,33 @@
+name: SCC380 Production Browser Smoke (read-only)
+
+on:
+  pull_request:
+    paths:
+      - "apps/web/e2e/production-login-smoke.mjs"
+      - ".github/workflows/production-browser-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production-browser-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Verify browser smoke syntax
+        run: node --check apps/web/e2e/production-login-smoke.mjs
+      - name: Install Playwright without modifying tracked lockfile
+        run: npm install --prefix /tmp/scc-smoke playwright@1.65.0
+      - name: Install Chromium
+        run: /tmp/scc-smoke/node_modules/.bin/playwright install --with-deps chromium
+      - name: Run read-only production browser acceptance
+        env:
+          NODE_PATH: /tmp/scc-smoke/node_modules
+        run: |
+          cp apps/web/e2e/production-login-smoke.mjs /tmp/scc-smoke/production-login-smoke.mjs
+          node /tmp/scc-smoke/production-login-smoke.mjs
