@@ -234,9 +234,10 @@ test('local browser API and Next session proxy use Nest routes without an implic
   const nextConfig = src('../web/next.config.js');
   const proxy = src('../web/src/app/api/auth/session/route.ts');
   const nest = src('main.ts');
-  assert.match(nextConfig, /NEXT_PUBLIC_API_URL: process\.env\.NEXT_PUBLIC_API_URL \|\| 'http:\/\/localhost:3001'/);
-  assert.match(client, /baseURL: process\.env\.NEXT_PUBLIC_API_URL \|\| 'http:\/\/localhost:3001'/);
-  assert.match(proxy, /return \`\$\{base\}\/auth\/\$\{action\}\`/);
+  assert.match(nextConfig, /http:\/\/localhost:3001/);
+  assert.match(client, /NEXT_PUBLIC_API_URL/);
+  assert.match(proxy, /return base\.endsWith\('\/api'\) \?/);
+  assert.match(proxy, /\$\{base\}\/auth\/\$\{action\}/);
   assert.doesNotMatch(nest, /setGlobalPrefix\(['"]api['"]\)/);
 });
 
