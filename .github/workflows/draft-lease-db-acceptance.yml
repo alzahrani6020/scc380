@@ -78,10 +78,10 @@ jobs:
             END IF;
           END $audit$;
           SQL
+      - name: Validate draft and active lease behavior
+        run: pnpm --filter @scc/api exec tsx --test test/real-estate-draft-lifecycle.e2e.spec.ts
       - name: Detect schema drift after migrations (no db push)
         shell: bash
         run: |
           set -euo pipefail
           pnpm --filter @scc/database exec prisma migrate diff --from-url "$DIRECT_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
-      - name: Validate draft and active lease behavior
-        run: pnpm --filter @scc/api exec tsx --test test/real-estate-draft-lifecycle.e2e.spec.ts
