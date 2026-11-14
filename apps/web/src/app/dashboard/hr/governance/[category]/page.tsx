@@ -12,7 +12,7 @@ const WORKFLOW_ACTIONS: Record<string, {code:string;label:string}[]> = {
   EVIDENCE: [{code:'EVIDENCE_REVIEW',label:'فحص دليل'},{code:'CHAIN_OF_CUSTODY',label:'سلسلة حيازة الدليل'}],
   DISCIPLINE: [{code:'NOTICE_PROPOSED',label:'إشعار مقترح'},{code:'FINAL_REVIEW',label:'مراجعة مستقلة'},{code:'APPEAL_REVIEWED',label:'مراجعة التظلم'}],
   CONFLICTS: [{code:'DISCLOSURE',label:'إفصاح'},{code:'MITIGATION_PLAN',label:'خطة معالجة'},{code:'MITIGATION_REVIEW',label:'تقييم المعالجة'}],
-  CLAIMS: [{code:'CLAIM_PROPOSED',label:'مطالبة مقترحة'},{code:'CLAIM_REVIEWED',label:'مراجعة مستقلة'},{code:'SETTLEMENT_OFFER',label:'عرض تسوية'}],
+  CLAIMS: [{code:'CLAIM_PROPOSED',label:'مطالبة مقترحة'},{code:'CLAIM_REVIEWED',label:'مراجعة مستقلة'},{code:'SETTLEMENT_OFFER',label:'عرض تسوية'},{code:'CLAIM_DISPOSITION',label:'توثيق مآل المطالبة'}],
   LEGAL: [{code:'CASE_REFERENCE',label:'مرجع القضية'},{code:'HEARING',label:'جلسة قضائية'},{code:'JUDGMENT_RECORDED',label:'القرار القضائي'},{code:'CASE_DISPOSITION',label:'توثيق مآل القضية'}],
   OFFBOARDING: [{code:'HANDOVER',label:'تسليم الأعمال'},{code:'ASSET_RETURN_CHECK',label:'فحص العهد'},{code:'ACCESS_REVOKED_CONFIRMED',label:'مراجعة صلاحيات الوصول'}],
   COMPLIANCE: [{code:'CONTROL_FINDING',label:'ملاحظة رقابية'},{code:'CORRECTIVE_ACTION',label:'إجراء تصحيحي'},{code:'CONTROL_VERIFIED',label:'تحقق من المعالجة'}],
@@ -359,7 +359,7 @@ export default function GovernanceWorkspace() {
           <textarea value={actionNarrative} maxLength={4000} minLength={10}
             onChange={e=>setActionNarrative(e.target.value)} rows={4} className={input}/>
         </label>
-        {(space.category==='CLAIMS'||space.category==='LEGAL')&&<label className="block text-sm text-slate-300">المبلغ المرجعي (اختياري، لا يترتب عليه خصم)
+        {(space.category==='CLAIMS'||space.category==='LEGAL')&&<label className="block text-sm text-slate-300">{actionCode==='SETTLEMENT_OFFER'?'مبلغ عرض التسوية (إلزامي، لا ينفذ خصمًا)':'المبلغ المرجعي (اختياري، لا يترتب عليه خصم)'}
           <input type="number" min="0" max="1000000000" step="0.01" value={actionAmount}
             onChange={e=>setActionAmount(e.target.value)} className={input}/>
         </label>}
@@ -367,7 +367,7 @@ export default function GovernanceWorkspace() {
           <label className="block text-sm text-slate-300">تاريخ مرتبط بالإجراء (اختياري)
             <input type="date" value={actionDate} onChange={e=>setActionDate(e.target.value)} className={input}/>
           </label>}
-        <button type="button" onClick={addWorkflowAction} disabled={saving||!actionCode||actionNarrative.trim().length<10}
+        <button type="button" onClick={addWorkflowAction} disabled={saving||!actionCode||actionNarrative.trim().length<10||(actionCode==='SETTLEMENT_OFFER'&&!actionAmount.trim())}
           className="rounded-lg border border-primary-500 px-3 py-2 text-white disabled:opacity-50">حفظ الإجراء في سجل القضية</button>
         <p className="text-xs text-slate-400">يُسجل الإجراء باسم المستخدم، دون تنفيذ اقتطاع أو جزاء أو دفع تلقائي.</p>
       </section>}

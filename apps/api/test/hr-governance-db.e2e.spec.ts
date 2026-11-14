@@ -163,8 +163,12 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
             code:'CLAIM_REVIEWED',narrative:'Independent review of the claim',
           });
           assert.equal(reviewed.events.at(-1)?.action,'CLAIM_REVIEWED');
+          await assert.rejects(()=>service.addWorkflowAction(reqA,caseFile.id,{
+            code:'SETTLEMENT_OFFER',narrative:'Offer must have a concrete amount',
+          }),/requires an amount in currency minor units/);
           const offered=await service.addWorkflowAction(reqA,caseFile.id,{
             code:'SETTLEMENT_OFFER',narrative:'Recorded proposed settlement terms for claimant',
+            amount:1500.25,
           });
           const offer=offered.events.at(-1);
           assert.equal(offer?.action,'SETTLEMENT_OFFER');
@@ -192,6 +196,9 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
             code:'SETTLEMENT_ACCEPTANCE',narrative:'Repeat acceptance of same proposed terms',
             offerEventId:offer!.id,
           }),/already accepted/);
+          await service.addWorkflowAction(reqA,caseFile.id,{
+            code:'CLAIM_DISPOSITION',narrative:'Settlement proposal accepted and documented without financial posting',
+          });
         }
         if(category==='DISCIPLINE') {
           await service.transition(reqA,caseFile.id,'IN_REVIEW');

@@ -40,6 +40,7 @@ export const GOVERNANCE_WORKFLOWS: Record<string, { code: string; label: string 
     { code: 'CLAIM_REVIEWED', label: 'مراجعة المطالبة' },
     { code: 'SETTLEMENT_OFFER', label: 'عرض تسوية' },
     { code: 'SETTLEMENT_ACCEPTANCE', label: 'توثيق قبول العرض' },
+    { code: 'CLAIM_DISPOSITION', label: 'توثيق مآل المطالبة' },
   ],
   LEGAL: [
     { code: 'CASE_REFERENCE', label: 'مرجع القضية' },
@@ -117,6 +118,9 @@ export function assertGovernanceAction(
   if (category === 'INVESTIGATIONS' && code === 'FACT_FINDING' && !latest('INTERVIEW')) {
     throw new ConflictException('Interview record required before investigation findings');
   }
+  if (category === 'CLAIMS' && code === 'CLAIM_DISPOSITION' && !latest('CLAIM_REVIEWED')) {
+    throw new ConflictException('Claim must be independently reviewed before documenting disposition');
+  }
   if (category === 'CLAIMS' && code === 'SETTLEMENT_OFFER' && !latest('CLAIM_REVIEWED')) {
     throw new ConflictException('Independent claim review required before settlement offer');
   }
@@ -157,6 +161,11 @@ export function assertGovernanceClosure(
   }
   if (category === 'CLAIMS' && lastIndex('CLAIM_PROPOSED') > lastIndex('CLAIM_REVIEWED')) {
     throw new ConflictException('A pending claim review prevents case closure');
+  }
+  if (category === 'CLAIMS' && lastIndex('CLAIM_PROPOSED') >= 0 &&
+    lastIndex('CLAIM_DISPOSITION') < Math.max(
+      lastIndex('CLAIM_REVIEWED'),lastIndex('SETTLEMENT_OFFER'),lastIndex('SETTLEMENT_ACCEPTANCE'))) {
+    throw new ConflictException('Claim disposition is required after latest review or settlement event');
   }
 }
 
@@ -579,6 +588,11 @@ export class HrGovernanceService {
     if (dto.amount !== undefined &&
       (!Number.isFinite(dto.amount) || dto.amount < 0 || dto.amount > 1_000_000_000)) {
       throw new BadRequestException('Invalid reference amount');
+    }
+    if (dto.code === 'SETTLEMENT_OFFER' && (dto.amount === undefined ||
+        !Number.isInteger(Math.round(dto.amount * 100)) ||
+        Math.abs(dto.amount * 100 - Math.round(dto.amount * 100)) > 0.000001)) {
+      throw new BadRequestException('Settlement offer requires an amount in currency minor units');
     }
     if (dto.dueDate && (!/^\d{4}-\d{2}-\d{2}$/.test(dto.dueDate) ||
       Number.isNaN(Date.parse(dto.dueDate)))) {

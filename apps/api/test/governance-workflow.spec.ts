@@ -137,3 +137,16 @@ test('governance UI searches all tenant employees instead of truncating selector
   assert.match(ui,/hr\/employees\?search=/);
   assert.doesNotMatch(ui,/hr\/employees\?limit=200/);
 });
+
+test('claim disposition is required after latest review or settlement event', () => {
+  const dated=(action:string)=>({action,createdAt:new Date('2026-11-14T00:00:00Z')});
+  assert.throws(()=>assertGovernanceClosure('CLAIMS',
+    [dated('CLAIM_PROPOSED'),dated('CLAIM_REVIEWED')]),/Claim disposition/);
+  assert.doesNotThrow(()=>assertGovernanceClosure('CLAIMS',
+    [dated('CLAIM_PROPOSED'),dated('CLAIM_REVIEWED'),dated('CLAIM_DISPOSITION')]));
+  assert.throws(()=>assertGovernanceClosure('CLAIMS',
+    [dated('CLAIM_PROPOSED'),dated('CLAIM_REVIEWED'),dated('CLAIM_DISPOSITION'),dated('SETTLEMENT_OFFER')]),
+    /Claim disposition/);
+  assert.throws(()=>assertGovernanceAction('CLAIMS','CLAIM_DISPOSITION','reviewer',[]),
+    /Claim must be independently reviewed/);
+});
