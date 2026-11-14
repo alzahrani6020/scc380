@@ -97,7 +97,25 @@ test(
       const foreignSettlements = await settlements.findAll(reqB, { employeeId: employee.id });
       assert.equal(foreignSettlements.count, 0);
 
-      await settlements.approve(reqA, settlement.id);
+      await assert.rejects(
+        () => settlements.approve(reqB, settlement.id),
+        /End-service settlement not found/,
+      );
+      await assert.rejects(
+        () => settlements.cancelDraft(reqB, settlement.id),
+        /End-service settlement not found/,
+      );
+      const approved = await settlements.approve(reqA, settlement.id);
+      assert.equal(approved.status, 'APPROVED');
+      await assert.rejects(
+        () => settlements.approve(reqA, settlement.id),
+        /Only draft settlements can be approved/,
+      );
+      await assert.rejects(
+        () => settlements.cancelDraft(reqA, settlement.id),
+        /Only draft settlements can be cancelled/,
+      );
+      assert.equal((await settlements.findOne(reqA, settlement.id)).status, 'APPROVED');
       await assert.rejects(()=>settlements.pay(reqA, settlement.id,{} as any),/payment reference/);
       await assert.rejects(()=>settlements.pay(reqA, settlement.id,{
         paymentReference:'test-payment-001',paymentMethod:'INVALID',
