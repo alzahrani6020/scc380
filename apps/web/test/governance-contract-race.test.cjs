@@ -4,7 +4,7 @@ const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const vm = require('node:vm');
 
-const page = readFileSync(join(__dirname, '../src/app/dashboard/hr/governance/[category]/page.tsx'), 'utf8');
+const page = readFileSync(join(__dirname, '../src/app/dashboard/hr/governance/[category]/page.tsx'), 'utf8').replace(/\r\n/g, '\n');
 const start = page.indexOf('  useEffect(()=>{\n    setContracts([]);');
 const end = page.indexOf('  const submit = async', start);
 assert.ok(start >= 0 && end > start, 'Contract-loading effect must be present');
