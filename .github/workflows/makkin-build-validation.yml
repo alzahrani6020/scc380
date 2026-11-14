@@ -121,9 +121,12 @@ jobs:
           pnpm --filter @scc/utils build
       - name: Apply existing migrations to disposable PostgreSQL only
         run: pnpm --filter @scc/database exec prisma migrate deploy --schema prisma/schema.prisma
-      - name: Run HR database-backed acceptance tests
+      - name: Run isolated auth, audit and HR database acceptance tests
         run: |
           pnpm --filter @scc/api exec tsx --test --test-concurrency=1 \
+            test/auth-session-db.e2e.spec.ts \
+            test/security-hardening-db.e2e.spec.ts \
+            test/hr-db-backed.e2e.spec.ts \
             test/hr-governance-db.e2e.spec.ts \
             test/hr-asset-custody.e2e.spec.ts \
             test/hr-financial-lifecycle.e2e.spec.ts \
