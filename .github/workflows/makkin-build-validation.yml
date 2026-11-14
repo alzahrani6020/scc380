@@ -4,8 +4,15 @@ on:
   push:
     branches:
       - work/makkin-governance-completion-20261114
+      - work/makkin-integration-20261114
     paths:
       - 'packages/types/**'
+      - 'packages/auth/**'
+      - 'packages/database/**'
+      - 'apps/api/**'
+      - 'apps/web/next.config.js'
+      - 'apps/web/src/app/api/auth/session/**'
+      - 'apps/web/src/lib/**'
       - 'apps/web/test/**'
       - 'apps/web/src/app/dashboard/hr/governance/**'
       - 'pnpm-lock.yaml'
@@ -64,6 +71,8 @@ jobs:
         run: pnpm --filter @scc/database db:generate
       - name: Build complete monorepo
         run: pnpm build
+      - name: Run API unit and security tests after workspace build
+        run: pnpm --filter @scc/api test
 
   validate-hr-database:
     name: HR and governance isolated PostgreSQL acceptance
@@ -104,6 +113,12 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Generate Prisma client
         run: pnpm --filter @scc/database db:generate
+      - name: Build workspace packages needed by API database tests
+        run: |
+          pnpm --filter @scc/types build
+          pnpm --filter @scc/auth build
+          pnpm --filter @scc/database build
+          pnpm --filter @scc/utils build
       - name: Apply existing migrations to disposable PostgreSQL only
         run: pnpm --filter @scc/database exec prisma migrate deploy --schema prisma/schema.prisma
       - name: Run HR database-backed acceptance tests
