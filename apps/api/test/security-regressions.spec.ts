@@ -319,7 +319,7 @@ test('Nest API route configuration supports local origins and production proxy',
   const config = src('../web/next.config.js');
   const client = src('../web/src/lib/api.ts');
   const session = src('../web/src/app/api/auth/session/route.ts');
-  const nest = src('main.ts');
+  const nest = src('src/main.ts');
   assert.match(config, /afterFiles:/);
   assert.match(config, /source: '\/api\/:path\*'/);
   assert.match(client, /NEXT_PUBLIC_API_URL/);
