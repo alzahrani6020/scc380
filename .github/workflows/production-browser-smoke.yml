@@ -5,6 +5,7 @@ on:
     paths:
       - "apps/web/e2e/production-login-smoke.mjs"
       - "apps/web/e2e/production-refresh-isolated.mjs"
+      - "apps/web/e2e/production-refresh-authorized.mjs"
       - ".github/workflows/production-browser-smoke.yml"
   workflow_dispatch:
 
@@ -38,3 +39,15 @@ jobs:
         run: |
           cp apps/web/e2e/production-refresh-isolated.mjs /tmp/scc-smoke/production-refresh-isolated.mjs
           node /tmp/scc-smoke/production-refresh-isolated.mjs
+      - name: Verify authorized acceptance script is syntactically valid
+        run: node --check apps/web/e2e/production-refresh-authorized.mjs
+      - name: Verify no-credential gate blocks real production authentication
+        run: |
+          cp apps/web/e2e/production-refresh-authorized.mjs /tmp/scc-smoke/production-refresh-authorized.mjs
+          set +e
+          env -u SCC_QA_EMAIL -u SCC_QA_PASSWORD -u SCC_QA_TENANT_SLUG -u SCC_QA_APPROVED_PRODUCTION_SESSION node /tmp/scc-smoke/production-refresh-authorized.mjs > /tmp/qa-gate.json
+          code=$?
+          set -e
+          cat /tmp/qa-gate.json
+          test "$code" -eq 2
+          grep -q '"status":"BLOCKED"' /tmp/qa-gate.json
