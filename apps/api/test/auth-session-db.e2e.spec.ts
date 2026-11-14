@@ -39,6 +39,13 @@ test('DB-backed auth refresh preserves device session and blocks concurrent repl
     const first = await auth.login(user.id, user.email, user.role, tenant.id, tenant.slug, req) as any;
     const firstSid = (jwt.decode(first.accessToken) as any).sid;
     assert.equal(typeof firstSid, 'string');
+    const loggedIn = await prisma.auditLog.findMany({
+      where: { userId: user.id, action: 'AUTH_LOGIN_SUCCESS' },
+    });
+    assert.equal(loggedIn.length, 1);
+    assert.equal(loggedIn[0].entityId, firstSid);
+    assert.deepEqual(loggedIn[0].newValues, { method: 'password', sessionId: firstSid });
+    assert.equal(JSON.stringify(loggedIn[0]).includes(first.refreshToken), false);
     const firstSession = await prisma.session.findUniqueOrThrow({ where: { id: firstSid } });
     assert.equal(firstSession.userAgent?.includes('Chrome/120'), true);
     assert.equal(firstSession.deviceInfo, 'Chrome · Windows');
@@ -60,8 +67,24 @@ test('DB-backed auth refresh preserves device session and blocks concurrent repl
     assert.equal(simultaneous.filter(x => x.status === 'rejected').length, 1);
     assert.equal(await prisma.session.count({ where: { userId: user.id } }), 2);
     await assert.rejects(() => auth.refresh(first.refreshToken));
+    const logoutToken = simultaneous.find((x): x is PromiseFulfilledResult<any> => x.status === 'fulfilled')!.value.refreshToken;
+    await auth.logout(logoutToken);
+    await auth.logout(logoutToken);
+    const logoutEvents = await prisma.auditLog.findMany({
+      where: { userId: user.id, action: 'AUTH_LOGOUT_SUCCESS' },
+    });
+    assert.equal(logoutEvents.length, 1);
+    assert.equal(logoutEvents[0].entityId, firstSid);
+    assert.equal(JSON.stringify(logoutEvents[0]).includes(logoutToken), false);
+    await auth.logoutAll(user.id, tenant.id);
+    await auth.logoutAll(user.id, tenant.id);
+    const logoutAllEvents = await prisma.auditLog.findMany({
+      where: { userId: user.id, action: 'AUTH_LOGOUT_ALL_SUCCESS' },
+    });
+    assert.equal(logoutAllEvents.length, 1);
+    assert.deepEqual(logoutAllEvents[0].newValues, { count: 1 });
     const other = await prisma.session.findUniqueOrThrow({ where: { id: secondSid } });
-    assert.equal(other.revokedAt, null);
+    assert.notEqual(other.revokedAt, null);
   } finally {
     await prisma.tenant.delete({ where: { id: tenant.id } });
     await prisma.$disconnect();
