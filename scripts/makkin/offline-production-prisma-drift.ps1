@@ -5,12 +5,13 @@
 param(
   [Parameter(Mandatory=$true)][string]$BackupFolder,
   [string]$RepoRoot = 'C:\Users\vip\scc380',
+  [string]$ExistingCheckout = '',
   [string]$ReviewSha = '468f35baf7495ad924f8377c29c7484035b796a7'
 )
 $ErrorActionPreference = 'Stop'
 $stamp = [guid]::NewGuid().ToString('N').Substring(0,12)
 $container = 'makkin-drift-' + $stamp
-$checkout = Join-Path $RepoRoot ('.local-worktrees\makkin-drift-' + $stamp)
+$checkout = if ($ExistingCheckout) { $ExistingCheckout } else { Join-Path $RepoRoot ('.local-worktrees\makkin-drift-' + $stamp) }
 $report = [ordered]@{STATUS='FAIL'; REVIEW_SHA=$ReviewSha; BACKUP='UNKNOWN'; RESTORE='NOT_RUN'; DRIFT='NOT_RUN'; SCHEMA_DIFF='NOT_RUN'; EVIDENCE=$BackupFolder; CONTAINER_REMOVED='NO'; ERROR=''}
 $launched = $false
 try {
@@ -31,14 +32,23 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'REVIEW_BRANCH_FETCH_FAILED' }
   $objectType = (& git -C $RepoRoot cat-file -t $ReviewSha)
   if ($LASTEXITCODE -ne 0 -or ($objectType | Out-String).Trim() -ne 'commit') { throw 'REVIEW_COMMIT_NOT_AVAILABLE' }
-  & git -C $RepoRoot worktree add --detach $checkout $ReviewSha
-  if ($LASTEXITCODE -ne 0) { throw 'CLEAN_CHECKOUT_FAILED' }
+  if ($ExistingCheckout) {
+    $expectedRoot = [IO.Path]::GetFullPath((Join-Path $RepoRoot '.local-worktrees')) + [IO.Path]::DirectorySeparatorChar
+    $resolvedCheckout = [IO.Path]::GetFullPath($checkout)
+    if (!$resolvedCheckout.StartsWith($expectedRoot,[StringComparison]::OrdinalIgnoreCase)) { throw 'EXISTING_CHECKOUT_OUTSIDE_ALLOWED_ROOT' }
+    if (!(Test-Path -LiteralPath $checkout -PathType Container)) { throw 'EXISTING_CHECKOUT_NOT_FOUND' }
+  } else {
+    & git -C $RepoRoot worktree add --detach $checkout $ReviewSha
+    if ($LASTEXITCODE -ne 0) { throw 'CLEAN_CHECKOUT_FAILED' }
+  }
   $actualSha = (& git -C $checkout rev-parse HEAD).Trim()
-  if ($actualSha -cne $ReviewSha) { throw 'REVIEW_SHA_MISMATCH' }
-  & pnpm --dir $checkout install --frozen-lockfile
-  if ($LASTEXITCODE -ne 0) { throw 'PNPM_INSTALL_FAILED' }
-  & pnpm --dir $checkout --filter '@scc/database' db:generate
-  if ($LASTEXITCODE -ne 0) { throw 'PRISMA_GENERATE_FAILED' }
+  if ($LASTEXITCODE -ne 0 -or $actualSha -cne $ReviewSha) { throw 'REVIEW_SHA_MISMATCH' }
+  if (!$ExistingCheckout) {
+    & pnpm --dir $checkout install --frozen-lockfile
+    if ($LASTEXITCODE -ne 0) { throw 'PNPM_INSTALL_FAILED' }
+    & pnpm --dir $checkout --filter '@scc/database' db:generate
+    if ($LASTEXITCODE -ne 0) { throw 'PRISMA_GENERATE_FAILED' }
+  }
   # Ephemeral password, never reuse production credentials.
   $pwBytes = New-Object byte[] 30
   [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($pwBytes)
@@ -71,17 +81,26 @@ try {
     $databaseFolder=Join-Path $checkout 'packages\database'
     $diffFile=Join-Path $BackupFolder ('production-vs-schema-'+$stamp+'.sql')
     # Generates review-only SQL, NEVER executes SQL against either database.
+    $prismaCli=Join-Path $databaseFolder 'node_modules\prisma\build\index.js'
+    if (!(Test-Path -LiteralPath $prismaCli -PathType Leaf)) { throw 'PRISMA_CLI_MISSING_IN_CHECKOUT' }
+    $oldErrorAction=$ErrorActionPreference
     Push-Location $databaseFolder
     try {
-      & pnpm exec prisma migrate diff --from-url $localUrl --to-schema-datamodel prisma/schema.prisma --script > $diffFile
-      if ($LASTEXITCODE -ne 0) { throw 'PRISMA_DIFF_GENERATION_FAILED' }
+      # Native stderr in Windows PowerShell 5.1 must not become a terminating
+      # PowerShell error: inspect native process EXIT CODE instead.
+      $ErrorActionPreference='Continue'
+      $genErr=Join-Path $BackupFolder ('drift-generate-stderr-'+$stamp+'.txt')
+      & node $prismaCli migrate diff --from-url $localUrl --to-schema-datamodel prisma/schema.prisma --script 2> $genErr | Out-File -FilePath $diffFile -Encoding utf8
+      $genExit=$LASTEXITCODE
+      if ($genExit -ne 0 -or !(Test-Path -LiteralPath $diffFile -PathType Leaf) -or (Get-Item $diffFile).Length -eq 0) { throw ('PRISMA_DIFF_GENERATION_FAILED_EXIT_'+$genExit) }
       $report.SCHEMA_DIFF=$diffFile
-      & pnpm exec prisma migrate diff --from-url $localUrl --to-schema-datamodel prisma/schema.prisma --exit-code *> $null
+      $compareErr=Join-Path $BackupFolder ('drift-compare-stderr-'+$stamp+'.txt')
+      & node $prismaCli migrate diff --from-url $localUrl --to-schema-datamodel prisma/schema.prisma --exit-code > $null 2> $compareErr
       $code=$LASTEXITCODE
       if ($code -eq 0) { $report.DRIFT='ZERO' }
       elseif ($code -eq 2) { $report.DRIFT='PRESENT_REVIEW_REQUIRED' }
-      else { throw 'PRISMA_DIFF_COMMAND_FAILED' }
-    } finally { Pop-Location }
+      else { throw ('PRISMA_DIFF_COMMAND_FAILED_EXIT_'+$code) }
+    } finally { $ErrorActionPreference=$oldErrorAction; Pop-Location }
     $preview = Get-Content -LiteralPath $diffFile -Raw
     $report.DESTRUCTIVE_SQL_MARKERS = ([regex]::Matches($preview, '(?im)\b(?:DROP\s+(?:TABLE|COLUMN|INDEX|TYPE)|TRUNCATE|DELETE\s+FROM)\b')).Count
     $report.CREATE_TABLE_MARKERS = ([regex]::Matches($preview, '(?im)\bCREATE\s+TABLE\b')).Count
