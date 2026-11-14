@@ -242,6 +242,11 @@ export class HrGovernanceService {
           if (!evidenceCount) throw new ConflictException('Evidence workspace closure requires an uploaded original file');
         }
         if (record.category === 'OFFBOARDING') {
+          const completedLifecycle = await tx.hrLifecycleCase.findFirst({
+            where: { tenantId, employeeId: record.employeeId, type: 'OFFBOARDING', status: 'COMPLETED' },
+            select: { id: true },
+          });
+          if (!completedLifecycle) throw new ConflictException('Completed HR offboarding lifecycle is required before governance closure');
           const custody = await tx.assetCustodyAssignment.count({
             where: { tenantId, employeeId: record.employeeId, status: 'ACTIVE' },
           });

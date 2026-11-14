@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { prisma } from '@scc/database';
 import { HrGovernanceService } from '../src/hr/hr-governance.service';
+import { HrLifecycleService } from '../src/hr/hr-lifecycle.service';
 
 test('Governance workspaces: tenant isolation, contract ownership, notes and controlled transitions',
   { skip: process.env.CRM_DB_E2E !== '1' ? 'CRM_DB_E2E=1 is required' : false },
@@ -181,6 +182,23 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
           await service.addWorkflowAction(reqA,caseFile.id,{
             code:'ACCESS_REVOKED_CONFIRMED',narrative:'Employee has no linked account or active session',
           });
+          await assert.rejects(
+            () => service.transition(reqA,caseFile.id,'CLOSED','Governance case without lifecycle'),
+            /Completed HR offboarding lifecycle is required/,
+          );
+          const lifecycle=new HrLifecycleService();
+          const exit=await lifecycle.create(reqA,{
+            employeeId:unlinkedOffboardingEmployee.id,type:'OFFBOARDING',
+          });
+          for(const task of exit.tasks){
+            await lifecycle.updateTask(reqA,exit.id,task.id,{status:'DONE'});
+          }
+          await prisma.employee.update({
+            where:{id:unlinkedOffboardingEmployee.id},
+            data:{status:'TERMINATED',terminationDate:new Date('2026-11-13T00:00:00Z')},
+          });
+          const exitClosed=await lifecycle.complete(reqA,exit.id);
+          assert.equal(exitClosed.status,'COMPLETED');
           const offboardingClosed=await service.transition(reqA,caseFile.id,'CLOSED','All administrative checks recorded');
           assert.equal(offboardingClosed.status,'CLOSED');
         }

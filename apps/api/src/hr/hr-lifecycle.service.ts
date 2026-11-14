@@ -223,35 +223,44 @@ export class HrLifecycleService {
   }
 
   private async getOffboardingReadiness(tenantId: string, employeeId: string) {
-    const [activeCustody, employee, activeContracts, paidSettlement] = await Promise.all([
+    // Administrative clearance and payroll settlement are independent workflows.
+    // Never assert that employee entitlements were paid merely to finish offboarding.
+    const [activeCustody, employee, activeContracts] = await Promise.all([
       prisma.assetCustodyAssignment.count({
         where: { ...tenantWhere(tenantId), employeeId, status: 'ACTIVE' },
       }),
       prisma.employee.findFirst({
         where: { ...tenantWhere(tenantId), id: employeeId },
-        select: { status: true, terminationDate: true },
+        select: { status: true, terminationDate: true, userId: true },
       }),
       prisma.employeeContract.count({
         where: { tenantId, employeeId, status: 'ACTIVE' },
-      }),
-      prisma.endServiceSettlement.findFirst({
-        where: { ...tenantWhere(tenantId), employeeId, status: 'PAID' },
-        orderBy: { paidAt: 'desc' },
-        select: { id: true, paidAt: true },
       }),
     ]);
 
     if (activeCustody > 0) {
       return { ready: false, reason: 'Employee still has active asset custody assignments' };
     }
-    if (!paidSettlement) {
-      return { ready: false, reason: 'Paid end-service settlement is required before offboarding completion' };
-    }
     if (!employee || employee.status !== 'TERMINATED' || !employee.terminationDate) {
       return { ready: false, reason: 'Employee must be terminated before offboarding completion' };
     }
     if (activeContracts > 0) {
       return { ready: false, reason: 'Active employment contracts must be terminated before offboarding completion' };
+    }
+
+    if (employee.userId) {
+      const [activeUser, activeSessions] = await Promise.all([
+        prisma.user.count({ where: { id: employee.userId, tenantId, status: 'ACTIVE' } }),
+        prisma.session.count({
+          where: { userId: employee.userId, revokedAt: null, expiresAt: { gt: new Date() } },
+        }),
+      ]);
+      if (activeUser > 0) {
+        return { ready: false, reason: 'Active employee user must be deactivated before offboarding completion' };
+      }
+      if (activeSessions > 0) {
+        return { ready: false, reason: 'Employee login sessions must be revoked before offboarding completion' };
+      }
     }
 
     return { ready: true, reason: '' };
