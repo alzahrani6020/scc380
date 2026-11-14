@@ -409,6 +409,10 @@ test('HR self-governance: only disclosed employee cases, private reply and indep
         tenantId:tenantA.id,userId:userA.id,employeeCode:'GOV-SELF-'+run,
         firstName:'Review',lastName:'Recipient',hireDate:new Date('2026-01-01T00:00:00Z'),
       }});
+      await prisma.employee.create({data:{
+        tenantId:tenantB.id,userId:userB.id,employeeCode:'GOV-FOREIGN-'+run,
+        firstName:'Other',lastName:'Recipient',hireDate:new Date('2026-01-01T00:00:00Z'),
+      }});
       const realAdmin=await prisma.user.create({data:{
         tenantId:tenantA.id,email:run+'-admin@example.test',
         firstName:'Case',lastName:'Administrator',role:'ADMIN',status:'ACTIVE',
@@ -480,6 +484,7 @@ test('HR self-governance: only disclosed employee cases, private reply and indep
       await prisma.hrGovernanceEvidence.deleteMany({where:{tenantId:tenantA.id}});
       await prisma.hrGovernanceEvent.deleteMany({where:{tenantId:tenantA.id}});
       await prisma.hrGovernanceCase.deleteMany({where:{tenantId:tenantA.id}});
+      await prisma.employee.deleteMany({where:{tenantId:{in:[tenantA.id,tenantB.id]}}});
       await prisma.user.deleteMany({where:{tenantId:{in:[tenantA.id,tenantB.id]}}});
       await prisma.tenant.deleteMany({where:{id:{in:[tenantA.id,tenantB.id]}}});
     }
