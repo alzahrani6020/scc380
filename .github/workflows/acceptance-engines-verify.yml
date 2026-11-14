@@ -1,0 +1,29 @@
+name: Acceptance Engines Verify
+
+on:
+  pull_request:
+    paths:
+      - "scripts/acceptance-engines.cjs"
+      - "scripts/acceptance-engines.ps1"
+      - "scripts/acceptance-engines.test.cjs"
+      - ".github/workflows/acceptance-engines-verify.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  acceptance-unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Node syntax validation
+        run: |
+          node --check scripts/acceptance-engines.cjs
+          node --check scripts/acceptance-engines.test.cjs
+      - name: Run isolated regression tests
+        run: node --test scripts/acceptance-engines.test.cjs
