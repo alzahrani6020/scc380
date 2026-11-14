@@ -145,14 +145,17 @@ export class EndServiceSettlementsService {
     if (!settlement) throw new NotFoundException('End-service settlement not found');
     if (settlement.status !== 'DRAFT') throw new ConflictException('Only draft settlements can be approved');
 
-    return prisma.endServiceSettlement.update({
-      where: { id },
+    const tenantId = req.user?.tenantId;
+    const updated = await prisma.endServiceSettlement.updateMany({
+      where: { tenantId, id, status: 'DRAFT' },
       data: {
         status: 'APPROVED',
         approvedAt: new Date(),
         approvedById: req.user?.userId || req.user?.sub || req.user?.id || null,
       },
     });
+    if (updated.count !== 1) throw new ConflictException('Settlement status changed before approval');
+    return prisma.endServiceSettlement.findFirstOrThrow({ where: { tenantId, id } });
   }
 
 
@@ -342,6 +345,12 @@ export class EndServiceSettlementsService {
     });
     if (!settlement) throw new NotFoundException('End-service settlement not found');
     if (settlement.status !== 'DRAFT') throw new ConflictException('Only draft settlements can be cancelled');
-    return prisma.endServiceSettlement.update({ where: { id }, data: { status: 'CANCELLED' } });
+    const tenantId = req.user?.tenantId;
+    const updated = await prisma.endServiceSettlement.updateMany({
+      where: { tenantId, id, status: 'DRAFT' },
+      data: { status: 'CANCELLED' },
+    });
+    if (updated.count !== 1) throw new ConflictException('Settlement status changed before cancellation');
+    return prisma.endServiceSettlement.findFirstOrThrow({ where: { tenantId, id } });
   }
 }
