@@ -75,9 +75,12 @@ export function assertGovernanceAction(
     throw new BadRequestException('Employee statements and appeals require authenticated employee self-service');
   }
   const latest = (action: string) => [...history].reverse().find(event => event.action === action);
+  const lastIndex = (action: string) => history.reduce(
+    (index, event, i) => event.action === action ? i : index, -1,
+  );
   if (category === 'DISCIPLINE' && code === 'FINAL_REVIEW') {
     const proposed = latest('NOTICE_PROPOSED');
-    if (!proposed || !latest('EMPLOYEE_RESPONSE')) {
+    if (!proposed || lastIndex('EMPLOYEE_RESPONSE') < lastIndex('NOTICE_PROPOSED')) {
       throw new ConflictException('Proposed action and employee response are required before review');
     }
     if (proposed.actorUserId === actor) throw new ConflictException('Independent reviewer required');
@@ -98,7 +101,7 @@ export function assertGovernanceAction(
   }
   if (category === 'CLAIMS' && code === 'CLAIM_REVIEWED') {
     const claim = latest('CLAIM_PROPOSED');
-    if (!claim || !latest('EMPLOYEE_RESPONSE')) {
+    if (!claim || lastIndex('EMPLOYEE_RESPONSE') < lastIndex('CLAIM_PROPOSED')) {
       throw new ConflictException('Claim and respondent reply must precede review');
     }
     if (claim.actorUserId === actor) throw new ConflictException('Independent claim review required');
