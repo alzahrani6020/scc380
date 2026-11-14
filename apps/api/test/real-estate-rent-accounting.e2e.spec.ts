@@ -51,6 +51,10 @@ test(
       assert.equal(accrual.lines.reduce((sum, line) => sum + Number(line.debitAmount), 0), 1000);
       assert.equal(accrual.lines.reduce((sum, line) => sum + Number(line.creditAmount), 0), 1000);
       assert.equal((await journals.postAccrual(a.id, due.id)).id, accrual.id);
+      await assert.rejects(() => receipts.update(a.id, due.id, {
+        dueDate: '2027-01-01T00:00:00.000Z',
+      }), /Cannot reschedule/);
+
 
       const part = await receipts.recordPayment(a.id, due.id, {
         paidDate: '2026-01-05T00:00:00.000Z', amount: '400.00',
