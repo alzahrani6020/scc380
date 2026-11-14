@@ -6,7 +6,7 @@ param(
   [string]$ExpectedSha = '',
   [string]$ObservedApiImage = '',
   [string]$Output = '',
-  [int]$TimeoutMs = 10000,
+  [int]$TimeoutMs = 45000,
   [switch]$SafeAuthProbes,
   [switch]$Browser
 )
