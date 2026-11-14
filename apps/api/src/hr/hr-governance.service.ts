@@ -407,7 +407,7 @@ export class HrGovernanceService {
     });
   }
 
-  async selfResponse(req: any, caseId: string, dto: { code: string; narrative: string }) {
+  async selfResponse(req: any, caseId: string, dto: { code: string; narrative: string; offerEventId?: string }) {
     const { tenantId, userId, employeeId } = await this.selfEmployee(req);
     const narrative = dto.narrative?.trim() || '';
     if (!['EMPLOYEE_RESPONSE', 'APPEAL_SUBMITTED', 'SETTLEMENT_ACCEPTANCE'].includes(dto.code)) {
@@ -423,10 +423,11 @@ export class HrGovernanceService {
       });
       if (!record) throw new NotFoundException('Disclosed employee case not found');
       const history = await tx.hrGovernanceEvent.findMany({
-        where: { tenantId, caseId }, select: { action: true, actorUserId: true },
-        orderBy: { createdAt: 'asc' },
+        where: { tenantId, caseId }, select: { id: true, action: true, actorUserId: true, details: true },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       });
       const latest = (action: string) => history.reduce((index, row, i) => row.action === action ? i : index, -1);
+      let acceptedOffer: { id: string; checksum: string } | null = null;
       if (dto.code === 'EMPLOYEE_RESPONSE') {
         const disclosure = record.category === 'DISCIPLINE' ? 'NOTICE_PROPOSED' : 'CLAIM_PROPOSED';
         if (record.status !== 'IN_REVIEW' || latest(disclosure) < 0) {
@@ -456,6 +457,11 @@ export class HrGovernanceService {
         if (latest('SETTLEMENT_ACCEPTANCE') > latest('SETTLEMENT_OFFER')) {
           throw new ConflictException('Settlement offer already accepted');
         }
+        const offer = history[latest('SETTLEMENT_OFFER')];
+        if (!dto.offerEventId || dto.offerEventId !== offer.id) {
+          throw new ConflictException('Acceptance must identify the current settlement offer');
+        }
+        acceptedOffer = { id: offer.id, checksum: createHash('sha256').update(offer.details, 'utf8').digest('hex') };
       }
       const changed = await tx.hrGovernanceCase.updateMany({
         where: { tenantId, id: caseId, employeeId, status: record.status },
@@ -464,7 +470,11 @@ export class HrGovernanceService {
       if (changed.count !== 1) throw new ConflictException('Case changed during employee response');
       await tx.hrGovernanceEvent.create({
         data: { tenantId, caseId, actorUserId: userId, action: dto.code,
-          details: JSON.stringify({ narrative, submittedVia: 'EMPLOYEE_SELF_SERVICE' }) },
+          details: JSON.stringify({
+            narrative, submittedVia: 'EMPLOYEE_SELF_SERVICE',
+            acceptedOfferEventId: acceptedOffer?.id ?? null,
+            acceptedOfferSha256: acceptedOffer?.checksum ?? null,
+          }) },
       });
       return { submitted: true, caseId, code: dto.code };
     }, { isolationLevel: 'Serializable' });

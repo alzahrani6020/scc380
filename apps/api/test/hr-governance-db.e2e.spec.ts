@@ -154,16 +154,35 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
             code:'CLAIM_REVIEWED',narrative:'Independent review of the claim',
           });
           assert.equal(reviewed.events.at(-1)?.action,'CLAIM_REVIEWED');
-          await service.addWorkflowAction(reqA,caseFile.id,{
+          const offered=await service.addWorkflowAction(reqA,caseFile.id,{
             code:'SETTLEMENT_OFFER',narrative:'Recorded proposed settlement terms for claimant',
           });
+          const offer=offered.events.at(-1);
+          assert.equal(offer?.action,'SETTLEMENT_OFFER');
           await assert.rejects(()=>service.addWorkflowAction(reqA,caseFile.id,{
             code:'SETTLEMENT_ACCEPTANCE',narrative:'Forged administrative approval',
           }),/restricted to authenticated employee self-service/);
+          await assert.rejects(()=>service.selfResponse(subjectReq,caseFile.id,{
+            code:'SETTLEMENT_ACCEPTANCE',narrative:'Attempt to accept without identifying offer',
+          }),/current settlement offer/);
+          await assert.rejects(()=>service.selfResponse(subjectReq,caseFile.id,{
+            code:'SETTLEMENT_ACCEPTANCE',narrative:'Attempt to accept unrelated offer',
+            offerEventId:'fake-offer-id',
+          }),/current settlement offer/);
           const accepted=await service.selfResponse(subjectReq,caseFile.id,{
             code:'SETTLEMENT_ACCEPTANCE',narrative:'I accept the documented proposed settlement terms',
+            offerEventId:offer!.id,
           });
           assert.equal(accepted.code,'SETTLEMENT_ACCEPTANCE');
+          const stored=await service.findOne(reqA,caseFile.id);
+          const acceptance=stored.events.find(e=>e.action==='SETTLEMENT_ACCEPTANCE');
+          const acceptanceDetails=JSON.parse(acceptance!.details);
+          assert.equal(acceptanceDetails.acceptedOfferEventId,offer!.id);
+          assert.match(acceptanceDetails.acceptedOfferSha256,/^[0-9a-f]{64}$/);
+          await assert.rejects(()=>service.selfResponse(subjectReq,caseFile.id,{
+            code:'SETTLEMENT_ACCEPTANCE',narrative:'Repeat acceptance of same proposed terms',
+            offerEventId:offer!.id,
+          }),/already accepted/);
         }
         if(category==='DISCIPLINE') {
           await service.transition(reqA,caseFile.id,'IN_REVIEW');

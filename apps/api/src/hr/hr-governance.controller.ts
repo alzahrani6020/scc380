@@ -45,6 +45,9 @@ export class HrGovernanceController {
   @Get()
   @RequirePermissions('hr:governance:read')
   list(@Req() req: any, @Query() query: any) { return this.service.list(req, query); }
+  @Get('workflows/catalog')
+  @RequirePermissions('hr:governance:read')
+  catalog() { return this.service.workflowCatalog(); }
   @Get(':id')
   @RequirePermissions('hr:governance:read')
   one(@Req() req: any, @Param('id') id: string) { return this.service.findOne(req, id); }
@@ -69,9 +72,6 @@ export class HrGovernanceController {
     res.setHeader('Content-Disposition',`attachment; filename*=UTF-8''${encodeURIComponent(item.fileName)}`);
     return new StreamableFile(Buffer.from(item.content));
   }
-  @Get('workflows/catalog')
-  @RequirePermissions('hr:governance:read')
-  catalog() { return this.service.workflowCatalog(); }
   @Get(':id/context')
   @RequirePermissions('hr:governance:read')
   context(@Req() req: any, @Param('id') id: string) { return this.service.relatedWorkspaces(req,id); }
@@ -99,6 +99,7 @@ export class HrGovernanceController {
 class SelfGovernanceActionDto {
   @IsIn(['EMPLOYEE_RESPONSE','APPEAL_SUBMITTED','SETTLEMENT_ACCEPTANCE']) code: string;
   @IsString() @MinLength(10) @MaxLength(4000) narrative: string;
+  @IsOptional() @IsString() offerEventId?: string;
 }
 
 @ApiTags('HR - Employee Governance Self Service')

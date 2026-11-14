@@ -135,12 +135,15 @@ export default function HrSelfServicePage() {
     catch { return details; }
   };
 
-  const sendCaseResponse = async (caseId:string, code:'EMPLOYEE_RESPONSE'|'APPEAL_SUBMITTED'|'SETTLEMENT_ACCEPTANCE') => {
+  const sendCaseResponse = async (
+    caseId:string, code:'EMPLOYEE_RESPONSE'|'APPEAL_SUBMITTED'|'SETTLEMENT_ACCEPTANCE',
+    offerEventId?:string,
+  ) => {
     const narrative=(caseReplies[caseId]||'').trim();
     if(narrative.length<10)return;
     setCaseBusy(caseId);
     try {
-      await api.post('/hr/self/governance/'+caseId+'/actions',{code,narrative});
+      await api.post('/hr/self/governance/'+caseId+'/actions',{code,narrative,offerEventId});
       setCaseReplies(prev=>({...prev,[caseId]:''}));
       await load();
     }catch(e:any){alert(e.response?.data?.message||'تعذر حفظ الرد أو التظلم');}
@@ -230,6 +233,7 @@ export default function HrSelfServicePage() {
           const alreadyReviewed=latestAppeal.lastIndexOf(c.category==='DISCIPLINE'?'FINAL_REVIEW':'CLAIM_REVIEWED')>latestDisclosure;
           const canReply=c.status==='IN_REVIEW'&&latestDisclosure>=0&&latestResponse<latestDisclosure&&!alreadyReviewed;
           const canAppeal=c.category==='DISCIPLINE'&&review&&!hasAppeal&&['IN_REVIEW','RESOLVED'].includes(c.status);
+          const currentOffer=[...(c.events||[])].reverse().find((e:any)=>e.action==='SETTLEMENT_OFFER');
           const canAccept=c.category==='CLAIMS'&&['IN_REVIEW','RESOLVED'].includes(c.status)&&
             latestAppeal.lastIndexOf('SETTLEMENT_OFFER')>=0&&latestAppeal.lastIndexOf('CLAIM_REVIEWED')>=0&&
             latestAppeal.lastIndexOf('SETTLEMENT_ACCEPTANCE')<latestAppeal.lastIndexOf('SETTLEMENT_OFFER');
@@ -253,7 +257,7 @@ export default function HrSelfServicePage() {
                 {canAppeal&&<Button isLoading={caseBusy===c.id} disabled={caseBusy!==''||(caseReplies[c.id]||'').trim().length<10}
                   onClick={()=>sendCaseResponse(c.id,'APPEAL_SUBMITTED')}>تقديم تظلم</Button>}
                 {canAccept&&<Button isLoading={caseBusy===c.id} disabled={caseBusy!==''||(caseReplies[c.id]||'').trim().length<10}
-                  onClick={()=>{if(confirm('هل توافق على توثيق قبول عرض التسوية المذكور في ملف القضية؟ لا يُنشئ هذا الإجراء خصمًا أو تحويلًا ماليًا.'))void sendCaseResponse(c.id,'SETTLEMENT_ACCEPTANCE');}}>توثيق قبول عرض التسوية</Button>}
+                  onClick={()=>{if(confirm('هل توافق على توثيق قبول عرض التسوية المذكور في ملف القضية؟ لا يُنشئ هذا الإجراء خصمًا أو تحويلًا ماليًا.'))void sendCaseResponse(c.id,'SETTLEMENT_ACCEPTANCE',currentOffer?.id);}}>توثيق قبول عرض التسوية</Button>}
               </div>
             </>}
           </article>;
