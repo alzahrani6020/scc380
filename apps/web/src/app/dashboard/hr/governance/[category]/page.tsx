@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import api from '@/lib/api';
 
 const WORKFLOW_ACTIONS: Record<string, {code:string;label:string}[]> = {
@@ -34,6 +34,9 @@ export default function GovernanceWorkspace() {
   const key = typeof params.category === 'string' ? params.category : '';
   const space = SPACES[key];
   const [records,setRecords] = useState<any[]>([]);
+  const [page,setPage] = useState(1);
+  const [total,setTotal] = useState(0);
+  const loadSequence=useRef(0);
   const [employees,setEmployees] = useState<any[]>([]);
   const [contracts,setContracts] = useState<any[]>([]);
   const [selected,setSelected] = useState<any>(null);
@@ -57,26 +60,32 @@ export default function GovernanceWorkspace() {
 
   const load = async () => {
     if (!space) return;
-    setBusy(true); setError('');
+    const seq=++loadSequence.current;
+    setBusy(true);setError('');
     try {
-      const [cases,staff] = await Promise.all([
-        api.get('/hr/governance?category='+encodeURIComponent(space.category)),
+      const [cases,staff]=await Promise.all([
+        api.get('/hr/governance?category='+encodeURIComponent(space.category)+'&page='+page+'&limit=25'),
         api.get('/hr/employees?limit=200'),
       ]);
+      if(seq!==loadSequence.current)return;
       setRecords(cases.data?.data || []);
+      setTotal(cases.data?.count || 0);
       setEmployees(staff.data?.data || []);
-    } catch(e:any) { setError(e.response?.data?.message || 'تعذر تحميل البيانات أو لا توجد صلاحية'); }
-    finally { setBusy(false); }
+    }catch(e:any){
+      if(seq===loadSequence.current)setError(e.response?.data?.message || 'تعذر تحميل البيانات أو لا توجد صلاحية');
+    }finally{
+      if(seq===loadSequence.current)setBusy(false);
+    }
   };
   useEffect(()=>{
-    setSelected(null);setInvestigators([]);setInvestigatorUserId('');setAssignmentRationale('');
-    void load();
+    setSelected(null);setPage(1);setInvestigators([]);setInvestigatorUserId('');setAssignmentRationale('');
     if(space?.category==='INVESTIGATIONS') {
       api.get('/users?role=ADMIN&status=ACTIVE')
         .then(r=>setInvestigators(r.data?.data||[]))
         .catch(()=>setError('تعذر جلب المستخدمين المؤهلين لتكليف التحقيق'));
     }
   },[key]);
+  useEffect(()=>{void load();},[key,page]);
   useEffect(()=>{
     setContracts([]);
     if(!form.employeeId) return;
@@ -90,7 +99,8 @@ export default function GovernanceWorkspace() {
     try {
       await api.post('/hr/governance',{...form,contractId:form.contractId||undefined,category:space.category});
       setForm({employeeId:'',contractId:'',title:'',description:'',priority:'NORMAL'});
-      await load();
+      if(page!==1)setPage(1);
+      else await load();
     } catch(e:any){setError(e.response?.data?.message||'تعذر حفظ القضية');}
     finally{setSaving(false);}
   };
@@ -226,6 +236,15 @@ export default function GovernanceWorkspace() {
           <span className="block font-semibold">{item.title}</span>
           <span className="text-xs text-slate-400">{item.status} · {item.priority} · {new Date(item.createdAt).toLocaleDateString('ar-SA')}</span>
         </button>)}
+        <div className="flex items-center justify-between gap-2 text-sm text-slate-300 pt-2">
+          <button type="button" disabled={busy||page<=1}
+            onClick={()=>setPage(v=>Math.max(1,v-1))}
+            className="rounded-lg border border-slate-600 px-3 py-2 disabled:opacity-40">السابق</button>
+          <span>الصفحة {page} من {Math.max(1,Math.ceil(total/25))} · إجمالي الملفات {total}</span>
+          <button type="button" disabled={busy||page*25>=total}
+            onClick={()=>setPage(v=>v+1)}
+            className="rounded-lg border border-slate-600 px-3 py-2 disabled:opacity-40">التالي</button>
+        </div>
       </section>
     </div>
     {selected&&<section className="scc-card space-y-3">

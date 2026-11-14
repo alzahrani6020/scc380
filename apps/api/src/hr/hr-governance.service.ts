@@ -162,19 +162,39 @@ export function assertGovernanceClosure(
 
 @Injectable()
 export class HrGovernanceService {
-  async list(req: any, query: { category?: string; status?: string; employeeId?: string }) {
-    const where: any = { ...tenantWhere(req.user?.tenantId) };
+  async list(req: any, query: {
+    category?: string; status?: string; employeeId?: string; page?: string | number; limit?: string | number;
+  }) {
+    const tenantId=req.user?.tenantId;
+    const where: any = { ...tenantWhere(tenantId) };
     if (query.category) {
-      if (!GOVERNANCE_CATEGORIES.includes(query.category as any)) throw new BadRequestException('Invalid governance category');
+      if (!GOVERNANCE_CATEGORIES.includes(query.category as any)) {
+        throw new BadRequestException('Invalid governance category');
+      }
       where.category = query.category;
     }
-    if (query.status) where.status = query.status;
+    if (query.status) {
+      if (!['OPEN','IN_REVIEW','RESOLVED','CLOSED'].includes(query.status)) {
+        throw new BadRequestException('Invalid governance status');
+      }
+      where.status = query.status;
+    }
     if (query.employeeId) where.employeeId = query.employeeId;
-    const data = await prisma.hrGovernanceCase.findMany({
-      where, orderBy: { createdAt: 'desc' }, take: 200,
-      include: { events: { orderBy: { createdAt: 'asc' } } },
-    });
-    return { data, count: data.length };
+    const page=query.page === undefined ? 1 : Number(query.page);
+    const limit=query.limit === undefined ? 25 : Number(query.limit);
+    if (!Number.isInteger(page) || page < 1 || page > 100000 ||
+        !Number.isInteger(limit) || limit < 1 || limit > 100) {
+      throw new BadRequestException('Invalid pagination');
+    }
+    const [data,count] = await Promise.all([
+      prisma.hrGovernanceCase.findMany({
+        where, orderBy: [{ createdAt:'desc' }, { id:'desc' }],
+        skip: (page-1)*limit, take: limit,
+        include: { events: { orderBy: { createdAt: 'asc' } } },
+      }),
+      prisma.hrGovernanceCase.count({ where }),
+    ]);
+    return { data, count, page, limit, totalPages: Math.ceil(count/limit) };
   }
 
   async findOne(req: any, id: string) {

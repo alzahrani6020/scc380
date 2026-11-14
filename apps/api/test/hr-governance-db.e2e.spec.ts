@@ -30,6 +30,12 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
         description:'Unverified report that must be reviewed',priority:'HIGH',
       });
       assert.equal(record.status,'OPEN');
+      const pageOne=await service.list(reqA,{page:'1',limit:'1'});
+      assert.equal(pageOne.count,1);
+      assert.equal(pageOne.data.length,1);
+      assert.equal(pageOne.data[0].id,record.id);
+      await assert.rejects(()=>service.list(reqA,{page:'0'}),/Invalid pagination/);
+      await assert.rejects(()=>service.list(reqA,{limit:'999'}),/Invalid pagination/);
       assert.equal(record.events[0].action,'CREATED');
       assert.equal((await service.list(reqB,{})).count,0);
       await assert.rejects(()=>service.findOne(reqB,record.id),/not found/);
@@ -269,6 +275,13 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
         const found=await service.findOne(reqA,caseFile.id);
         assert.ok(found.events.length>=2);
       }
+      const newest=await service.list(reqA,{page:'1',limit:'1'});
+      const older=await service.list(reqA,{page:'2',limit:'1'});
+      assert.equal(newest.count,10);
+      assert.equal(older.count,10);
+      assert.equal(newest.data.length,1);
+      assert.equal(older.data.length,1);
+      assert.notEqual(newest.data[0].id,older.data[0].id);
     } finally {
       await prisma.hrGovernanceEvidence.deleteMany({where:{tenantId:a.id}});
       await prisma.hrGovernanceEvent.deleteMany({where:{tenantId:a.id}});
