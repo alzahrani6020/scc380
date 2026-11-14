@@ -12,7 +12,7 @@ $ErrorActionPreference = 'Stop'
 $stamp = [guid]::NewGuid().ToString('N').Substring(0,12)
 $container = 'makkin-drift-' + $stamp
 $checkout = if ($ExistingCheckout) { $ExistingCheckout } else { Join-Path $RepoRoot ('.local-worktrees\makkin-drift-' + $stamp) }
-$report = [ordered]@{STATUS='FAIL'; REVIEW_SHA=$ReviewSha; BACKUP='UNKNOWN'; RESTORE='NOT_RUN'; DRIFT='NOT_RUN'; SCHEMA_DIFF='NOT_RUN'; EVIDENCE=$BackupFolder; CONTAINER_REMOVED='NO'; ERROR=''}
+$report = [ordered]@{STATUS='FAIL'; REVIEW_SHA=$ReviewSha; BACKUP='UNKNOWN'; RESTORE='NOT_RUN'; ESTATE_AUDIT='NOT_RUN'; ESTATE_AUDIT_FILE='NOT_RUN'; DRIFT='NOT_RUN'; SCHEMA_DIFF='NOT_RUN'; EVIDENCE=$BackupFolder; CONTAINER_REMOVED='NO'; ERROR=''}
 $launched = $false
 try {
   $backup = Join-Path $BackupFolder 'production.dump'
@@ -72,6 +72,16 @@ try {
   & docker exec $container pg_restore --exit-on-error --single-transaction --no-owner --no-privileges -U makkin_restore -d restore_test /backup.dump *> (Join-Path $BackupFolder 'drift-restore.log')
   if ($LASTEXITCODE -ne 0) { throw 'CLONE_RESTORE_FAILED' }
   $report.RESTORE='PASS_DISPOSABLE_CLONE'
+  # Read-only metadata audit on restored clone only. Never connect to production.
+  $auditSql=Join-Path $PSScriptRoot 'production-restore-estate-readonly-gate.sql'
+  if (!(Test-Path -LiteralPath $auditSql -PathType Leaf)) { throw 'ESTATE_SQL_MISSING' }
+  $auditOut=Join-Path $BackupFolder ('estate-readonly-audit-'+$stamp+'.txt')
+  & docker cp $auditSql ($container+':/estate-audit.sql') *> (Join-Path $BackupFolder ('estate-audit-copy-'+$stamp+'.log'))
+  if ($LASTEXITCODE -ne 0) { throw 'ESTATE_SQL_COPY_FAILED' }
+  & docker exec $container psql -U makkin_restore -d restore_test -X -v ON_ERROR_STOP=1 -A -F '|' -f /estate-audit.sql > $auditOut
+  if ($LASTEXITCODE -ne 0 -or !(Test-Path -LiteralPath $auditOut) -or (Get-Item $auditOut).Length -eq 0) { throw 'ESTATE_READONLY_AUDIT_FAILED' }
+  $report.ESTATE_AUDIT='PASS_READONLY_CATALOG'
+  $report.ESTATE_AUDIT_FILE=$auditOut
   $localUrl = ('postgresql://makkin_restore:'+ $localPass +'@127.0.0.1:'+ $port +'/restore_test?schema=public')
   $oldDirectUrl = [Environment]::GetEnvironmentVariable('DIRECT_URL','Process')
   $oldDatabaseUrl = [Environment]::GetEnvironmentVariable('DATABASE_URL','Process')
