@@ -111,6 +111,14 @@ test(
         rentAmount: '1000.00', paymentFrequency: 'MONTHLY',
       });
       assert.equal((await leases.findOne(a.id, contract.id)).payments.length, 0);
+      const preview = await leases.previewPayments(a.id, contract.id);
+      assert.equal(preview.amountPerInstallment, '1000.00');
+      assert.equal(preview.installmentCount, 3);
+      assert.equal(preview.totalScheduledAmount, '3000.00');
+      assert.equal(preview.firstDueDate?.slice(0, 10), '2026-01-01');
+      assert.equal(preview.lastDueDate?.slice(0, 10), '2026-03-01');
+      assert.equal(await prisma.rentPayment.count({ where: { contractId: contract.id } }), 0);
+      await assert.rejects(() => leases.previewPayments(b.id, contract.id), /Contract not found/);
       await assert.rejects(() => leases.activate(b.id, contract.id), /Contract not found/);
       assert.equal((await leases.activate(a.id, contract.id)).status, 'ACTIVE');
       const active = await leases.findOne(a.id, contract.id);
@@ -118,6 +126,8 @@ test(
       assert.equal((await units.findOne(a.id, unit.id)).currentLeaseId, contract.id);
       assert.equal((await units.findOne(a.id, unit.id)).status, 'OCCUPIED');
       const count = await prisma.rentPayment.count({ where: { tenantId: a.id, contractId: contract.id } });
+      assert.equal(count, preview.installmentCount);
+      assert.equal(active.payments.reduce((sum, payment) => sum + Number(payment.amount), 0), Number(preview.totalScheduledAmount));
       await assert.rejects(() => leases.activate(a.id, contract.id), /Only draft contracts/);
       assert.equal(await prisma.rentPayment.count({ where: { tenantId: a.id, contractId: contract.id } }), count);
       const second = await leases.create(a.id, {
