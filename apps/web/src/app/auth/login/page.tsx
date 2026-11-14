@@ -46,12 +46,21 @@ export default function LoginPage() {
     return () => window.clearTimeout(timer);
   }, [retrySeconds]);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (loading || retrySeconds > 0) return;
+    // Read submitted DOM values rather than relying solely on React state:
+    // browser/password-manager autofill may not fire React onChange.
+    const submitted = new FormData(e.currentTarget);
+    const submittedEmail = String(submitted.get('email') || '').trim().toLowerCase();
+    const submittedPassword = String(submitted.get('password') || '');
+    if (!submittedEmail || !submittedPassword) {
+      setError('يرجى إدخال البريد الإلكتروني وكلمة المرور.');
+      return;
+    }
     setLoading(true); setError('');
     try {
-      const initial = await api.post('/auth/login', { email, password });
+      const initial = await api.post('/auth/login', { email: submittedEmail, password: submittedPassword });
       const loginResult = initial.data;
 
       if (loginResult.requires2FA) {
@@ -74,7 +83,7 @@ export default function LoginPage() {
       };
       setAuth(authData, rememberMe);
       if (rememberMe) {
-        localStorage.setItem('rememberedEmail', email);
+        localStorage.setItem('rememberedEmail', submittedEmail);
       } else {
         localStorage.removeItem('rememberedEmail');
       }
@@ -92,7 +101,13 @@ export default function LoginPage() {
       } else if (err?.response?.status === 401) {
         setError('البريد الإلكتروني أو كلمة المرور غير صحيحة.');
       } else {
-        setError(typeof err?.response?.data?.message === 'string' ? err.response.data.message : 'تعذر تسجيل الدخول. تحقق من الاتصال وحاول لاحقًا.');
+        const detail = err?.response?.data?.message;
+        // ValidationPipe returns message[]; never render its array as
+        // concatenated English fragments or reveal submitted credentials.
+        setError(Array.isArray(detail)
+          ? 'لم يستقبل الخادم بيانات الدخول بالشكل المطلوب. تحقق من الحقول ثم حاول لاحقًا.'
+          : typeof detail === 'string' ? detail
+          : 'تعذر تسجيل الدخول. تحقق من الاتصال وحاول لاحقًا.');
       }
     } finally { setLoading(false); }
   };
@@ -178,6 +193,7 @@ export default function LoginPage() {
               <Mail className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-500" />
               <input
                 type="email"
+                name="email"
                 required
                 autoComplete="username"
                 placeholder="البريد الإلكتروني"
@@ -191,6 +207,7 @@ export default function LoginPage() {
               <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-500" />
               <input
                 type={showPassword ? 'text' : 'password'}
+                name="password"
                 required
                 autoComplete="current-password"
                 placeholder="كلمة المرور"
