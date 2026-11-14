@@ -118,7 +118,7 @@ jobs:
           echo "SQL preview generated from disposable DB only; NOT EXECUTED"
           sha256sum "$RUNNER_TEMP/makkin-schema-drift-preview.sql"
           # Report counts without printing the entire schema or secrets to CI logs.
-          node -e 'const fs=require("node:fs"); const x=fs.readFileSync(process.argv[1],"utf8"); for(const [n,r] of [["CREATE TABLE",/\\bCREATE TABLE\\b/gi],["CREATE TYPE",/\\bCREATE TYPE\\b/gi],["CREATE INDEX",/\\bCREATE (?:UNIQUE )?INDEX\\b/gi],["ALTER TABLE",/\\bALTER TABLE\\b/gi],["DROP",/\\bDROP\\b/gi],["DELETE",/\\bDELETE FROM\\b/gi],["TRUNCATE",/\\bTRUNCATE\\b/gi]])console.log(n+": "+(x.match(r)||[]).length);' "$RUNNER_TEMP/makkin-schema-drift-preview.sql"
+          node -e 'const fs=require("node:fs"); const x=fs.readFileSync(process.argv[1],"utf8"); for(const [n,r] of [["CREATE TABLE",/\bCREATE TABLE\b/gi],["CREATE TYPE",/\bCREATE TYPE\b/gi],["CREATE INDEX",/\bCREATE (?:UNIQUE )?INDEX\b/gi],["ALTER TABLE",/\bALTER TABLE\b/gi],["DROP",/\bDROP\b/gi],["DELETE",/\bDELETE FROM\b/gi],["TRUNCATE",/\bTRUNCATE\b/gi]])console.log(n+": "+(x.match(r)||[]).length);' "$RUNNER_TEMP/makkin-schema-drift-preview.sql"
       - name: Retain non-executable diff for migration review (one day)
         uses: actions/upload-artifact@v4
         with:
