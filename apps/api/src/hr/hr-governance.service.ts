@@ -657,6 +657,31 @@ export class HrGovernanceService {
         data: { tenantId, caseId: id, actorUserId: actor, action: dto.code,
           details: JSON.stringify({ narrative, amount: dto.amount ?? null, dueDate: dto.dueDate ?? null }) },
       });
+      if (['NOTICE_PROPOSED','CLAIM_PROPOSED','SETTLEMENT_OFFER'].includes(dto.code)) {
+        const recipient=await tx.employee.findFirst({
+          where: { tenantId, id: record.employeeId },
+          select: { userId: true },
+        });
+        if (recipient?.userId) {
+          const active=await tx.user.findFirst({
+            where: { id: recipient.userId, tenantId, status: 'ACTIVE' },
+            select: { id: true },
+          });
+          if (active) {
+            const title=dto.code==='NOTICE_PROPOSED' ? 'إشعار وظيفي للمراجعة' :
+              dto.code==='CLAIM_PROPOSED' ? 'مطالبة للمراجعة' : 'عرض تسوية جديد';
+            await tx.notification.create({
+              data: {
+                tenantId,userId:active.id,type:'IN_APP',channel:'IN_APP',status:'SENT',
+                title,body:'يوجد إجراء جديد يتعلق بملفك الوظيفي. راجع الخدمة الذاتية في مكين.',
+                data: { caseId: id, category: record.category, action: dto.code,
+                  path: '/dashboard/hr/self-service' },
+                sentAt:new Date(),
+              },
+            });
+          }
+        }
+      }
       return tx.hrGovernanceCase.findFirstOrThrow({
         where: { ...tenantWhere(tenantId), id }, include: { events: { orderBy: { createdAt: 'asc' } } },
       });

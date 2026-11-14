@@ -141,6 +141,17 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
           code,narrative:'Documented initial '+category+' procedure',
         });
         assert.equal(applied.events.at(-1)?.action,code);
+        if (category==='DISCIPLINE' || category==='CLAIMS') {
+          const messages=await prisma.notification.findMany({
+            where:{tenantId:a.id,userId:subjectUser.id},
+            orderBy:{createdAt:'desc'},
+          });
+          assert.ok(messages.some(n => (n.data as any)?.caseId===caseFile.id));
+          assert.ok(messages.every(n=>n.channel==='IN_APP'));
+          assert.equal(await prisma.notification.count({
+            where:{tenantId:b.id,userId:subjectUser.id},
+          }),0);
+        }
         if(category==='INVESTIGATIONS') {
           const finding=await service.addWorkflowAction(reviewerReq,caseFile.id,{
             code:'FACT_FINDING',narrative:'Investigator records findings after documented interview',
@@ -172,6 +183,11 @@ test('Governance workspaces: tenant isolation, contract ownership, notes and con
           });
           const offer=offered.events.at(-1);
           assert.equal(offer?.action,'SETTLEMENT_OFFER');
+          const offerNotification=await prisma.notification.findFirst({
+            where:{tenantId:a.id,userId:subjectUser.id,
+              data:{path:['action'],equals:'SETTLEMENT_OFFER'}},
+          });
+          assert.ok(offerNotification);
           await assert.rejects(()=>service.addWorkflowAction(reqA,caseFile.id,{
             code:'SETTLEMENT_ACCEPTANCE',narrative:'Forged administrative approval',
           }),/restricted to authenticated employee self-service/);
