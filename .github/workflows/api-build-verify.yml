@@ -90,6 +90,9 @@ jobs:
       - name: Build auth dependency graph for tests
         run: pnpm turbo run build --filter=@scc/auth...
 
+      - name: Build API dependency graph
+        run: pnpm turbo run build --filter=@scc/api...
+
       - name: Run API tests
         run: pnpm --filter @scc/api test
 
@@ -98,9 +101,6 @@ jobs:
 
       - name: Run DB-backed CRM, HR and Accounting E2E
         run: pnpm --filter @scc/api test:db-e2e
-
-      - name: Build API dependency graph
-        run: pnpm turbo run build --filter=@scc/api...
 
       - name: Verify serverless handler export
         run: |
