@@ -3,6 +3,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, sign, randomUUID } from 'node:crypto';
 import { prisma } from '@scc/database';
+import { JwtService } from '@nestjs/jwt';
+import { validateAccessSessionPayload } from '../src/auth/access-session';
+import { checkBondsProgramScope } from '../src/auth/bonds-program-scope';
 import { BondsMappingController } from '../src/auth/bonds-mapping.controller';
 
 test('BONDS identity probe uses actual isolated tenant/user DB and Redis nonce replay guard', {
@@ -53,6 +56,44 @@ test('BONDS identity probe uses actual isolated tenant/user DB and Redis nonce r
       {matched:false,operationalReady:false});
     assert.deepEqual(await controller.verifyMapping(proof({tenantId:'invalid-tenant'})),
       {matched:false,operationalReady:false});
+    const secret='ci-only-bonds-program-session-secret-0123456789';
+    const jwt=new JwtService({secret});
+    const sessionConfig={
+      get:(key:string)=>key==='BONDS_MAKKIN_PUBLIC_KEY_PEM'?publicPem:
+        key==='REDIS_URL'?redisUrl:key==='JWT_SECRET'?secret:undefined,
+    } as any;
+    const issuer=new BondsMappingController(sessionConfig,jwt);
+    const programProof=()=>proof({
+      aud:'scc380:program-session',purpose:'issue-program-session'
+    });
+    const authProof=programProof();
+    const session=await issuer.issueScopedProgramSession(authProof);
+    assert.equal(session.programKey,'hr');
+    assert.equal(session.expiresInSeconds,110);
+    assert.equal(session.operationalParityVerified,false);
+    assert.ok(session.accessToken);
+    const payload=jwt.verify(session.accessToken);
+    assert.equal(payload.bondsOrigin,true);
+    assert.equal(payload.bondsProgramKey,'hr');
+    assert.equal(payload.type,'access');
+    assert.equal(payload.exp-payload.iat,110);
+    const scope=await validateAccessSessionPayload(payload);
+    assert.equal(scope.bondsOrigin,true);
+    assert.equal(scope.bondsProgramKey,'hr');
+    assert.equal(checkBondsProgramScope(scope,'/hr/employees','GET'),true);
+    assert.equal(checkBondsProgramScope(scope,'/finance/journal-entries','GET'),false);
+    await assert.rejects(()=>issuer.issueScopedProgramSession(authProof));
+    await assert.rejects(()=>issuer.verifyMapping(programProof()));
+    const scopeCount=await prisma.session.count({where:{userId:user.id}});
+    assert.equal(scopeCount,1);
+    const audit=await prisma.auditLog.findMany({
+      where:{userId:user.id,action:'BONDS_SCOPED_PROGRAM_SESSION_ISSUED'}
+    });
+    assert.equal(audit.length,1);
+    assert.equal(JSON.stringify(audit[0]).includes(session.accessToken),false);
+    await prisma.user.update({where:{id:user.id},data:{twoFactorEnabled:true}});
+    await assert.rejects(()=>issuer.issueScopedProgramSession(programProof()));
+    await prisma.user.update({where:{id:user.id},data:{twoFactorEnabled:false}});
     await prisma.user.update({where:{id:user.id},data:{status:'SUSPENDED'}});
     assert.deepEqual(await controller.verifyMapping(proof()),
       {matched:false,operationalReady:false});
