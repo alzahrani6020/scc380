@@ -1,7 +1,8 @@
 import { createPublicKey, verify as verifySignature } from 'node:crypto';
 import { ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 
-// This is a mapping ownership PROOF, never a login credential or SCC JWT.
+// This is a short-lived BONDS identity assertion, never itself a login credential.
+export type BondsProofPurpose = 'verify-identity-only' | 'issue-program-session';
 const PROGRAMS = new Set([
   'crm','hr','real_estate','fleet','sales','purchasing','inventory',
   'finance','accounting','projects','governance',
@@ -9,8 +10,8 @@ const PROGRAMS = new Set([
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export interface BondsMappingClaims {
   iss: 'bonds-global';
-  aud: 'scc380:mapping-verification';
-  purpose: 'verify-identity-only';
+  aud: 'scc380:mapping-verification' | 'scc380:program-session';
+  purpose: BondsProofPurpose;
   workspaceLinkId: string;
   bondsUserId: string;
   tenantId: string;
@@ -24,6 +25,7 @@ export interface BondsMappingClaims {
 }
 export function verifyBondsMappingProof(
   assertion: string, publicKeyPem: string | undefined, nowSeconds = Math.floor(Date.now() / 1000),
+  expectedPurpose: BondsProofPurpose = 'verify-identity-only',
 ): BondsMappingClaims {
   if (!publicKeyPem) throw new ServiceUnavailableException('BONDS mapping verifier disabled');
   if (typeof assertion !== 'string' || assertion.length > 4096 || assertion.length < 64) {
@@ -45,8 +47,10 @@ export function verifyBondsMappingProof(
   } catch {
     throw new UnauthorizedException('Invalid mapping proof');
   }
-  if (!claims || claims.iss !== 'bonds-global' || claims.aud !== 'scc380:mapping-verification' ||
-      claims.purpose !== 'verify-identity-only' || !UUID.test(claims.workspaceLinkId) ||
+  const expectedAudience = expectedPurpose === 'issue-program-session'
+    ? 'scc380:program-session' : 'scc380:mapping-verification';
+  if (!claims || claims.iss !== 'bonds-global' || claims.aud !== expectedAudience ||
+      claims.purpose !== expectedPurpose || !UUID.test(claims.workspaceLinkId) ||
       !UUID.test(claims.bondsUserId) || !UUID.test(claims.jti) ||
       typeof claims.tenantId !== 'string' || !claims.tenantId || claims.tenantId.length > 128 ||
       typeof claims.userId !== 'string' || !claims.userId || claims.userId.length > 128 ||
