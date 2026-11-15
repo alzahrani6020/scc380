@@ -93,6 +93,9 @@ jobs:
       - name: Build API dependency graph
         run: pnpm turbo run build --filter=@scc/api...
 
+      - name: Verify BONDS mapping proof independently
+        run: pnpm --filter @scc/api exec tsx --test test/bonds-mapping-assertion.spec.ts
+
       - name: Run API tests
         run: pnpm --filter @scc/api test
 
