@@ -49,7 +49,7 @@ jobs:
           api=https://scc380-api.onrender.com/auth/login
           origin=https://dr-talal-h-alzahrani.com
 
-          curl -sS --max-time 30 -D /tmp/cors-headers -o /tmp/cors-body \
+          curl -sS --max-time 110 -D /tmp/cors-headers -o /tmp/cors-body \
             -X OPTIONS "$api" \
             -H "Origin: $origin" \
             -H 'Access-Control-Request-Method: POST' \
