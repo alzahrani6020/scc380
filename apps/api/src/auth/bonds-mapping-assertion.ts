@@ -51,7 +51,7 @@ export function verifyBondsMappingProof(
       typeof claims.tenantId !== 'string' || !claims.tenantId || claims.tenantId.length > 128 ||
       typeof claims.userId !== 'string' || !claims.userId || claims.userId.length > 128 ||
       !PROGRAMS.has(claims.programKey) || claims.emailConfirmed !== true ||
-      typeof claims.email !== 'string' || !/^[^@\\s]+@[^@\\s]+$/.test(claims.email) ||
+      typeof claims.email !== 'string' || !/^[^@\s]+@[^@\s]+$/.test(claims.email) ||
       claims.email !== claims.email.trim().toLowerCase() || claims.email.length > 254 ||
       !Number.isInteger(claims.iat) || !Number.isInteger(claims.exp) ||
       !Number.isFinite(nowSeconds) ||
