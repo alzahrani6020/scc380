@@ -8,6 +8,7 @@ import { AppService } from './app.service';
 import { TenantMiddleware } from './common/middleware/tenant.middleware';
 import { AuditLogInterceptor } from './common/interceptors/audit-log.interceptor';
 import { SanitizeIdentityHeadersInterceptor } from './common/sanitize-identity-headers.interceptor';
+import { BondsProgramScopeInterceptor } from './auth/bonds-program-scope';
 import { RetentionService } from './compliance/retention.service';
 
 import { AuthModule } from './auth/auth.module';
@@ -99,6 +100,10 @@ import { RealEstateModule } from './real-estate/real-estate.module';
     {
       provide: APP_INTERCEPTOR,
       useClass: SanitizeIdentityHeadersInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: BondsProgramScopeInterceptor,
     },
   
     
