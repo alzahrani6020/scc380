@@ -135,3 +135,53 @@ jobs:
             process.exit(1);
           });
           NODE
+
+      - name: Acceptance - login JSON reaches authentication through real HTTP
+        env:
+          JWT_SECRET: ci-only-jwt-secret-not-for-production-0123456789abcdef
+          PORT: "3101"
+        run: |
+          set -euo pipefail
+          node apps/api/dist/main.js > /tmp/scc-api-http-acceptance.log 2>&1 &
+          api_pid=$!
+          trap 'kill "$api_pid" 2>/dev/null || true' EXIT
+          ready=0
+          for attempt in $(seq 1 45); do
+            if ! kill -0 "$api_pid" 2>/dev/null; then
+              cat /tmp/scc-api-http-acceptance.log
+              echo "::error::API process exited before HTTP acceptance"
+              exit 1
+            fi
+            if curl -s --max-time 2 -o /dev/null http://127.0.0.1:3101/; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ready" -ne 1 ]; then
+            tail -n 80 /tmp/scc-api-http-acceptance.log
+            echo "::error::API did not become ready"
+            exit 1
+          fi
+
+          login_status=$(curl --max-time 20 -sS -o /tmp/scc-login-http-response.json -w '%{http_code}' \
+            -H 'Content-Type: application/json' \
+            -d '{"email":"diagnostic@example.invalid","password":"diagnostic-only"}' \
+            http://127.0.0.1:3101/auth/login)
+          echo "SYNTHETIC_LOGIN_HTTP=$login_status"
+          if [ "$login_status" != "401" ]; then
+            cat /tmp/scc-login-http-response.json
+            echo "::error::Expected 401 on well-formed synthetic credentials"
+            exit 1
+          fi
+
+          malformed_status=$(curl --max-time 10 -sS -o /dev/null -w '%{http_code}' \
+            -H 'Content-Type: application/json' \
+            -d '{"email":"not-an-email","password":""}' \
+            http://127.0.0.1:3101/auth/login)
+          echo "INVALID_DTO_HTTP=$malformed_status"
+          if [ "$malformed_status" != "400" ]; then
+            echo "::error::Expected 400 for invalid login DTO"
+            exit 1
+          fi
+          echo "AUTH_LOGIN_HTTP_ACCEPTANCE_PASS"

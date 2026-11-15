@@ -28,7 +28,9 @@ async function bootstrap() {
   });
 
   // Only evidence uploads may exceed the default JSON limit (5MB binary = ~7MB base64).
-  app.use('/hr/governance/:id/evidence', json({ limit: '7mb' }));
+  const evidenceParser = json({ limit: '7mb' });
+  app.use('/hr/governance/:id/evidence',
+    (req: any, res: any, next: any) => evidenceParser(req, res, next));
   
   const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:3000')
     .split(',').map(o => o.trim()).filter(Boolean);
