@@ -24,6 +24,11 @@ test('valid authenticated BONDS identity proof contains no session token', () =>
   assert.equal(claims.purpose, 'verify-identity-only');
   assert.ok(!('accessToken' in claims));
 });
+test('verified business email containing s is accepted, whitespace is rejected', () => {
+  assert.equal(verifyBondsMappingProof(ticket({...base,email:'business@example.test'}),publicPem,1010).email,
+    'business@example.test');
+  assert.throws(() => verifyBondsMappingProof(ticket({...base,email:'bad space@example.org'}),publicPem,1010));
+});
 test('tampered payload and forged signer are denied', () => {
   const original = ticket(base);
   const [payload, signature] = original.split('.');
