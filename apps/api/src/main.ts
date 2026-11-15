@@ -8,6 +8,9 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.getHttpAdapter().getInstance().set('trust proxy', 1);
+  // Parse the login JSON payload explicitly before any route-specific middleware.
+  // Keep this bounded to the authentication endpoint; malformed requests still fail validation.
+  app.use('/auth/login', json({ limit: '16kb' }));
   // Diagnostic-only: never log email, password, token, client IP or request body.
   // Response headers let the browser distinguish NestJS replies from upstream 429s.
   app.use('/auth/login', (req: any, res: any, next: () => void) => {
