@@ -8,9 +8,6 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.getHttpAdapter().getInstance().set('trust proxy', 1);
-  // Parse the login JSON payload explicitly before any route-specific middleware.
-  // Keep this bounded to the authentication endpoint; malformed requests still fail validation.
-  app.use('/auth/login', json({ limit: '16kb' }));
   // Diagnostic-only: never log email, password, token, client IP or request body.
   // Response headers let the browser distinguish NestJS replies from upstream 429s.
   app.use('/auth/login', (req: any, res: any, next: () => void) => {
@@ -31,7 +28,9 @@ async function bootstrap() {
   });
 
   // Only evidence uploads may exceed the default JSON limit (5MB binary = ~7MB base64).
-  app.use('/hr/governance/:id/evidence', json({ limit: '7mb' }));
+  const evidenceParser = json({ limit: '7mb' });
+  app.use('/hr/governance/:id/evidence',
+    (req: any, res: any, next: any) => evidenceParser(req, res, next));
   
   const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:3000')
     .split(',').map(o => o.trim()).filter(Boolean);
