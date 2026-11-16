@@ -9,6 +9,71 @@ import { checkBondsProgramScope } from '../src/auth/bonds-program-scope';
 import { BondsMappingController } from '../src/auth/bonds-mapping.controller';
 
 import { TasksService } from '../src/projects/tasks.service';
+import { ContractsService } from '../src/hr/contracts.service';
+
+test('employee draft contracts persist and reject foreign tenant employees or mass assignment', {
+  skip: process.env.CRM_DB_E2E !== '1' ? 'CRM_DB_E2E=1 required' : false,
+}, async () => {
+  const suffix=randomUUID();
+  const tenantA=await prisma.tenant.create({
+    data:{name:'BONDS Contract A',slug:'bonds-contract-a-'+suffix,status:'ACTIVE',plan:'BASIC'},
+  });
+  const tenantB=await prisma.tenant.create({
+    data:{name:'BONDS Contract B',slug:'bonds-contract-b-'+suffix,status:'ACTIVE',plan:'BASIC'},
+  });
+  let employeeAId:string|undefined,employeeBId:string|undefined,contractId:string|undefined;
+  try {
+    const employeeA=await prisma.employee.create({data:{
+      tenantId:tenantA.id,employeeCode:'BONDS-A-'+suffix,firstName:'Test',
+      lastName:'Employee',hireDate:new Date('2026-01-01T00:00:00Z'),
+    }});
+    employeeAId=employeeA.id;
+    const employeeB=await prisma.employee.create({data:{
+      tenantId:tenantB.id,employeeCode:'BONDS-B-'+suffix,firstName:'Other',
+      lastName:'Employee',hireDate:new Date('2026-01-01T00:00:00Z'),
+    }});
+    employeeBId=employeeB.id;
+    const service=new ContractsService();
+    const actorA={user:{tenantId:tenantA.id,role:'ADMIN'}};
+    const actorB={user:{tenantId:tenantB.id,role:'ADMIN'}};
+    await assert.rejects(()=>service.create(actorA,{
+      employeeId:employeeB.id,contractNumber:'FOREIGN-'+suffix,startDate:'2026-11-16',
+    }),/Employee not found/);
+    const contract=await service.create(actorA,{
+      employeeId:employeeA.id,contractNumber:'BONDS-CONTRACT-'+suffix,
+      startDate:'2026-11-16',tenantId:tenantB.id,status:'ACTIVE',
+      terminatedAt:new Date('2026-11-16T00:00:00Z'),
+    });
+    contractId=contract.id;
+    assert.equal(contract.tenantId,tenantA.id);
+    assert.equal(contract.employeeId,employeeA.id);
+    assert.equal(contract.status,'DRAFT');
+    assert.equal(contract.terminatedAt,null);
+    const saved=await service.findOne(actorA,contract.id);
+    assert.equal(saved.contractNumber,'BONDS-CONTRACT-'+suffix);
+    await assert.rejects(()=>service.findOne(actorB,contract.id),/Contract not found/);
+    const updated=await service.updateDraft(actorA,contract.id,{
+      notes:'Verified update',tenantId:tenantB.id,employeeId:employeeB.id,status:'ACTIVE'
+    });
+    assert.equal(updated.tenantId,tenantA.id);
+    assert.equal(updated.employeeId,employeeA.id);
+    assert.equal(updated.status,'DRAFT');
+    assert.equal(updated.notes,'Verified update');
+    await assert.rejects(()=>service.updateDraft(actorB,contract.id,{
+      notes:'Foreign edit'
+    }),/Contract not found/);
+    await assert.rejects(()=>service.create(actorA,{
+      employeeId:employeeA.id,contractNumber:'BONDS-CONTRACT-'+suffix,startDate:'2026-11-16'
+    }),/Contract number already exists/);
+  }finally{
+    if(contractId)await prisma.employeeContract.delete({where:{id:contractId}}).catch(()=>{});
+    if(employeeAId)await prisma.employee.delete({where:{id:employeeAId}}).catch(()=>{});
+    if(employeeBId)await prisma.employee.delete({where:{id:employeeBId}}).catch(()=>{});
+    await prisma.tenant.delete({where:{id:tenantA.id}}).catch(()=>{});
+    await prisma.tenant.delete({where:{id:tenantB.id}}).catch(()=>{});
+    await prisma.$disconnect();
+  }
+});
 
 test('project tasks preserve tenant isolation on create, update and read in disposable SCC PostgreSQL', {
   skip: process.env.CRM_DB_E2E !== '1' ? 'CRM_DB_E2E=1 required' : false,
