@@ -54,8 +54,12 @@ test('project tasks preserve tenant isolation on create, update and read in disp
       ()=>service.update(actorA,task.id,{assignedToId:external.id}),
       /Assignee not found/
     );
+    await assert.rejects(
+      ()=>service.update(actorA,task.id,{title:'Tampered',projectId:project.id}),
+      /Project not found/
+    );
     const updated=await service.update(actorA,task.id,{
-      title:'Verified update',tenantId:tenantB.id,projectId:project.id,
+      title:'Verified update',tenantId:tenantB.id,
     });
     assert.equal(updated.tenantId,tenantA.id);
     assert.equal(updated.projectId,null);
