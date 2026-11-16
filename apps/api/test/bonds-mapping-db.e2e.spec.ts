@@ -58,6 +58,17 @@ test('purchase orders persist validated decimals and reject cross-company suppli
     const legitimate=await service.update(actorA,order.id,{subtotal:120,taxAmount:18,total:138,tenantId:tenantB.id});
     assert.equal(legitimate.tenantId,tenantA.id);
     assert.equal(legitimate.total.toString(),'138');
+    await assert.rejects(()=>service.update(actorA,order.id,{status:'APPROVED'}),/Invalid purchase order status transition/);
+    const sent=await service.update(actorA,order.id,{status:'SENT'});
+    assert.equal(sent.status,'SENT');
+    await assert.rejects(()=>service.update(actorA,order.id,{total:999}),/Purchase order amounts are immutable after draft/);
+    const approved=await service.update(actorA,order.id,{status:'APPROVED'});
+    assert.equal(approved.status,'APPROVED');
+    await assert.rejects(()=>service.update(actorA,order.id,{status:'DRAFT'}),/Invalid purchase order status transition/);
+    const received=await service.update(actorA,order.id,{status:'RECEIVED'});
+    assert.equal(received.status,'RECEIVED');
+    await assert.rejects(()=>service.update(actorA,order.id,{status:'APPROVED'}),/Invalid purchase order status transition/);
+
     await assert.rejects(()=>service.update(actorB,order.id,{total:1}),/Purchase order not found/);
     await assert.rejects(()=>service.create(actorA,{
       poNumber:'BONDS-PO-'+suffix,subtotal:1,taxAmount:0,total:1
