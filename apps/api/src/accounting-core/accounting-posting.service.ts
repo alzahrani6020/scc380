@@ -49,6 +49,16 @@ export class AccountingPostingService {
       if (debit.isNegative() || credit.isNegative()) {
         throw new BadRequestException(`Line ${index + 1}: debit and credit cannot be negative`);
       }
+      // PostgreSQL journal columns are DECIMAL(18,2). Reject values that
+      // would silently round and unbalance the actual persisted ledger.
+      // Account debits/credits must be finite, at most two decimal places,
+      // and within the database column's precision range.
+      if (![debit, credit].every(amount =>
+        amount.isFinite() && amount.decimalPlaces() <= 2 &&
+        amount.lt(new Prisma.Decimal('10000000000000000'))
+      )) {
+        throw new BadRequestException(`Line ${index + 1}: invalid journal amount precision`);
+      }
       const debitPositive = debit.gt(0);
       const creditPositive = credit.gt(0);
       if (debitPositive === creditPositive) {
