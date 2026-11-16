@@ -121,6 +121,28 @@ test(
 
       assert.equal(posted.status, 'POSTED');
       assert.equal(posted.lines.length, 2);
+      // A source document cannot be posted twice under a new entry number.
+      await assert.rejects(
+        () => posting.post({
+          tenantId: tenantA.id,
+          entryNumber: `JV-DUPLICATE-${run}`,
+          date: new Date('2026-11-12T12:00:00.000Z'),
+          description: 'Second posting for the same source',
+          sourceType: 'E2E',
+          sourceId: `balanced-${run}`,
+          lines: [
+            { accountId: cashA.id, debitAmount: 100 },
+            { accountId: revenueA.id, creditAmount: 100 },
+          ],
+        }),
+        /Journal entry or posting source already exists/,
+      );
+      assert.equal(await prisma.journalEntryHeader.count({
+        where: {
+          tenantId: tenantA.id,
+          sourceType: 'E2E', sourceId: `balanced-${run}`,
+        },
+      }), 1);
       assert.equal(
         posted.lines.reduce((sum, line) => sum + Number(line.debitAmount), 0),
         posted.lines.reduce((sum, line) => sum + Number(line.creditAmount), 0),
