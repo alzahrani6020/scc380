@@ -72,16 +72,39 @@ export class PurchaseOrdersService {
     const existing = await prisma.purchaseOrder.findFirst({ where });
     if (!existing) throw new NotFoundException('Purchase order not found');
     if (dto.vendorId !== undefined) await this.assertSupplier(req.user?.tenantId, dto.vendorId);
+    // Generic PATCH cannot jump approval or receipt stages or reopen terminal
+    // purchase orders. Inventory receipts and financial posting remain separate
+    // audited workflows; changing status here never creates journal entries.
+    const transitions: Record<string, readonly string[]> = {
+      DRAFT: ['SENT', 'CANCELLED'],
+      SENT: ['APPROVED', 'REJECTED', 'CANCELLED'],
+      APPROVED: ['PARTIALLY_RECEIVED', 'RECEIVED', 'CANCELLED'],
+      PARTIALLY_RECEIVED: ['RECEIVED', 'CANCELLED'],
+      REJECTED: [], RECEIVED: [], CANCELLED: [],
+    };
+    if (dto.status !== undefined && dto.status !== existing.status &&
+        !transitions[existing.status]?.includes(dto.status)) {
+      throw new ConflictException('Invalid purchase order status transition');
+    }
     if (dto.subtotal !== undefined || dto.taxAmount !== undefined || dto.total !== undefined) {
       if (existing.status !== 'DRAFT') throw new ConflictException('Purchase order amounts are immutable after draft');
       this.assertAmounts(dto.subtotal ?? existing.subtotal, dto.taxAmount ?? existing.taxAmount, dto.total ?? existing.total);
     }
+    if (dto.expectedDelivery !== undefined && existing.status !== 'DRAFT')
+      throw new ConflictException('Purchase order delivery terms are immutable after draft');
     const data: any = {};
     for (const field of ['status','subtotal','taxAmount','total','expectedDelivery']) {
       if (dto[field] !== undefined) data[field] = dto[field];
     }
     if (dto.expectedDelivery) data.expectedDelivery = new Date(dto.expectedDelivery);
-    return prisma.purchaseOrder.update({ where: { id }, data });
+    const result = await prisma.purchaseOrder.updateMany({
+      where: { id, tenantId: req.user?.tenantId, status: existing.status }, data,
+    });
+    if (result.count !== 1)
+      throw new ConflictException('Purchase order changed concurrently; reload before retry');
+    return prisma.purchaseOrder.findFirstOrThrow({
+      where: { id, tenantId: req.user?.tenantId },
+    });
   }
 
   async remove(req: any, id: string) {
