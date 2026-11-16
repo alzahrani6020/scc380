@@ -22,7 +22,7 @@ test('purchase orders persist validated decimals and reject cross-company suppli
   const tenantB=await prisma.tenant.create({
     data:{name:'BONDS PO B',slug:'bonds-po-b-'+suffix,status:'ACTIVE',plan:'BASIC'},
   });
-  let supplierId:string|undefined,orderId:string|undefined;
+  let supplierId:string|undefined,orderId:string|undefined,orderBId:string|undefined;
   try {
     const supplier=await prisma.supplier.create({data:{
       tenantId:tenantB.id,name:'Tenant B supplier',code:'BS-'+suffix,
@@ -62,8 +62,18 @@ test('purchase orders persist validated decimals and reject cross-company suppli
     await assert.rejects(()=>service.create(actorA,{
       poNumber:'BONDS-PO-'+suffix,subtotal:1,taxAmount:0,total:1
     }),/PO number already exists/);
+    // The same external PO number is legal for another independent company.
+    const orderB=await service.create(actorB,{
+      poNumber:'BONDS-PO-'+suffix,subtotal:10,taxAmount:1.5,total:11.5,
+      vendorId:supplier.id,
+    });
+    orderBId=orderB.id;
+    assert.equal(orderB.tenantId,tenantB.id);
+    assert.equal(orderB.poNumber,order.poNumber);
+    await assert.rejects(()=>service.findOne(actorA,orderB.id),/Purchase order not found/);
   } finally {
     if(orderId)await prisma.purchaseOrder.delete({where:{id:orderId}}).catch(()=>{});
+    if(orderBId)await prisma.purchaseOrder.delete({where:{id:orderBId}}).catch(()=>{});
     if(supplierId)await prisma.supplier.delete({where:{id:supplierId}}).catch(()=>{});
     await prisma.tenant.delete({where:{id:tenantA.id}}).catch(()=>{});
     await prisma.tenant.delete({where:{id:tenantB.id}}).catch(()=>{});
