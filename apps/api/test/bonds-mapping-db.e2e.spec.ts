@@ -8,6 +8,72 @@ import { validateAccessSessionPayload } from '../src/auth/access-session';
 import { checkBondsProgramScope } from '../src/auth/bonds-program-scope';
 import { BondsMappingController } from '../src/auth/bonds-mapping.controller';
 
+import { TasksService } from '../src/projects/tasks.service';
+
+test('project tasks preserve tenant isolation on create, update and read in disposable SCC PostgreSQL', {
+  skip: process.env.CRM_DB_E2E !== '1' ? 'CRM_DB_E2E=1 required' : false,
+}, async () => {
+  const suffix=randomUUID();
+  const tenantA=await prisma.tenant.create({
+    data:{name:'BONDS Task A',slug:'bonds-task-a-'+suffix,status:'ACTIVE',plan:'BASIC'},
+  });
+  const tenantB=await prisma.tenant.create({
+    data:{name:'BONDS Task B',slug:'bonds-task-b-'+suffix,status:'ACTIVE',plan:'BASIC'},
+  });
+  let projectId:string|undefined, userBId:string|undefined, taskId:string|undefined;
+  try {
+    const project=await prisma.project.create({data:{tenantId:tenantB.id,name:'Foreign Project'}});
+    projectId=project.id;
+    const external=await prisma.user.create({data:{
+      tenantId:tenantB.id,email:'task-'+suffix+'@example.test',
+      firstName:'Foreign',lastName:'Assignee',role:'ADMIN',status:'ACTIVE',
+    }});
+    userBId=external.id;
+    const service=new TasksService();
+    const actorA={user:{tenantId:tenantA.id,role:'ADMIN'}};
+    const actorB={user:{tenantId:tenantB.id,role:'ADMIN'}};
+    await assert.rejects(
+      ()=>service.create(actorA,{title:'Forbidden project',projectId:project.id}),
+      /Project not found/
+    );
+    await assert.rejects(
+      ()=>service.create(actorA,{title:'Forbidden assignee',assignedToId:external.id}),
+      /Assignee not found/
+    );
+    const task=await service.create(actorA,{title:'Verified task',description:'Tenant A only'});
+    taskId=task.id;
+    assert.equal(task.tenantId,tenantA.id);
+    const saved=await service.findOne(actorA,task.id);
+    assert.equal(saved.title,'Verified task');
+    await assert.rejects(()=>service.findOne(actorB,task.id),/Task not found/);
+    await assert.rejects(
+      ()=>service.create(actorB,{title:'Forbidden parent',parentId:task.id}),
+      /Parent task not found/
+    );
+    await assert.rejects(
+      ()=>service.update(actorA,task.id,{assignedToId:external.id}),
+      /Assignee not found/
+    );
+    const updated=await service.update(actorA,task.id,{
+      title:'Verified update',tenantId:tenantB.id,projectId:project.id,
+    });
+    assert.equal(updated.tenantId,tenantA.id);
+    assert.equal(updated.projectId,null);
+    assert.equal((await service.findOne(actorA,task.id)).title,'Verified update');
+    await assert.rejects(
+      ()=>service.update(actorB,task.id,{title:'Foreign overwrite'}),
+      /Task not found/
+    );
+  } finally {
+    if(taskId)await prisma.task.delete({where:{id:taskId}}).catch(()=>{});
+    if(projectId)await prisma.project.delete({where:{id:projectId}}).catch(()=>{});
+    if(userBId)await prisma.user.delete({where:{id:userBId}}).catch(()=>{});
+    await prisma.tenant.delete({where:{id:tenantA.id}}).catch(()=>{});
+    await prisma.tenant.delete({where:{id:tenantB.id}}).catch(()=>{});
+    await prisma.$disconnect();
+  }
+});
+
 test('BONDS identity probe uses actual isolated tenant/user DB and Redis nonce replay guard', {
   skip: process.env.CRM_DB_E2E !== '1' ? 'CRM_DB_E2E=1 required' : false,
 }, async () => {
