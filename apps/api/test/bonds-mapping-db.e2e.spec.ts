@@ -65,6 +65,25 @@ test('employee draft contracts persist and reject foreign tenant employees or ma
     await assert.rejects(()=>service.create(actorA,{
       employeeId:employeeA.id,contractNumber:'BONDS-CONTRACT-'+suffix,startDate:'2026-11-16'
     }),/Contract number already exists/);
+    // Complete contract lifecycle: only the owning tenant may activate,
+    // the draft becomes immutable, and termination is single-use.
+    await assert.rejects(()=>service.activate(actorB,contract.id),/Contract not found/);
+    const active=await service.activate(actorA,contract.id,'2026-11-16T00:00:00Z');
+    assert.equal(active.status,'ACTIVE');
+    assert.ok(active.signedAt);
+    await assert.rejects(
+      ()=>service.updateDraft(actorA,contract.id,{notes:'After approval'}),
+      /Only draft contracts can be edited/
+    );
+    await assert.rejects(()=>service.activate(actorA,contract.id),/Only draft contracts can be activated/);
+    await assert.rejects(()=>service.terminate(actorB,contract.id),/Contract not found/);
+    const terminated=await service.terminate(actorA,contract.id,'Verified offboarding');
+    assert.equal(terminated.status,'TERMINATED');
+    assert.equal(terminated.terminationReason,'Verified offboarding');
+    await assert.rejects(
+      ()=>service.terminate(actorA,contract.id),/Only active contracts can be terminated/
+    );
+
   }finally{
     if(contractId)await prisma.employeeContract.delete({where:{id:contractId}}).catch(()=>{});
     if(employeeAId)await prisma.employee.delete({where:{id:employeeAId}}).catch(()=>{});
