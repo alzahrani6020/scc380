@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS public."purchase_orders" (
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" TIMESTAMP(3) NOT NULL,
   CONSTRAINT "purchase_orders_pkey" PRIMARY KEY ("id"),
-  CONSTRAINT "purchase_orders_poNumber_key" UNIQUE ("poNumber"),
+  CONSTRAINT "purchase_orders_tenantId_poNumber_key" UNIQUE ("tenantId", "poNumber"),
   CONSTRAINT "purchase_orders_tenantId_fkey" FOREIGN KEY ("tenantId")
     REFERENCES public."tenants"("id") ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT "purchase_orders_vendorId_fkey" FOREIGN KEY ("vendorId")
