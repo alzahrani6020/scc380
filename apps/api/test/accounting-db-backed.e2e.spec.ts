@@ -170,6 +170,43 @@ test(
       assert.equal(historicalTrial.totals.credit, 130);
 
 
+      // Accounting source precision must match the actual DECIMAL(18,2)
+      // columns; never report balanced posting if PostgreSQL would round.
+      const beforePrecision = await prisma.journalEntryHeader.count({
+        where: { tenantId: tenantA.id, sourceType: 'PRECISION_GATE' },
+      });
+      await assert.rejects(
+        () => posting.post({
+          tenantId: tenantA.id,
+          entryNumber: `JV-PRECISION-${run}`,
+          sourceType: 'PRECISION_GATE',
+          sourceId: `bad-${run}`,
+          description: 'Reject values that do not survive storage',
+          lines: [
+            { accountId: cashA.id, debitAmount: '1.001' },
+            { accountId: revenueA.id, creditAmount: '1.001' },
+          ],
+        }),
+        /invalid journal amount precision/,
+      );
+      await assert.rejects(
+        () => posting.post({
+          tenantId: tenantA.id,
+          entryNumber: `JV-INFINITE-${run}`,
+          sourceType: 'PRECISION_GATE',
+          sourceId: `infinite-${run}`,
+          description: 'Reject infinite values',
+          lines: [
+            { accountId: cashA.id, debitAmount: 'Infinity' },
+            { accountId: revenueA.id, creditAmount: 'Infinity' },
+          ],
+        }),
+        /invalid journal amount precision/,
+      );
+      assert.equal(await prisma.journalEntryHeader.count({
+        where: { tenantId: tenantA.id, sourceType: 'PRECISION_GATE' },
+      }), beforePrecision);
+
       await assert.rejects(
         () =>
           posting.post({
