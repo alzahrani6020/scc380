@@ -35,7 +35,15 @@ export class ContractsService {
     });
     if (duplicate) throw new ConflictException('Contract number already exists');
 
-    const data: any = { ...dto, tenantId, status: 'DRAFT' };
+    // Explicitly accept only contract DTO fields. The HTTP payload cannot
+    // rewrite the tenant, employee relation, lifecycle, or system-owned fields.
+    const permitted = ['employeeId','contractNumber','type','startDate','endDate',
+      'probationEndDate','jobTitle','basicSalary','housingAllowance',
+      'transportAllowance','otherAllowances','workingHoursPerWeek','signedAt','notes'];
+    const data: any = { tenantId, status: 'DRAFT' };
+    for (const field of permitted) {
+      if (dto[field] !== undefined) data[field] = dto[field];
+    }
     for (const field of ['startDate', 'endDate', 'probationEndDate', 'signedAt']) {
       if (data[field]) data[field] = new Date(data[field]);
     }
@@ -57,7 +65,13 @@ export class ContractsService {
       if (duplicate) throw new ConflictException('Contract number already exists');
     }
 
-    const data: any = { ...dto };
+    const permitted = ['contractNumber','type','startDate','endDate',
+      'probationEndDate','jobTitle','basicSalary','housingAllowance',
+      'transportAllowance','otherAllowances','workingHoursPerWeek','signedAt','notes'];
+    const data: any = {};
+    for (const field of permitted) {
+      if (dto[field] !== undefined) data[field] = dto[field];
+    }
     for (const field of ['startDate', 'endDate', 'probationEndDate', 'signedAt']) {
       if (data[field]) data[field] = new Date(data[field]);
     }
