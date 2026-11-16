@@ -10,6 +10,66 @@ import { BondsMappingController } from '../src/auth/bonds-mapping.controller';
 
 import { TasksService } from '../src/projects/tasks.service';
 import { ContractsService } from '../src/hr/contracts.service';
+import { PurchaseOrdersService } from '../src/finance/purchase-orders.service';
+
+test('purchase orders persist validated decimals and reject cross-company supplier references', {
+  skip: process.env.CRM_DB_E2E !== '1' ? 'CRM_DB_E2E=1 required' : false,
+}, async () => {
+  const suffix=randomUUID();
+  const tenantA=await prisma.tenant.create({
+    data:{name:'BONDS PO A',slug:'bonds-po-a-'+suffix,status:'ACTIVE',plan:'BASIC'},
+  });
+  const tenantB=await prisma.tenant.create({
+    data:{name:'BONDS PO B',slug:'bonds-po-b-'+suffix,status:'ACTIVE',plan:'BASIC'},
+  });
+  let supplierId:string|undefined,orderId:string|undefined;
+  try {
+    const supplier=await prisma.supplier.create({data:{
+      tenantId:tenantB.id,name:'Tenant B supplier',code:'BS-'+suffix,
+    }});
+    supplierId=supplier.id;
+    const actorA={user:{tenantId:tenantA.id,role:'ADMIN'}};
+    const actorB={user:{tenantId:tenantB.id,role:'ADMIN'}};
+    const service=new PurchaseOrdersService();
+    await assert.rejects(()=>service.create(actorA,{
+      poNumber:'FOREIGN-'+suffix,vendorId:supplier.id,subtotal:100,taxAmount:15,total:115
+    }),/Active supplier not found in tenant/);
+    await assert.rejects(()=>service.create(actorA,{
+      poNumber:'WRONG-TOTAL-'+suffix,subtotal:100,taxAmount:15,total:114
+    }),/Purchase order total must equal subtotal plus tax/);
+    await assert.rejects(()=>service.create(actorA,{
+      poNumber:'NEGATIVE-'+suffix,subtotal:-100,taxAmount:0,total:-100
+    }),/Purchase order total must equal subtotal plus tax/);
+    const order=await service.create(actorA,{
+      poNumber:'BONDS-PO-'+suffix,subtotal:100,taxAmount:15,total:115,
+      tenantId:tenantB.id,status:'APPROVED'
+    });
+    orderId=order.id;
+    assert.equal(order.tenantId,tenantA.id);
+    assert.equal(order.status,'DRAFT');
+    assert.equal(order.total.toString(),'115');
+    const saved=await service.findOne(actorA,order.id);
+    assert.equal(saved.poNumber,'BONDS-PO-'+suffix);
+    await assert.rejects(()=>service.findOne(actorB,order.id),/Purchase order not found/);
+    const updated=await service.update(actorA,order.id,{
+      subtotal:200,taxAmount:30,total:230,tenantId:tenantB.id,vendorId:supplier.id
+    }).then(()=>{throw Error('cross-tenant supplier update accepted');},error=>error);
+    assert.match(String(updated.message),/Active supplier not found in tenant/);
+    const legitimate=await service.update(actorA,order.id,{subtotal:120,taxAmount:18,total:138,tenantId:tenantB.id});
+    assert.equal(legitimate.tenantId,tenantA.id);
+    assert.equal(legitimate.total.toString(),'138');
+    await assert.rejects(()=>service.update(actorB,order.id,{total:1}),/Purchase order not found/);
+    await assert.rejects(()=>service.create(actorA,{
+      poNumber:'BONDS-PO-'+suffix,subtotal:1,taxAmount:0,total:1
+    }),/PO number already exists/);
+  } finally {
+    if(orderId)await prisma.purchaseOrder.delete({where:{id:orderId}}).catch(()=>{});
+    if(supplierId)await prisma.supplier.delete({where:{id:supplierId}}).catch(()=>{});
+    await prisma.tenant.delete({where:{id:tenantA.id}}).catch(()=>{});
+    await prisma.tenant.delete({where:{id:tenantB.id}}).catch(()=>{});
+    await prisma.$disconnect();
+  }
+});
 
 test('employee draft contracts persist and reject foreign tenant employees or mass assignment', {
   skip: process.env.CRM_DB_E2E !== '1' ? 'CRM_DB_E2E=1 required' : false,
