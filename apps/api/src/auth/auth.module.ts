@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { PassportModule } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
+import { BondsMappingController } from './bonds-mapping.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { LocalStrategy } from './strategies/local.strategy';
 import { AuthRateLimitGuard } from './guards/auth-rate-limit.guard';
@@ -27,7 +28,7 @@ import { LoginDiagnosticFilter } from './filters/login-diagnostic.filter';
     }),
   ],
   providers: [AuthService, JwtStrategy, LocalStrategy, AuthRateLimitGuard, LoginDiagnosticFilter],
-  controllers: [AuthController],
+  controllers: [AuthController, BondsMappingController],
   exports: [AuthService, JwtModule],
 })
 export class AuthModule {}

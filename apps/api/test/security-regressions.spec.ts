@@ -278,7 +278,11 @@ test('Next auth session proxy protects refresh cookie and enforces same-origin C
   assert.match(auth, /store\.remove\('refreshToken'\)/);
   assert.doesNotMatch(auth, /store\.set\('refreshToken'/);
   assert.match(sessionClient, /credentials: 'same-origin'/);
-  assert.match(login, /api\.post\('\/auth\/login'/);
+  // Initial password login intentionally uses the direct, HTTPS Nest API;
+  // this avoids the previously broken same-origin proxy. Refresh/migrate
+  // remain protected by the HttpOnly same-origin cookie tests below.
+  assert.match(login, /axios\.post\('https:\/\/scc380-api\.onrender\.com\/auth\/login'/);
+  assert.doesNotMatch(login, /axios\.post\('http:\/\//);
   assert.match(login, /sessionAuth\('migrate'/);
   assert.match(login, /api\.post\('\/auth\/google'/);
   assert.match(twoFactor, /api\.post\('\/auth\/verify-2fa-login'/);

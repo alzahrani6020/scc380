@@ -961,7 +961,7 @@ model PurchaseOrder {
   tenantId      String
   tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  poNumber      String    @unique
+  poNumber      String
   vendorId      String?
   supplier      Supplier? @relation(fields: [vendorId], references: [id], onDelete: SetNull)
   status        POStatus  @default(DRAFT)
@@ -974,6 +974,7 @@ model PurchaseOrder {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
+  @@unique([tenantId, poNumber])
   @@index([tenantId])
   @@index([status])
   @@map("purchase_orders")
