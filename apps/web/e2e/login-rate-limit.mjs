@@ -7,7 +7,7 @@ const browser = await chromium.launch({ headless: true });
 try {
   const page = await browser.newPage({ locale: 'ar-SA' });
   let attempts = 0;
-  await page.route('**/api/auth/login', async route => {
+  await page.route('https://scc380-api.onrender.com/auth/login', async route => {
     attempts += 1;
     await route.fulfill({
       status: 429,
@@ -20,8 +20,8 @@ try {
   await page.locator('input[type="password"]').fill('mock-only-password');
   const submit = page.getByRole('button', { name: 'تسجيل الدخول', exact: true });
   await submit.click();
-  await page.getByText('تم تقييد محاولات تسجيل الدخول مؤقتًا لحماية الحساب. انتظر قبل إعادة المحاولة.').waitFor({ timeout: 15000 });
-  await page.getByRole('status').getByText(/دقيقة تقريبًا/).waitFor();
+  await page.getByText(/تعذر تسجيل الدخول \(429\)/).waitFor({ timeout: 15000 });
+  await page.getByRole('status').getByText(/يمكن إعادة المحاولة بعد 2 دقيقة/).waitFor();
   assert.equal(attempts, 1, 'The error must never trigger a retry');
   assert.equal(await page.locator('button[type="submit"]').isDisabled(), true, 'Throttle period must prevent repeated submissions');
   await page.waitForTimeout(250);
