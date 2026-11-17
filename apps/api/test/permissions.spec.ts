@@ -11,6 +11,7 @@ import { ChartOfAccountsController } from '../src/finance/chart-of-accounts.cont
 import { JournalEntriesController } from '../src/finance/journal-entries.controller';
 import { BankAccountsController } from '../src/finance/bank-accounts.controller';
 import { PurchaseOrdersController } from '../src/finance/purchase-orders.controller';
+import { SubscriptionsController } from '../src/billing/subscriptions.controller';
 
 test('permission matrix: roles vs crm and hr permissions', () => {
   assert.equal(hasPermission('SUPER_ADMIN', 'crm:write'), true);
@@ -226,5 +227,22 @@ test('sensitive HR controllers no longer rely on generic hr:write', async () => 
     const content = readFileSync(join(process.cwd(), file), 'utf8');
     assert.doesNotMatch(content, /RequirePermissions\('hr:write'/, file);
     assert.doesNotMatch(content, /RequirePermissions\('hr:read'/, file);
+  }
+});
+
+
+test('subscription mutations require billing write and only tenant administrators hold it', () => {
+  for (const method of ['create', 'update', 'remove']) {
+    assert.deepEqual(
+      Reflect.getMetadata(REQUIRE_PERMISSIONS_KEY, (SubscriptionsController.prototype as any)[method]),
+      ['billing:write'],
+      `SubscriptionsController.${method} must require billing:write`,
+    );
+  }
+  for (const role of ['SUPER_ADMIN', 'ADMIN'] as const) {
+    assert.equal(hasPermission(role, 'billing:write'), true, role);
+  }
+  for (const role of ['MANAGER', 'USER', 'AUDITOR', 'READONLY'] as const) {
+    assert.equal(hasPermission(role, 'billing:write'), false, role);
   }
 });
