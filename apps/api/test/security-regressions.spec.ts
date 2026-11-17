@@ -278,7 +278,8 @@ test('Next auth session proxy protects refresh cookie and enforces same-origin C
   assert.match(auth, /store\.remove\('refreshToken'\)/);
   assert.doesNotMatch(auth, /store\.set\('refreshToken'/);
   assert.match(sessionClient, /credentials: 'same-origin'/);
-  assert.match(login, /api\.post\('\/auth\/login'/);
+  assert.match(login, /axios\.post\('https:\/\/scc380-api\.onrender\.com\/auth\/login'/);
+  assert.match(login, /'Content-Type': 'application\/json'/);
   assert.match(login, /sessionAuth\('migrate'/);
   assert.match(login, /api\.post\('\/auth\/google'/);
   assert.match(twoFactor, /api\.post\('\/auth\/verify-2fa-login'/);
