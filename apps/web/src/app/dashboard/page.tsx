@@ -41,34 +41,42 @@ export default function DashboardPage() {
   const [erpData, setErpData] = useState<any>(null);
   const [fleetData, setFleetData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [failedSources, setFailedSources] = useState<string[]>([]);
   const vip = typeof window !== 'undefined' && isVIP();
 
-  useEffect(() => {
-    Promise.all([
+  const loadDashboard = () => {
+    setLoading(true);
+    setFailedSources([]);
+    Promise.allSettled([
       api.get('/analytics/dashboard'),
       api.get('/analytics/revenue-trend'),
       api.get('/analytics/crm'),
       api.get('/analytics/erp'),
       api.get('/analytics/fleet'),
-    ])
-      .then(([dash, rev, crm, erp, fleet]) => {
-        setStats(dash.data);
-        setRevenueTrend(rev.data || []);
-        setCrmData(crm.data);
-        setErpData(erp.data);
-        setFleetData(fleet.data);
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
+    ]).then((results) => {
+      const names = ['المؤشرات', 'الإيرادات', 'الصفقات', 'الفواتير', 'المركبات'];
+      setFailedSources(results.flatMap((result, index) => result.status === 'rejected' ? [names[index]] : []));
+      const value = (index: number) => results[index].status === 'fulfilled'
+        ? (results[index] as PromiseFulfilledResult<any>).value.data : null;
+      setStats(value(0));
+      setRevenueTrend(Array.isArray(value(1)) ? value(1) : []);
+      setCrmData(value(2));
+      setErpData(value(3));
+      setFleetData(value(4));
+    }).finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    loadDashboard();
   }, []);
 
   const cards = [
-    { label: 'جهات الاتصال', value: stats?.counts?.contacts ?? 0, icon: Users, color: 'from-blue-500 to-cyan-500', bg: 'bg-blue-500/10', text: 'text-blue-400' },
-    { label: 'الصفقات', value: stats?.counts?.deals ?? 0, icon: Briefcase, color: 'from-emerald-500 to-teal-500', bg: 'bg-emerald-500/10', text: 'text-emerald-400' },
-    { label: 'الموظفين', value: stats?.counts?.employees ?? 0, icon: Activity, color: 'from-violet-500 to-purple-500', bg: 'bg-violet-500/10', text: 'text-violet-400' },
-    { label: 'المركبات', value: stats?.counts?.vehicles ?? 0, icon: Truck, color: 'from-orange-500 to-amber-500', bg: 'bg-orange-500/10', text: 'text-orange-400' },
-    { label: 'الفواتير', value: stats?.counts?.invoices ?? 0, icon: FileText, color: 'from-rose-500 to-pink-500', bg: 'bg-rose-500/10', text: 'text-rose-400' },
-    { label: 'الإيرادات', value: `${stats?.revenue?.invoices?.toLocaleString?.() ?? 0} ر.س`, icon: Wallet, color: 'from-amber-500 to-yellow-500', bg: 'bg-amber-500/10', text: 'text-amber-400' },
+    { label: 'جهات الاتصال', value: stats ? (stats.counts?.contacts ?? '—') : '—', icon: Users, color: 'from-blue-500 to-cyan-500', bg: 'bg-blue-500/10', text: 'text-blue-400' },
+    { label: 'الصفقات', value: stats ? (stats.counts?.deals ?? '—') : '—', icon: Briefcase, color: 'from-emerald-500 to-teal-500', bg: 'bg-emerald-500/10', text: 'text-emerald-400' },
+    { label: 'الموظفين', value: stats ? (stats.counts?.employees ?? '—') : '—', icon: Activity, color: 'from-violet-500 to-purple-500', bg: 'bg-violet-500/10', text: 'text-violet-400' },
+    { label: 'المركبات', value: stats ? (stats.counts?.vehicles ?? '—') : '—', icon: Truck, color: 'from-orange-500 to-amber-500', bg: 'bg-orange-500/10', text: 'text-orange-400' },
+    { label: 'الفواتير', value: stats ? (stats.counts?.invoices ?? '—') : '—', icon: FileText, color: 'from-rose-500 to-pink-500', bg: 'bg-rose-500/10', text: 'text-rose-400' },
+    { label: 'الإيرادات', value: `${stats?.revenue?.invoices == null ? '—' : Number(stats.revenue.invoices).toLocaleString('ar-SA')} ر.س`, icon: Wallet, color: 'from-amber-500 to-yellow-500', bg: 'bg-amber-500/10', text: 'text-amber-400' },
   ];
 
   const dealsByStage = (crmData?.byStage || []).map((d: any) => ({
@@ -119,6 +127,13 @@ export default function DashboardPage() {
         )}
       </div>
 
+      {failedSources.length > 0 && (
+        <div role="alert" className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-amber-200 text-sm">
+          تعذر تحميل: {failedSources.join('، ')}. القيم غير المتاحة لا تمثل صفرًا مؤكدًا.
+          <button type="button" onClick={loadDashboard} className="mr-3 underline">إعادة المحاولة</button>
+        </div>
+      )}
+
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {cards.map((card, i) => (
@@ -163,7 +178,7 @@ export default function DashboardPage() {
                 </AreaChart>
               </ResponsiveContainer>
             ) : (
-              <div className="flex items-center justify-center h-full text-slate-500 text-sm">لا توجد بيانات إيرادات</div>
+              <div className="flex items-center justify-center h-full text-slate-500 text-sm">{revenueTrend.length === 0 && failedSources.includes('الإيرادات') ? 'بيانات الإيرادات غير متاحة' : 'لا توجد بيانات إيرادات'}</div>
             )}
           </div>
         </div>
@@ -190,7 +205,7 @@ export default function DashboardPage() {
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <div className="flex items-center justify-center h-full text-slate-500 text-sm">لا توجد صفقات</div>
+              <div className="flex items-center justify-center h-full text-slate-500 text-sm">{failedSources.includes('الصفقات') ? 'بيانات الصفقات غير متاحة' : 'لا توجد صفقات'}</div>
             )}
           </div>
         </div>
@@ -226,7 +241,7 @@ export default function DashboardPage() {
                 </PieChart>
               </ResponsiveContainer>
             ) : (
-              <div className="flex items-center justify-center h-full text-slate-500 text-sm w-full">لا توجد فواتير</div>
+              <div className="flex items-center justify-center h-full text-slate-500 text-sm w-full">{failedSources.includes('الفواتير') ? 'بيانات الفواتير غير متاحة' : 'لا توجد فواتير'}</div>
             )}
           </div>
           <div className="flex flex-wrap justify-center gap-3 mt-2">
@@ -267,7 +282,7 @@ export default function DashboardPage() {
                 </PieChart>
               </ResponsiveContainer>
             ) : (
-              <div className="flex items-center justify-center h-full text-slate-500 text-sm w-full">لا توجد مركبات</div>
+              <div className="flex items-center justify-center h-full text-slate-500 text-sm w-full">{failedSources.includes('المركبات') ? 'بيانات المركبات غير متاحة' : 'لا توجد مركبات'}</div>
             )}
           </div>
           <div className="flex flex-wrap justify-center gap-3 mt-2">
