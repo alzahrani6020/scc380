@@ -34,7 +34,7 @@ jobs:
           curl -sS -I -L --max-time 20 "$base/auth/login" | grep -iE '^(HTTP/|server:|x-powered-by:|x-vercel-|x-render-|location:|cf-ray:)' || true
           curl -sS -L --max-time 20 "$base/auth/login" -o /tmp/scc-login.html
           echo 'BUNDLE REFERENCES'
-          grep -oE '/_next/static/[^" ]+\\.js' /tmp/scc-login.html | sort -u > /tmp/scc-js-list || true
+          grep -oE '/_next/static/[^" ]+[.]js' /tmp/scc-login.html | sort -u > /tmp/scc-js-list || true
           wc -l /tmp/scc-js-list
           echo 'BUNDLE API ORIGINS'
           while IFS= read -r path; do
