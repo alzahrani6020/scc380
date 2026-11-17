@@ -25,3 +25,21 @@ jobs:
             curl -sS -i -X OPTIONS --max-time 20 "https://$host/crm/deals?page=1&limit=1" -H 'Origin: https://dr-talal-h-alzahrani.com' -H 'Access-Control-Request-Method: GET' -H 'Access-Control-Request-Headers: authorization,x-tenant-slug,x-branch-id' | grep -iE '^(HTTP/|access-control-|server:|cf-ray:|vary:)' || true
             echo "::endgroup::"
           done
+      - name: Inspect public website HTML and compiled JavaScript API origins
+        shell: bash
+        run: |
+          set -uo pipefail
+          base=https://dr-talal-h-alzahrani.com
+          echo 'PRODUCTION WEB HEADERS'
+          curl -sS -I -L --max-time 20 "$base/auth/login" | grep -iE '^(HTTP/|server:|x-powered-by:|x-vercel-|x-render-|location:|cf-ray:)' || true
+          curl -sS -L --max-time 20 "$base/auth/login" -o /tmp/scc-login.html
+          echo 'BUNDLE REFERENCES'
+          grep -oE '/_next/static/[^" ]+\\.js' /tmp/scc-login.html | sort -u > /tmp/scc-js-list || true
+          wc -l /tmp/scc-js-list
+          echo 'BUNDLE API ORIGINS'
+          while IFS= read -r path; do
+            curl -sS --max-time 15 "$base$path" -o /tmp/scc-chunk.js || continue
+            for value in 'localhost:3001' 'api.dr-talal-h-alzahrani.com' 'scc380-api.onrender.com' 'scc380-api-prod.loca.lt'; do
+              if grep -Fq "$value" /tmp/scc-chunk.js; then echo "$path uses $value"; fi
+            done
+          done < /tmp/scc-js-list
