@@ -1,0 +1,27 @@
+name: Diagnose SCC380 API connectivity
+on:
+  push:
+    branches:
+      - fix/scc380-dashboard-billing-guard-20261118
+permissions:
+  contents: read
+jobs:
+  api-connectivity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Compare DNS and HTTP routes without authentication
+        shell: bash
+        run: |
+          set -uo pipefail
+          for host in api.dr-talal-h-alzahrani.com scc380-api.onrender.com; do
+            echo "::group::$host"
+            getent ahostsv4 "$host" | head -n 3 || true
+            for path in / /auth/me '/crm/deals?page=1&limit=1' /analytics/dashboard; do
+              echo "GET https://$host$path"
+              curl -sS -o /dev/null -w 'status=%{http_code} remote=%{remote_ip} redirect=%{redirect_url} time=%{time_total}\n' --max-time 20 "https://$host$path" || true
+            done
+            echo "CORS preflight /crm/deals"
+            curl -sS -i -X OPTIONS --max-time 20 "https://$host/crm/deals?page=1&limit=1" -H 'Origin: https://dr-talal-h-alzahrani.com' -H 'Access-Control-Request-Method: GET' -H 'Access-Control-Request-Headers: authorization,x-tenant-slug,x-branch-id' | grep -iE '^(HTTP/|access-control-|server:|cf-ray:|vary:)' || true
+            echo "::endgroup::"
+          done
