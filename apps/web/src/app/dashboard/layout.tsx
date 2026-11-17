@@ -15,6 +15,7 @@ interface CurrentUser {
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<CurrentUser | null>(null);
+  const [sessionError, setSessionError] = useState<string | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => {
@@ -28,8 +29,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   useEffect(() => {
     api.get('/auth/me')
-      .then((res) => setUser(res.data))
-      .catch(() => setUser(null));
+      .then((res) => { setUser(res.data); setSessionError(null); })
+      .catch((err) => {
+        setUser(null);
+        // Display only the HTTP status: never include tokens, headers, or user data.
+        const status = typeof err?.response?.status === 'number'
+          ? `HTTP ${err.response.status}` : (err?.code === 'ERR_NETWORK' ? 'NETWORK' : 'UNKNOWN');
+        setSessionError(`تعذر التحقق من جلسة الدخول (${status}).`);
+      });
   }, []);
 
   return (
@@ -44,7 +51,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <span className="mr-3 text-sm font-bold text-white">SCC 380 — القائمة</span>
         </div>
         <Header user={user} />
-        <main className="p-4 sm:p-6 xl:p-8">{children}</main>
+        <main className="p-4 sm:p-6 xl:p-8">
+          {sessionError && (
+            <div role="alert" className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+              {sessionError}
+            </div>
+          )}
+          {children}
+        </main>
       </div>
     </div>
   );
