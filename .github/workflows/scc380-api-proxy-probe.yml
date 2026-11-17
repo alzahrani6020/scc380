@@ -1,0 +1,24 @@
+name: Verify SCC380 production API proxy
+on:
+  push:
+    branches: [diagnose/scc380-api-proxy-20261118]
+permissions:
+  contents: read
+jobs:
+  proxy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Compare anonymous HTTP and CORS (no secrets)
+        shell: bash
+        run: |
+          set -u
+          for host in https://dr-talal-h-alzahrani.com/api https://scc380-api.onrender.com https://api.dr-talal-h-alzahrani.com; do
+            for path in /auth/me '/crm/deals?page=1&limit=1' /analytics/dashboard; do
+              url="$host$path"
+              echo "PROBE $url"
+              curl -sS --max-time 20 -o /tmp/scc-response -w 'HTTP=%{http_code} CONTENT_TYPE=%{content_type} IP=%{remote_ip} SEC=%{time_total}\n' "$url" || true
+              head -c 220 /tmp/scc-response 2>/dev/null | tr '\n' ' ' || true
+              echo
+            done
+          done
