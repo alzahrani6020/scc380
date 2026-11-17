@@ -73,7 +73,9 @@ export default function DealsPage() {
       })
       .catch((err) => {
         if (err?.code === 'ERR_CANCELED') return;
-        setError('تعذر تحميل الصفقات. تحقق من الاتصال بالخادم.');
+        const status = typeof err?.response?.status === 'number'
+          ? `HTTP ${err.response.status}` : (err?.code === 'ERR_NETWORK' ? 'NETWORK' : 'UNKNOWN');
+        setError(`تعذر تحميل الصفقات (${status}).`);
       })
       .finally(() => {
         if (!ctrl.signal.aborted) setLoading(false);

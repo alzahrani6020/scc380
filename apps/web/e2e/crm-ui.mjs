@@ -608,7 +608,7 @@ async function testDealCrudAndErrors(page) {
 
   failNextDealList = true;
   await page.goto(`${BASE}/dashboard/crm/deals`);
-  await page.getByText('تعذر تحميل الصفقات. تحقق من الاتصال بالخادم.', { exact: true }).waitFor();
+  await page.getByText(/^تعذر تحميل الصفقات \((HTTP [0-9]{3}|NETWORK|UNKNOWN)\)\.$/).waitFor();
   await page.getByRole('button', { name: 'إعادة المحاولة', exact: true }).click();
   await page.getByText('Browser Deal', { exact: true }).waitFor();
 
