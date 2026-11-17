@@ -67,6 +67,9 @@ export function setAuth(data: AuthData, remember: boolean = true) {
   store.remove('refreshToken');
   try { if (remember) localStorage.setItem('scc_remember', '1'); else localStorage.removeItem('scc_remember'); } catch {}
   store.set('role', data.role);
+  // A new login or refresh must not inherit a different account's tenant context.
+  store.remove('tenantSlug');
+  store.remove('tenantId');
   if (data.tenantSlug) store.set('tenantSlug', data.tenantSlug);
   if (data.tenantId) store.set('tenantId', data.tenantId);
 
