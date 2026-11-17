@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, Req } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PermissionsGuard, RequirePermissions } from '../auth/guards/permissions.guard';
 import { SubscriptionsService } from './subscriptions.service';
 import { IsString, IsOptional, IsNumber, IsBoolean } from 'class-validator';
 
@@ -24,7 +25,7 @@ class UpdateSubscriptionDto {
 
 @ApiTags('Billing - Subscriptions')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('billing/subscriptions')
 export class SubscriptionsController {
   constructor(private readonly service: SubscriptionsService) {}
@@ -35,12 +36,15 @@ export class SubscriptionsController {
   @Get(':id')
   findOne(@Req() req: any, @Param('id') id: string) { return this.service.findOne(req, id); }
 
+  @RequirePermissions('billing:write')
   @Post()
   create(@Req() req: any, @Body() dto: CreateSubscriptionDto) { return this.service.create(req, dto); }
 
+  @RequirePermissions('billing:write')
   @Patch(':id')
   update(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateSubscriptionDto) { return this.service.update(req, id, dto); }
 
+  @RequirePermissions('billing:write')
   @Delete(':id')
   remove(@Req() req: any, @Param('id') id: string) { return this.service.remove(req, id); }
 }
