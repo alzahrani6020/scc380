@@ -1311,9 +1311,9 @@ async function testActivityQueryContracts(page) {
   await page.getByText('صفحة 2 من 3 — إجمالي 60', { exact: true }).waitFor();
 }
 
-async function testStaleTenant404Recovery(browser) {
-  // Reconcile obsolete tenant selection against authenticated /auth/me, without
-  // a refresh credential, modifying server permissions, or bypassing tenant rules.
+async function testJwtTenantHeaderIsolation(browser) {
+  // Reproduce the user's stale browser tenant on ADMIN. The API must receive
+  // no browser-selected tenant header: the server uses the signed JWT tenant.
   const ctx = await browser.newContext();
   await ctx.addCookies([{ name: 'accessToken', value: accessToken, url: BASE }]);
   await ctx.addInitScript(({ token }) => {
@@ -1325,46 +1325,56 @@ async function testStaleTenant404Recovery(browser) {
   const tab = await ctx.newPage();
   await installApiMock(tab);
   let dealCalls = 0;
-  let authMeCalls = 0;
+  let identityCalls = 0;
   await tab.route('**/api/**', async (route) => {
     const req = route.request();
     const path = new URL(req.url()).pathname;
     if (req.method() === 'GET' && path === '/api/auth/me') {
-      authMeCalls++;
-      assert.equal(req.headers()['x-tenant-slug'], undefined, '/auth/me must not use selected tenant');
-      await route.fulfill(json({
-        id: 'browser-user', role: 'ADMIN', tenantId: 'active-id',
-        firstName: 'Browser', lastName: 'Test',
-        tenant: { id: 'active-id', slug: 'active-tenant', status: 'ACTIVE' },
-      }));
-      return;
-    }
-    if (req.method() === 'POST' && path === '/api/auth/session') {
-      throw new Error('Tenant reconciliation should not rotate session tokens');
+      identityCalls++;
+      assert.equal(req.headers()['x-tenant-slug'], undefined, '/auth/me must not use a client tenant');
     }
     if (req.method() === 'GET' && path === '/api/crm/deals') {
       dealCalls++;
-      const slug = req.headers()['x-tenant-slug'];
-      if (slug === 'removed-tenant') {
-        await route.fulfill(json({ error: 'Tenant not found', message: 'المنشأة غير موجودة' }, 404));
-        return;
-      }
-      assert.equal(slug, 'active-tenant', 'Retry must use verified tenant slug');
-      await route.fallback();
-      return;
+      assert.equal(req.headers()['x-tenant-slug'], undefined, 'ADMIN must use JWT tenant, never stale selector');
+    }
+    if (req.method() === 'POST' && path === '/api/auth/session') {
+      throw new Error('Valid access token must not rotate refresh credentials');
     }
     await route.fallback();
   });
   try {
     await tab.goto(`${BASE}/dashboard/crm/deals`);
     await tab.getByText('Browser Deal', { exact: true }).waitFor();
-    assert.equal(dealCalls, 2, 'Deal request must retry exactly once');
-    assert.ok(authMeCalls >= 1);
-    assert.equal(await tab.evaluate(() => localStorage.getItem('tenantSlug')), 'active-tenant');
-    assert.equal(await tab.evaluate(() => localStorage.getItem('tenantId')), 'active-id');
-    console.log('STALE_TENANT_404_RECOVERY: PASS');
+    assert.equal(dealCalls, 1, 'Deals must load without any 404 / retry');
+    assert.ok(identityCalls >= 1, 'Session identity must load');
+    console.log('JWT_TENANT_HEADER_ISOLATION: PASS');
   } finally {
     await ctx.close();
+  }
+
+  // SUPER_ADMIN explicitly selects a tenant, and must retain this ability.
+  const adminCtx = await browser.newContext();
+  await adminCtx.addCookies([{ name: 'accessToken', value: accessToken, url: BASE }]);
+  await adminCtx.addInitScript(({ token }) => {
+    localStorage.setItem('accessToken', token);
+    localStorage.setItem('tenantSlug', 'selected-tenant');
+    localStorage.setItem('role', 'SUPER_ADMIN');
+  }, { token: accessToken });
+  const adminTab = await adminCtx.newPage();
+  await installApiMock(adminTab);
+  let explicitSelections = 0;
+  await adminTab.route('**/api/crm/deals*', async (route) => {
+    assert.equal(route.request().headers()['x-tenant-slug'], 'selected-tenant');
+    explicitSelections++;
+    await route.fallback();
+  });
+  try {
+    await adminTab.goto(`${BASE}/dashboard/crm/deals`);
+    await adminTab.getByText('Browser Deal', { exact: true }).waitFor();
+    assert.equal(explicitSelections, 1);
+    console.log('SUPER_ADMIN_TENANT_SELECTION: PASS');
+  } finally {
+    await adminCtx.close();
   }
 }
 
@@ -1405,7 +1415,7 @@ try {
   await testPipelineErrorRecovery(page);
   await testPipelineAndStageCrud(page);
   await testCrmLifecycle(page);
-  await testStaleTenant404Recovery(browser);
+  await testJwtTenantHeaderIsolation(browser);
   console.log('CRM_BROWSER_E2E: PASS');
 } catch (error) {
   console.error('CRM_BROWSER_E2E: FAIL');
