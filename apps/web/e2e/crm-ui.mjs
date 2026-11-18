@@ -1312,37 +1312,35 @@ async function testActivityQueryContracts(page) {
 }
 
 async function testStaleTenant404Recovery(browser) {
-  // Real browser flow, all APIs mocked: an obsolete tenant slug must be
-  // replaced through a server-issued refresh, never by dropping tenant isolation.
+  // Reconcile obsolete tenant selection against authenticated /auth/me, without
+  // a refresh credential, modifying server permissions, or bypassing tenant rules.
   const ctx = await browser.newContext();
   await ctx.addCookies([{ name: 'accessToken', value: accessToken, url: BASE }]);
   await ctx.addInitScript(({ token }) => {
     localStorage.setItem('accessToken', token);
-    localStorage.setItem('refreshToken', 'test-legacy-refresh');
     localStorage.setItem('tenantSlug', 'removed-tenant');
+    localStorage.setItem('tenantId', 'removed-id');
     localStorage.setItem('role', 'ADMIN');
   }, { token: accessToken });
   const tab = await ctx.newPage();
   await installApiMock(tab);
-  let refreshCount = 0;
   let dealCalls = 0;
-  let authMeHeader = 'missing';
+  let authMeCalls = 0;
   await tab.route('**/api/**', async (route) => {
     const req = route.request();
     const path = new URL(req.url()).pathname;
     if (req.method() === 'GET' && path === '/api/auth/me') {
-      authMeHeader = req.headers()['x-tenant-slug'] || '';
-      await route.fallback();
+      authMeCalls++;
+      assert.equal(req.headers()['x-tenant-slug'], undefined, '/auth/me must not use selected tenant');
+      await route.fulfill(json({
+        id: 'browser-user', role: 'ADMIN', tenantId: 'active-id',
+        firstName: 'Browser', lastName: 'Test',
+        tenant: { id: 'active-id', slug: 'active-tenant', status: 'ACTIVE' },
+      }));
       return;
     }
     if (req.method() === 'POST' && path === '/api/auth/session') {
-      refreshCount++;
-      assert.equal(req.postDataJSON()?.action, 'migrate');
-      await route.fulfill(json({
-        accessToken: 'test-reissued-access',
-        user: { role: 'ADMIN', email: 'browser@example.test', tenantId: 'active-id', tenantSlug: 'active-tenant' },
-      }));
-      return;
+      throw new Error('Tenant reconciliation should not rotate session tokens');
     }
     if (req.method() === 'GET' && path === '/api/crm/deals') {
       dealCalls++;
@@ -1351,7 +1349,7 @@ async function testStaleTenant404Recovery(browser) {
         await route.fulfill(json({ error: 'Tenant not found', message: 'المنشأة غير موجودة' }, 404));
         return;
       }
-      assert.equal(slug, 'active-tenant', 'Retried deal request must use server-validated tenant slug');
+      assert.equal(slug, 'active-tenant', 'Retry must use verified tenant slug');
       await route.fallback();
       return;
     }
@@ -1360,10 +1358,10 @@ async function testStaleTenant404Recovery(browser) {
   try {
     await tab.goto(`${BASE}/dashboard/crm/deals`);
     await tab.getByText('Browser Deal', { exact: true }).waitFor();
-    assert.equal(authMeHeader, '', '/auth/me must not use a stale tenant slug');
     assert.equal(dealCalls, 2, 'Deal request must retry exactly once');
-    assert.equal(refreshCount, 1, 'One authenticated server refresh must recover tenant context');
+    assert.ok(authMeCalls >= 1);
     assert.equal(await tab.evaluate(() => localStorage.getItem('tenantSlug')), 'active-tenant');
+    assert.equal(await tab.evaluate(() => localStorage.getItem('tenantId')), 'active-id');
     console.log('STALE_TENANT_404_RECOVERY: PASS');
   } finally {
     await ctx.close();
