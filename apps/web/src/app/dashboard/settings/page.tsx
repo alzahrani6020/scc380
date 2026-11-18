@@ -1,16 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import { Settings, Palette, Bell, Shield, Globe, Save } from 'lucide-react';
+import { Settings, Palette, Bell, Shield, Globe } from 'lucide-react';
 
 export default function SettingsPage() {
-  const [saved, setSaved] = useState(false);
-
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  };
-
   return (
     <div className="space-y-6 animate-fade-in-up">
       <div>
@@ -31,7 +23,7 @@ export default function SettingsPage() {
           <div className="space-y-4">
             <div>
               <label className="block text-sm text-slate-400 mb-2">اللغة</label>
-              <select className="scc-input">
+              <select className="scc-input" disabled>
                 <option>العربية</option>
                 <option>English</option>
               </select>
@@ -55,7 +47,7 @@ export default function SettingsPage() {
             {['إشعارات الفواتير', 'إشعارات الموظفين', 'إشعارات المركبات', 'التقارير الأسبوعية'].map((item) => (
               <label key={item} className="flex items-center justify-between py-2 cursor-pointer">
                 <span className="text-slate-300 text-sm">{item}</span>
-                <input type="checkbox" defaultChecked className="w-5 h-5 rounded border-slate-600 bg-slate-800 text-primary-500 focus:ring-primary-500" />
+                <input type="checkbox" disabled defaultChecked className="w-5 h-5 rounded border-slate-600 bg-slate-800 text-primary-500 focus:ring-primary-500" />
               </label>
             ))}
           </div>
@@ -70,7 +62,7 @@ export default function SettingsPage() {
           <div className="space-y-4">
             <div>
               <label className="block text-sm text-slate-400 mb-2">كلمة المرور الحالية</label>
-              <input type="password" className="scc-input" placeholder="••••••••" />
+              <input type="password" disabled className="scc-input" placeholder="••••••••" />
             </div>
             <div>
               <label className="block text-sm text-slate-400 mb-2">كلمة المرور الجديدة</label>
@@ -92,7 +84,7 @@ export default function SettingsPage() {
             </div>
             <div className="flex justify-between py-2 border-b border-slate-800">
               <span className="text-slate-400">قاعدة البيانات</span>
-              <span className="text-white">PostgreSQL 16</span>
+              <span className="text-white">غير متحقق من بيئة الإنتاج</span>
             </div>
             <div className="flex justify-between py-2 border-b border-slate-800">
               <span className="text-slate-400">الخادم</span>
@@ -102,12 +94,9 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      <div className="flex justify-end">
-        <button onClick={handleSave} className="scc-btn-primary">
-          <Save className="h-5 w-5" />
-          {saved ? 'تم الحفظ!' : 'حفظ الإعدادات'}
-        </button>
-      </div>
+      <p role="status" className="text-amber-300 text-sm">
+        هذه الإعدادات للعرض فقط؛ الحفظ وتغيير كلمة المرور غير متاحين حتى ربطهما بخدمة موثقة.
+      </p>
     </div>
   );
 }

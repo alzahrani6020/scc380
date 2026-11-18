@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { QRCodeSVG } from 'qrcode.react';
+import api from '@/lib/api';
 
 interface Product {
   id: string;
@@ -39,20 +39,13 @@ export default function PosPage() {
 
   const fetchProducts = async () => {
     try {
-      const res = await fetch('http://localhost:3001/inventory/products');
-      if (res.ok) {
-        const data = await res.json();
-        setProducts(data);
-      }
-    } catch (e) {
-      // Use demo products if API fails
-      setProducts([
-        { id: '1', name: 'لابتوب Dell', sku: 'LAP-DELL-001', salePrice: 3200, currentStock: 15, barcode: '1234567890123' },
-        { id: '2', name: 'ماوس لاسلكي', sku: 'MOUSE-WL-001', salePrice: 75, currentStock: 50, barcode: '1234567890124' },
-        { id: '3', name: 'شاشة 27 بوصة', sku: 'MON-27-001', salePrice: 1100, currentStock: 8, barcode: '1234567890125' },
-        { id: '4', name: 'مياه معدنية', sku: 'WAT-500-001', salePrice: 2.5, currentStock: 200, barcode: '1234567890126' },
-        { id: '5', name: 'كرسي مكتبي', sku: 'CHR-OFF-001', salePrice: 500, currentStock: 12, barcode: '1234567890127' },
-      ]);
+      const res = await api.get<Product[]>('/inventory/products');
+      if (!Array.isArray(res.data)) throw new Error('Unexpected inventory response');
+      setProducts(res.data);
+    } catch {
+      // Never substitute invented inventory in a production checkout.
+      setProducts([]);
+      setMessage('تعذر تحميل المخزون الحقيقي. البيع غير متاح حتى استعادة الاتصال.');
     }
   };
 
@@ -108,56 +101,11 @@ export default function PosPage() {
     }
   };
 
-  const submitOrder = async () => {
-    if (cart.length === 0) return;
-    setLoading(true);
-    try {
-      const orderData = {
-        customerName: customerName || undefined,
-        items: cart.map(item => ({
-          productId: item.productId,
-          productName: item.name,
-          quantity: item.quantity,
-          unitPrice: item.price.toString(),
-        })),
-        payments: [{
-          method: 'CASH',
-          amount: total.toFixed(2),
-        }],
-      };
-
-      const res = await fetch('http://localhost:3001/pos/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(orderData),
-      });
-
-      if (res.ok) {
-        const orderData = await res.json();
-        setReceipt({
-          orderNumber: orderData.orderNumber,
-          date: new Date().toLocaleString('ar-SA'),
-          items: cart,
-          subtotal,
-          taxAmount,
-          total,
-          cashReceived: Number(cashReceived || 0),
-          change,
-          customerName: customerName || 'عميل نقدي',
-        });
-        setMessage('✅ تم إتمام البيع بنجاح!');
-        setCart([]);
-        setCashReceived('');
-        setCustomerName('');
-        fetchProducts();
-      } else {
-        setMessage('❌ فشل في إتمام البيع');
-      }
-    } catch (e) {
-      setMessage('❌ خطأ في الاتصال بالسيرفر');
-    }
-    setLoading(false);
-    setTimeout(() => setMessage(''), 3000);
+  // API createOrder currently passes a user ID where PosService expects an open
+  // POS session ID. Never place financial orders until the API contract is fixed
+  // and verified with an approved test session.
+  const submitOrder = () => {
+    setMessage('تسجيل المبيعات متوقف مؤقتاً: يلزم إصلاح ربط جلسة نقطة البيع على الخادم والتحقق منه.');
   };
 
   const filteredProducts = products.filter(p =>
@@ -282,10 +230,10 @@ export default function PosPage() {
 
           <button
             onClick={submitOrder}
-            disabled={cart.length === 0 || loading}
+            disabled={true}
             className="w-full py-3 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:cursor-not-allowed font-bold transition-colors"
           >
-            {loading ? '⏳ جاري المعالجة...' : '✅ إتمام البيع'}
+            إتمام البيع غير متاح حتى اعتماد جلسة نقطة البيع
           </button>
 
           {receipt && (
@@ -313,9 +261,8 @@ export default function PosPage() {
           <div className="bg-white text-black p-6 w-80 print:w-full print:shadow-none print:border-0"
             style={{ fontFamily: 'monospace', maxWidth: '320px' }}>
             <div className="text-center border-b-2 border-black pb-3 mb-3">
-              <h2 className="text-xl font-bold">شركة التقنية المتقدمة</h2>
-              <p className="text-xs">الرياض، المملكة العربية السعودية</p>
-              <p className="text-xs">الرقم الضريبي: 300123456700003</p>
+              <h2 className="text-xl font-bold">مسودة إيصال نقطة بيع</h2>
+              <p className="text-xs">ليست فاتورة ضريبية معتمدة</p>
             </div>
 
             <div className="text-xs mb-3">
@@ -342,8 +289,7 @@ export default function PosPage() {
             </div>
 
             <div className="text-center mt-4">
-              <QRCodeSVG value={`https://zatca.gov.sa/verify?invoice=${receipt.orderNumber}`} size={120} className="mx-auto" />
-              <p className="text-xs mt-2">امسح للتحقق من الفاتورة</p>
+              <p className="text-xs mt-2">لا يتوفر رمز تحقق ضريبي لهذا الإيصال</p>
             </div>
 
             <div className="text-center text-xs mt-4 border-t border-black pt-2">
