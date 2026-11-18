@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { getToken, getRefreshToken, getTenantSlug, getRememberPreference, setAuth, clearAuth, syncVerifiedTenant } from './auth';
+import { getToken, getRefreshToken, getTenantSlug, getRole, getRememberPreference, setAuth, clearAuth, syncVerifiedTenant } from './auth';
 import { sessionAuth } from './session-auth';
 
 const api = axios.create({
@@ -28,7 +28,10 @@ api.interceptors.request.use((config) => {
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
-    if (tenantSlug && !publicAuthRequest) {
+    // Tenant-scoped roles are isolated by the validated JWT on the API.
+    // Never let a stale browser-selected slug preempt the JWT guard with HTTP 404.
+    // SUPER_ADMIN retains explicit tenant selection when required.
+    if (tenantSlug && getRole() === 'SUPER_ADMIN' && !publicAuthRequest) {
       config.headers['X-Tenant-Slug'] = tenantSlug;
     }
     const branchId = localStorage.getItem('selectedBranchId');
