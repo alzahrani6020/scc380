@@ -20,7 +20,7 @@ jobs:
                 echo "PROBE origin=$origin path=$path tenant=$mode"
                 args=()
                 if [ "$mode" = bogus ]; then args=(-H "X-Tenant-Slug: nonexistent-qa-probe-20261118"); fi
-                curl -fsS -o /tmp/scc-probe-out -w 'HTTP=%{http_code} CONTENT_TYPE=%{content_type} REMOTE_IP=%{remote_ip}\n' --max-time 16 "${args[@]}" "$origin$path" || true
+                curl -sS -o /tmp/scc-probe-out -w 'HTTP=%{http_code} CONTENT_TYPE=%{content_type} REMOTE_IP=%{remote_ip}\n' --max-time 16 "${args[@]}" "$origin$path" || true
                 if [ -f /tmp/scc-probe-out ]; then head -c 300 /tmp/scc-probe-out | tr '\n' ' '; echo; fi
               done
             done
