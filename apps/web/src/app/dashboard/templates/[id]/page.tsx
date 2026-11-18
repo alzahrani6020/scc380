@@ -200,7 +200,7 @@ export default function TemplatePreviewPage() {
       <html dir="rtl" lang="ar">
       <head>
         <meta charset="UTF-8">
-        <title>${template?.nameAr || template?.name}</title>
+        <title>معاينة تجريبية - ${template?.nameAr || template?.name}</title>
         <style>
           @page { size: ${template?.paperSize || 'A4'} ${template?.orientation || 'portrait'}; margin: 15mm; }
           body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; direction: rtl; }
@@ -236,11 +236,13 @@ export default function TemplatePreviewPage() {
 
   const CatIcon = categoryIcons[template.category] || FileText;
   const renderedHtml = interpolateTemplate(template.htmlTemplate, liveData);
+  // This preview intentionally includes sample values and is not a verified document.
 
   if (isPrintMode) {
     return (
       <div ref={printRef} className="bg-white p-8" style={{ minHeight: '100vh' }}>
         <style>{template.cssStyles}</style>
+        <p className="mb-4 font-bold text-red-600">معاينة تجريبية — غير معتمدة كمستند رسمي</p>
         <div dangerouslySetInnerHTML={{ __html: renderedHtml }} />
       </div>
     );
@@ -279,7 +281,7 @@ export default function TemplatePreviewPage() {
           <button
             onClick={() => {
               const blob = new Blob([`
-                <!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"><style>${template.cssStyles || ''}</style></head><body>${renderedHtml}</body></html>
+                <!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"><style>${template.cssStyles || ''}</style></head><body><div style="border:2px solid #b91c1c;padding:8px;text-align:center;color:#b91c1c">معاينة تجريبية — ليست مستنداً رسمياً</div>${renderedHtml}</body></html>
               `], { type: 'text/html' });
               const url = URL.createObjectURL(blob);
               const a = document.createElement('a');
@@ -302,7 +304,7 @@ export default function TemplatePreviewPage() {
           <div className="w-3 h-3 rounded-full bg-red-400" />
           <div className="w-3 h-3 rounded-full bg-amber-400" />
           <div className="w-3 h-3 rounded-full bg-emerald-400" />
-          <span className="text-xs text-slate-400 mr-2">معاينة النموذج</span>
+          <span className="text-xs text-red-600 font-bold mr-2">معاينة ببيانات تجريبية — غير معتمدة للإصدار الرسمي</span>
         </div>
         <div ref={printRef} className="p-8 overflow-auto" style={{ maxHeight: '70vh' }}>
           <style>{template.cssStyles}</style>
