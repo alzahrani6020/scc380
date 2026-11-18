@@ -50,6 +50,19 @@ export function getTenantId(): string | null {
   return getAny('tenantId');
 }
 
+/** Replace a stale browser selection only with the tenant verified by /auth/me. */
+export function syncVerifiedTenant(slug: string, id: string): boolean {
+  if (!slug || !id || !getToken()) return false;
+  const store = LS.get('accessToken') ? LS : SS;
+  LS.remove('tenantSlug');
+  SS.remove('tenantSlug');
+  LS.remove('tenantId');
+  SS.remove('tenantId');
+  store.set('tenantSlug', slug);
+  store.set('tenantId', id);
+  return true;
+}
+
 export function isAuthenticated(): boolean {
   return !!getToken();
 }
