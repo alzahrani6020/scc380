@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { getToken, getRefreshToken, getTenantSlug, getRememberPreference, setAuth, clearAuth } from './auth';
+import { getToken, getRefreshToken, getTenantSlug, getRememberPreference, setAuth, clearAuth, syncVerifiedTenant } from './auth';
 import { sessionAuth } from './session-auth';
 
 const api = axios.create({
@@ -99,26 +99,43 @@ api.interceptors.response.use(
         '/auth/logout-all',
       ].some((path) => original.url.startsWith(path));
 
-    // A former tenant selection may remain in browser storage after its slug
-    // changes or the account is re-assigned. Recover only from the API's
-    // exact tenant-not-found response using a server-validated refresh session.
-    // Other 404s (missing records/routes) must not be retried or masked.
+    // A 404 may be caused by a browser tenant selection from an old account.
+    // Reconcile only GET requests, using the authenticated server identity.
+    // Never retry an unrelated missing record unless the verified tenant changed.
     if (
       error.response?.status === 404 &&
-      error.response?.data?.error === 'Tenant not found' &&
       typeof window !== 'undefined' &&
       !original?._tenantRetry &&
       !isAuthEndpoint &&
+      original?.method?.toLowerCase() === 'get' &&
       getTenantSlug()
     ) {
-      original._tenantRetry = true;
-      const accessToken = await refreshAccessToken();
-      if (accessToken) {
-        original.headers = original.headers || {};
-        delete original.headers['X-Tenant-Slug'];
-        delete original.headers['x-tenant-slug'];
-        original.headers.Authorization = `Bearer ${accessToken}`;
-        return api(original);
+      const sentSlug = original.headers?.['X-Tenant-Slug'] || original.headers?.['x-tenant-slug'];
+      if (sentSlug) {
+        original._tenantRetry = true;
+        let verifiedSlug = getTenantSlug();
+        if (sentSlug === verifiedSlug) {
+          try {
+            const identity = (await api.get('/auth/me')).data;
+            const tenant = identity?.tenant;
+            if (
+              identity?.role !== 'SUPER_ADMIN' &&
+              tenant?.id && tenant?.slug && identity?.tenantId === tenant.id &&
+              tenant?.status === 'ACTIVE' && tenant.slug !== sentSlug
+            ) {
+              syncVerifiedTenant(tenant.slug, tenant.id);
+              verifiedSlug = tenant.slug;
+            }
+          } catch {
+            // Preserve the original 404; never guess a tenant or weaken access checks.
+          }
+        }
+        if (verifiedSlug && sentSlug !== verifiedSlug) {
+          original.headers = original.headers || {};
+          delete original.headers['X-Tenant-Slug'];
+          delete original.headers['x-tenant-slug'];
+          return api(original);
+        }
       }
     }
 
