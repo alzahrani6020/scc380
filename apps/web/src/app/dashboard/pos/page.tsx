@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { QRCodeSVG } from 'qrcode.react';
 import api from '@/lib/api';
 
 interface Product {
@@ -262,9 +261,8 @@ export default function PosPage() {
           <div className="bg-white text-black p-6 w-80 print:w-full print:shadow-none print:border-0"
             style={{ fontFamily: 'monospace', maxWidth: '320px' }}>
             <div className="text-center border-b-2 border-black pb-3 mb-3">
-              <h2 className="text-xl font-bold">شركة التقنية المتقدمة</h2>
-              <p className="text-xs">الرياض، المملكة العربية السعودية</p>
-              <p className="text-xs">الرقم الضريبي: 300123456700003</p>
+              <h2 className="text-xl font-bold">مسودة إيصال نقطة بيع</h2>
+              <p className="text-xs">ليست فاتورة ضريبية معتمدة</p>
             </div>
 
             <div className="text-xs mb-3">
@@ -291,8 +289,7 @@ export default function PosPage() {
             </div>
 
             <div className="text-center mt-4">
-              <QRCodeSVG value={`https://zatca.gov.sa/verify?invoice=${receipt.orderNumber}`} size={120} className="mx-auto" />
-              <p className="text-xs mt-2">امسح للتحقق من الفاتورة</p>
+              <p className="text-xs mt-2">لا يتوفر رمز تحقق ضريبي لهذا الإيصال</p>
             </div>
 
             <div className="text-center text-xs mt-4 border-t border-black pt-2">
