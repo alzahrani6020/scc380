@@ -21,6 +21,8 @@ api.interceptors.request.use((config) => {
       '/auth/verify-2fa-login',
       '/auth/forgot-password',
       '/auth/reset-password',
+      // Session identity is established by the signed JWT, not a browser tenant selector.
+      '/auth/me',
     ].some((path) => url.startsWith(path));
 
     if (token) {
@@ -96,6 +98,29 @@ api.interceptors.response.use(
         '/auth/logout',
         '/auth/logout-all',
       ].some((path) => original.url.startsWith(path));
+
+    // A former tenant selection may remain in browser storage after its slug
+    // changes or the account is re-assigned. Recover only from the API's
+    // exact tenant-not-found response using a server-validated refresh session.
+    // Other 404s (missing records/routes) must not be retried or masked.
+    if (
+      error.response?.status === 404 &&
+      error.response?.data?.error === 'Tenant not found' &&
+      typeof window !== 'undefined' &&
+      !original?._tenantRetry &&
+      !isAuthEndpoint &&
+      getTenantSlug()
+    ) {
+      original._tenantRetry = true;
+      const accessToken = await refreshAccessToken();
+      if (accessToken) {
+        original.headers = original.headers || {};
+        delete original.headers['X-Tenant-Slug'];
+        delete original.headers['x-tenant-slug'];
+        original.headers.Authorization = `Bearer ${accessToken}`;
+        return api(original);
+      }
+    }
 
     if (
       error.response?.status === 401 &&

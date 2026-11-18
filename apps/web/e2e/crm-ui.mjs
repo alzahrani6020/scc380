@@ -1311,6 +1311,65 @@ async function testActivityQueryContracts(page) {
   await page.getByText('صفحة 2 من 3 — إجمالي 60', { exact: true }).waitFor();
 }
 
+async function testStaleTenant404Recovery(browser) {
+  // Real browser flow, all APIs mocked: an obsolete tenant slug must be
+  // replaced through a server-issued refresh, never by dropping tenant isolation.
+  const ctx = await browser.newContext();
+  await ctx.addCookies([{ name: 'accessToken', value: accessToken, url: BASE }]);
+  await ctx.addInitScript(({ token }) => {
+    localStorage.setItem('accessToken', token);
+    localStorage.setItem('refreshToken', 'test-legacy-refresh');
+    localStorage.setItem('tenantSlug', 'removed-tenant');
+    localStorage.setItem('role', 'ADMIN');
+  }, { token: accessToken });
+  const tab = await ctx.newPage();
+  await installApiMock(tab);
+  let refreshCount = 0;
+  let dealCalls = 0;
+  let authMeHeader = 'missing';
+  await tab.route('**/api/**', async (route) => {
+    const req = route.request();
+    const path = new URL(req.url()).pathname;
+    if (req.method() === 'GET' && path === '/api/auth/me') {
+      authMeHeader = req.headers()['x-tenant-slug'] || '';
+      await route.fallback();
+      return;
+    }
+    if (req.method() === 'POST' && path === '/api/auth/session') {
+      refreshCount++;
+      assert.equal(req.postDataJSON()?.action, 'migrate');
+      await route.fulfill(json({
+        accessToken: 'test-reissued-access',
+        user: { role: 'ADMIN', email: 'browser@example.test', tenantId: 'active-id', tenantSlug: 'active-tenant' },
+      }));
+      return;
+    }
+    if (req.method() === 'GET' && path === '/api/crm/deals') {
+      dealCalls++;
+      const slug = req.headers()['x-tenant-slug'];
+      if (slug === 'removed-tenant') {
+        await route.fulfill(json({ error: 'Tenant not found', message: 'المنشأة غير موجودة' }, 404));
+        return;
+      }
+      assert.equal(slug, 'active-tenant', 'Retried deal request must use server-validated tenant slug');
+      await route.fallback();
+      return;
+    }
+    await route.fallback();
+  });
+  try {
+    await tab.goto(`${BASE}/dashboard/crm/deals`);
+    await tab.getByText('Browser Deal', { exact: true }).waitFor();
+    assert.equal(authMeHeader, '', '/auth/me must not use a stale tenant slug');
+    assert.equal(dealCalls, 2, 'Deal request must retry exactly once');
+    assert.equal(refreshCount, 1, 'One authenticated server refresh must recover tenant context');
+    assert.equal(await tab.evaluate(() => localStorage.getItem('tenantSlug')), 'active-tenant');
+    console.log('STALE_TENANT_404_RECOVERY: PASS');
+  } finally {
+    await ctx.close();
+  }
+}
+
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext();
 await context.addCookies([{
@@ -1348,6 +1407,7 @@ try {
   await testPipelineErrorRecovery(page);
   await testPipelineAndStageCrud(page);
   await testCrmLifecycle(page);
+  await testStaleTenant404Recovery(browser);
   console.log('CRM_BROWSER_E2E: PASS');
 } catch (error) {
   console.error('CRM_BROWSER_E2E: FAIL');
