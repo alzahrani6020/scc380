@@ -21,7 +21,7 @@ jobs:
           def evaluate(file):
             path='/'+str(file.relative_to(root).parent).replace('\\','/')
             if path=='/.': path='/'
-            path=re.sub(r'\\[([^]]+)\\]',r'__AUDIT_INVALID_ID__',path)
+            path=path.replace('[id]','__AUDIT_INVALID_ID__').replace('[category]','__AUDIT_INVALID_CATEGORY__')
             if path in ['/.','']:path='/'
             url='https://dr-talal-h-alzahrani.com'+path
             p=subprocess.run(['curl','-sS','--max-time','15','-o','/dev/null','-w','%{http_code}|%{content_type}|%{redirect_url}','--globoff',url],capture_output=True,text=True)
