@@ -236,7 +236,7 @@ BEGIN
   "status" "PosOrderStatus" NOT NULL DEFAULT 'COMPLETED',
   "branchId" TEXT,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
   CONSTRAINT "pos_orders_pkey" PRIMARY KEY ("id")
 )$posddl4$;
   EXECUTE $posddl5$CREATE TABLE "pos_order_items" (
