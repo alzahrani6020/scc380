@@ -60,6 +60,28 @@ test('POS: open-session ownership, atomic stock, idempotency, tenant isolation a
     await assert.rejects(() => pos.openSession({ openingCash: '0.00' }, userA.id, tenantA.id, 'ADMIN'),
       /already have an open session/);
 
+    // An unconfigured chart must reject the sale without mutating order, stock,
+    // payment, movement or journals.
+    await assert.rejects(() =>
+      pos.createOrder(dto(randomUUID(), [{ productId: productA.id, quantity: 1 }], '11.50') as any,
+        userA.id, tenantA.id, 'ADMIN'),
+      /Missing active accounting mappings/);
+    assert.equal((await prisma.product.findUniqueOrThrow({ where: { id: productA.id } })).currentStock, 5);
+    assert.equal(await prisma.posOrder.count({ where: { tenantId: tenantA.id } }), 0);
+    assert.equal(await prisma.journalEntryHeader.count({ where: { tenantId: tenantA.id } }), 0);
+
+    const journalAccounts = await Promise.all([
+      ['1110', 'Cash', 'ASSET'],
+      ['1130', 'Inventory', 'ASSET'],
+      ['2110', 'VAT payable', 'LIABILITY'],
+      ['4100', 'Sales revenue', 'REVENUE'],
+      ['5600', 'Cost of goods sold', 'EXPENSE'],
+    ].map(([code, name, type]) =>
+      prisma.chartOfAccount.create({
+        data: { tenantId: tenantA.id, code, name, type: type as any },
+      })));
+    const ledgerByCode = Object.fromEntries(journalAccounts.map(a => [a.code, a.id]));
+
     // A product belonging to another tenant must be rejected before any stock change.
     await assert.rejects(() =>
       pos.createOrder(dto(randomUUID(), [{ productId: productX.id, quantity: 1 }], '34.50') as any,
@@ -93,11 +115,38 @@ test('POS: open-session ownership, atomic stock, idempotency, tenant isolation a
     assert.equal((await prisma.product.findUniqueOrThrow({ where: { id: productA.id } })).currentStock, 3);
     assert.equal(await prisma.stockMovement.count({ where: { referenceId: order.id } }), 1);
     assert.equal(await prisma.posPayment.count({ where: { orderId: order.id } }), 1);
+    const journal = await prisma.journalEntryHeader.findFirst({
+      where: { tenantId: tenantA.id, sourceType: 'POS_ORDER', sourceId: order.id },
+      include: { lines: true },
+    });
+    assert.ok(journal, 'a committed sale must have a posted journal');
+    assert.equal(journal!.status, 'POSTED');
+    assert.equal(journal!.lines.length, 5);
+    const lineTotals = journal!.lines.reduce((acc, line) => ({
+      debit: acc.debit + Number(line.debitAmount),
+      credit: acc.credit + Number(line.creditAmount),
+    }), { debit: 0, credit: 0 });
+    assert.equal(lineTotals.debit, 29);
+    assert.equal(lineTotals.credit, 29);
+    assert.deepEqual(
+      journal!.lines.map(l => [l.accountId, Number(l.debitAmount), Number(l.creditAmount)]),
+      [
+        [ledgerByCode['1110'], 23, 0],
+        [ledgerByCode['4100'], 0, 20],
+        [ledgerByCode['2110'], 0, 3],
+        [ledgerByCode['5600'], 6, 0],
+        [ledgerByCode['1130'], 0, 6],
+      ]);
+
 
     const again = await pos.createOrder(dto(key, [{ productId: productA.id, quantity: 2 }], '23.00') as any,
       userA.id, tenantA.id, 'ADMIN');
     assert.equal(again.id, order.id);
     assert.equal(await prisma.posOrder.count({ where: { tenantId: tenantA.id } }), 1);
+    assert.equal(await prisma.journalEntryHeader.count({
+      where: { tenantId: tenantA.id, sourceType: 'POS_ORDER', sourceId: order.id },
+    }), 1, 'duplicate retry must not repost the sale');
+
     assert.equal((await prisma.product.findUniqueOrThrow({ where: { id: productA.id } })).currentStock, 3);
 
     await assert.rejects(() =>
@@ -125,6 +174,10 @@ test('POS: open-session ownership, atomic stock, idempotency, tenant isolation a
       where: { productId: raceProduct.id, type: 'SALE' },
     }), 1);
     assert.equal(await prisma.posPayment.count({ where: { orderId: winner.value.id } }), 1);
+    assert.equal(await prisma.journalEntryHeader.count({
+      where: { tenantId: tenantA.id, sourceType: 'POS_ORDER', sourceId: winner.value.id },
+    }), 1);
+
 
     // Concurrent duplicate submission must never create two invoices or stock movements.
     // The client may retry the same key after a serialization conflict.
@@ -146,6 +199,10 @@ test('POS: open-session ownership, atomic stock, idempotency, tenant isolation a
     assert.equal((await prisma.product.findUniqueOrThrow({ where: { id: duplicateProduct.id } })).currentStock, 1);
     assert.equal(await prisma.stockMovement.count({ where: { productId: duplicateProduct.id, type: 'SALE' } }), 1);
     assert.equal(await prisma.posPayment.count({ where: { orderId: confirmed.id } }), 1);
+    assert.equal(await prisma.journalEntryHeader.count({
+      where: { tenantId: tenantA.id, sourceType: 'POS_ORDER', sourceId: confirmed.id },
+    }), 1);
+
 
     const actorA = { user: { userId: userA.id, tenantId: tenantA.id, role: 'ADMIN' } };
     const actorB = { user: { userId: userB.id, tenantId: tenantB.id, role: 'ADMIN' } };
