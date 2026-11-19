@@ -22,7 +22,7 @@ let server;
 let failureStage = 'SOURCE_CHECKSUM';
 const FAILURE_STAGES = new Set(['SOURCE_CHECKSUM', 'CONFIGURATION', 'CLIENT_INIT',
   'READ_ONLY_TRANSACTION', 'CONTEXT', 'TABLES', 'ENUMS', 'COLUMNS', 'CONSTRAINTS',
-  'UNIQUE_INDEXES', 'MIGRATIONS', 'HEALTH']);
+  'UNIQUE_INDEXES', 'ACCOUNTING_READINESS', 'MIGRATIONS', 'HEALTH']);
 
 function emitOnce(report) {
   if (emitted) return;
@@ -260,12 +260,41 @@ async function captureMetadata() {
       const migrationHistoryTruncated = migrationHistory.length > 1000;
       if (migrationHistoryTruncated) throw new Error('MIGRATION_HISTORY_TOO_LARGE');
       const expectedEntries = migrationHistory.filter((m) => m.migration_name === EXPECTED_MIGRATION);
+      // Additional release gate: aggregate counts only, never account identities,
+      // customer data, journal amounts, or user identifiers.
+      failureStage = 'ACCOUNTING_READINESS';
+      const [financialReadiness] = await tx.$queryRaw`
+        WITH active_tenants AS (
+          SELECT id, settings
+          FROM public.tenants WHERE status = 'ACTIVE'
+        ), required_roles(role, fallback_code) AS (
+          VALUES ('CASH','1110'), ('INVENTORY','1130'),
+                 ('VAT_PAYABLE','2110'), ('SALES_REVENUE','4100'), ('COGS','5600')
+        ), role_checks AS (
+          SELECT t.id AS tenant_id, r.role,
+            COALESCE(NULLIF(t.settings->'accounting'->'accountMapping'->>r.role, ''), r.fallback_code) AS code
+          FROM active_tenants t CROSS JOIN required_roles r
+        ), ready AS (
+          SELECT rc.tenant_id, COUNT(a.id) AS available
+          FROM role_checks rc LEFT JOIN public.chart_of_accounts a
+            ON a."tenantId"=rc.tenant_id AND a.code=rc.code AND a."isActive"=true
+          GROUP BY rc.tenant_id
+        )
+        SELECT
+          (SELECT COUNT(*)::integer FROM active_tenants) AS active_tenants,
+          (SELECT COUNT(*)::integer FROM ready WHERE available=5) AS all_required_accounts_ready,
+          (SELECT COUNT(*)::integer FROM ready WHERE available<5) AS missing_required_accounts,
+          (SELECT COUNT(*)::integer FROM public.products WHERE "isActive"=true AND "isService"=false AND "currentStock">0) AS in_stock_products,
+          (SELECT COUNT(*)::integer FROM public.pos_sessions WHERE status='OPEN') AS open_pos_sessions,
+          (SELECT COUNT(*)::integer FROM public.pos_orders) AS prior_pos_orders
+      `;
+      failureStage = 'MIGRATIONS';
       const runtimeSha = process.env.RENDER_GIT_COMMIT || '';
       return {
         report: 'POS_SCHEMA_PREFLIGHT', status: 'METADATA_CAPTURED', capturedAt: new Date().toISOString(),
         baselineSha: BASELINE_SHA, probeSha: /^[a-f0-9]{40}$/.test(runtimeSha) ? runtimeSha : null,
         expectedHost: EXPECTED_HOST,
-        context, tables, enums, columns, constraints, uniqueIndexes, allPosIndexes, posDefaults,
+        context, tables, enums, columns, constraints, uniqueIndexes, allPosIndexes, posDefaults, financialReadiness,
         expectedMigration: {
           name: EXPECTED_MIGRATION, expectedChecksum: EXPECTED_CHECKSUM, sourceChecksumVerified: true,
           recorded: expectedEntries.length > 0,
