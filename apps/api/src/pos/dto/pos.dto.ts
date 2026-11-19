@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsDecimal, IsInt, Min, IsArray, ValidateNested } from 'class-validator';
+import { IsString, IsOptional, IsDecimal, IsInt, Min, IsArray, ValidateNested, IsUUID, ArrayMinSize } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class PosOrderItemDto {
@@ -38,6 +38,9 @@ export class PosPaymentDto {
 }
 
 export class CreatePosOrderDto {
+  @IsUUID()
+  clientOrderId: string;
+
   @IsOptional()
   @IsString()
   customerName?: string;
@@ -47,6 +50,7 @@ export class CreatePosOrderDto {
   customerPhone?: string;
 
   @IsArray()
+  @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => PosOrderItemDto)
   items: PosOrderItemDto[];
