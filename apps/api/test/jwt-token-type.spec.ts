@@ -84,7 +84,7 @@ test('public auth requests do not inherit stale tenant context', () => {
   );
 
   assert.match(apiSource, /publicAuthRequest/);
-  assert.match(apiSource, /tenantSlug && !publicAuthRequest/);
+  assert.match(apiSource, /tenantSlug && getRole\(\) === 'SUPER_ADMIN' && !publicAuthRequest/);
 });
 
 test('web middleware requires an access token type and expiry', () => {
