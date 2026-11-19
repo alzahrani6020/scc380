@@ -1,0 +1,31 @@
+# Temporary diagnostic Blueprint on an isolated Git branch based on:
+# cb3f2d76537113833ea274547e495e413752772c
+# Apply as a NEW Blueprint in the verified workspace containing scc380-db.
+# No existing production service or database is declared or managed here.
+# Omitting branch deliberately follows this Blueprint's isolated branch.
+services:
+  - type: web
+    name: scc380-pos-preflight-20261119
+    runtime: node
+    region: frankfurt
+    plan: free
+    autoDeployTrigger: 'off'
+    buildCommand: |
+      set -eu
+      timeout --kill-after=10s 8m corepack pnpm install --frozen-lockfile --ignore-scripts --prod=false
+      timeout --kill-after=10s 3m env DATABASE_URL=postgresql://unused:unused@127.0.0.1:1/no_connection DIRECT_URL=postgresql://unused:unused@127.0.0.1:1/no_connection corepack pnpm --filter @scc/database exec prisma generate --schema prisma/schema.prisma
+    startCommand: node apps/api/scripts/pos-schema-preflight.cjs
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: '24'
+      - key: NODE_ENV
+        value: production
+      - key: PRISMA_HIDE_UPDATE_MESSAGE
+        value: '1'
+      - key: CHECKPOINT_DISABLE
+        value: '1'
+      - key: DATABASE_URL
+        fromDatabase:
+          name: scc380-db
+          property: connectionString
