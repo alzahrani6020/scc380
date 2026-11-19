@@ -216,6 +216,34 @@ async function captureMetadata() {
         ORDER BY c.relname, ic.relname
       `;
 
+      failureStage = 'UNIQUE_INDEXES';
+      const allPosIndexes = await tx.$queryRaw`
+        SELECT c.relname::text AS table_name, ic.relname::text AS index_name,
+          i.indisunique AS unique, i.indisvalid AS valid, i.indisready AS ready,
+          i.indpred IS NOT NULL AS partial, i.indexprs IS NOT NULL AS expression,
+          ARRAY(SELECT COALESCE(a.attname::text, '<expression>')
+            FROM pg_catalog.unnest(i.indkey::smallint[]) WITH ORDINALITY AS x(num, ord)
+            LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = x.num
+            WHERE x.ord <= i.indnkeyatts ORDER BY x.ord) AS key_columns
+        FROM pg_catalog.pg_index i
+        JOIN pg_catalog.pg_class c ON c.oid = i.indrelid
+        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+        JOIN pg_catalog.pg_class ic ON ic.oid = i.indexrelid
+        WHERE n.nspname = 'public' AND c.relname IN
+          ('pos_sessions','pos_orders','pos_order_items','pos_payments')
+        ORDER BY c.relname, ic.relname
+      `;
+      const posDefaults = await tx.$queryRaw`
+        SELECT c.relname::text AS table_name, a.attname::text AS column_name,
+          pg_catalog.pg_get_expr(d.adbin, d.adrelid) AS expression
+        FROM pg_catalog.pg_attrdef d
+        JOIN pg_catalog.pg_attribute a ON a.attrelid = d.adrelid AND a.attnum = d.adnum
+        JOIN pg_catalog.pg_class c ON c.oid = d.adrelid
+        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public' AND c.relname IN
+          ('pos_sessions','pos_orders','pos_order_items','pos_payments')
+        ORDER BY c.relname, a.attname
+      `;
       failureStage = 'MIGRATIONS';
       const migrationTable = tables.find((t) => t.table_name === '_prisma_migrations');
       let migrationHistory = [];
@@ -237,7 +265,7 @@ async function captureMetadata() {
         report: 'POS_SCHEMA_PREFLIGHT', status: 'METADATA_CAPTURED', capturedAt: new Date().toISOString(),
         baselineSha: BASELINE_SHA, probeSha: /^[a-f0-9]{40}$/.test(runtimeSha) ? runtimeSha : null,
         expectedHost: EXPECTED_HOST,
-        context, tables, enums, columns, constraints, uniqueIndexes,
+        context, tables, enums, columns, constraints, uniqueIndexes, allPosIndexes, posDefaults,
         expectedMigration: {
           name: EXPECTED_MIGRATION, expectedChecksum: EXPECTED_CHECKSUM, sourceChecksumVerified: true,
           recorded: expectedEntries.length > 0,
