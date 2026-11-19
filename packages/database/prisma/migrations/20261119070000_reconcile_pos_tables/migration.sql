@@ -130,7 +130,7 @@ BEGIN
         AND NOT i.indisprimary
     )
     SELECT count(*) INTO mismatch FROM
-      (SELECT * FROM required EXCEPT SELECT * FROM actual) missing;
+      (SELECT * FROM expected EXCEPT SELECT * FROM actual) missing;
     IF mismatch <> 0 THEN
       RAISE EXCEPTION 'POS_SCHEMA_PREFLIGHT_BLOCKED: required indexes missing or different';
     END IF;
@@ -164,7 +164,7 @@ BEGIN
       WHERE n.nspname='public' AND k.convalidated AND NOT k.condeferrable
     )
     SELECT count(*) INTO mismatch FROM
-      (SELECT * FROM expected EXCEPT SELECT * FROM actual) missing;
+      (SELECT * FROM required EXCEPT SELECT * FROM actual) missing;
     IF mismatch <> 0 THEN
       RAISE EXCEPTION 'POS_SCHEMA_PREFLIGHT_BLOCKED: required constraints missing';
     END IF;
