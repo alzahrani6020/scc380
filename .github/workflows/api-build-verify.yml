@@ -101,7 +101,16 @@ jobs:
           set -euo pipefail
           migration="packages/database/prisma/migrations/20261119070000_reconcile_pos_tables/migration.sql"
           # Existing matching schema: running the SQL again must not alter business data.
-          psql "$DIRECT_URL" -X -v ON_ERROR_STOP=1 -f "$migration"
+          if ! psql "$DIRECT_URL" -X -v ON_ERROR_STOP=1 -f "$migration"; then
+            psql "$DIRECT_URL" -X -A -F '|' -c "
+              SELECT c.relname, a.attname, pg_get_expr(d.adbin,d.adrelid)
+              FROM pg_attrdef d
+              JOIN pg_attribute a ON a.attrelid=d.adrelid AND a.attnum=d.adnum
+              JOIN pg_class c ON c.oid=d.adrelid
+              WHERE c.relname IN ('pos_sessions','pos_orders','pos_order_items','pos_payments')
+              ORDER BY c.relname,a.attname"
+            exit 1
+          fi
           echo "POS_MIGRATION_EXISTING_SCHEMA_PASS"
           # Simulate drift inside a transaction. An error must roll back the drop.
           if psql "$DIRECT_URL" -X -v ON_ERROR_STOP=1 \
