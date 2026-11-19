@@ -306,13 +306,22 @@ async function captureMetadata() {
         WHERE t.status='ACTIVE'
         ORDER BY t.id,r.role
       `;
+      // Read-only listing of the chart structure for the intended tenant.
+      // No balances, journal lines, banking data, users or personal information.
+      const bondsChartOfAccounts = await tx.$queryRaw`
+        SELECT code, name, type::text AS account_type, "isActive" AS is_active
+        FROM public.chart_of_accounts
+        WHERE "tenantId" = 'cmw8pnh2n000hro862kqigdop'
+        ORDER BY code
+        LIMIT 250
+      `;
       failureStage = 'MIGRATIONS';
       const runtimeSha = process.env.RENDER_GIT_COMMIT || '';
       return {
         report: 'POS_SCHEMA_PREFLIGHT', status: 'METADATA_CAPTURED', capturedAt: new Date().toISOString(),
         baselineSha: BASELINE_SHA, probeSha: /^[a-f0-9]{40}$/.test(runtimeSha) ? runtimeSha : null,
         expectedHost: EXPECTED_HOST,
-        context, tables, enums, columns, constraints, uniqueIndexes, allPosIndexes, posDefaults, financialReadiness, tenantAccountReadiness,
+        context, tables, enums, columns, constraints, uniqueIndexes, allPosIndexes, posDefaults, financialReadiness, tenantAccountReadiness, bondsChartOfAccounts,
         expectedMigration: {
           name: EXPECTED_MIGRATION, expectedChecksum: EXPECTED_CHECKSUM, sourceChecksumVerified: true,
           recorded: expectedEntries.length > 0,
