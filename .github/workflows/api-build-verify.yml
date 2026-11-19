@@ -99,6 +99,11 @@ jobs:
       - name: Run DB-backed CRM, HR and Accounting E2E
         run: pnpm --filter @scc/api test:db-e2e
 
+      - name: Verify POS atomic financial transaction and user preferences against PostgreSQL
+        env:
+          CRM_DB_E2E: '1'
+        run: pnpm --filter @scc/api exec tsx --test --test-concurrency=1 test/pos-atomic-db.e2e.spec.ts
+
       - name: Build API dependency graph
         run: pnpm turbo run build --filter=@scc/api...
 
