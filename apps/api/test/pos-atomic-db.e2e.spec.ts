@@ -104,6 +104,49 @@ test('POS: open-session ownership, atomic stock, idempotency, tenant isolation a
       pos.createOrder(dto(randomUUID(), [{ productId: productA.id, quantity: 4 }], '46.00') as any,
         userA.id, tenantA.id, 'ADMIN'), /Insufficient stock/);
 
+    // Two terminals racing for a single remaining unit: at most one sale may commit.
+    // A serialization conflict is an acceptable failure for the losing request.
+    const raceProduct = await prisma.product.create({ data: {
+      tenantId: tenantA.id, name: 'Race', sku: 'POS-RACE-'+unique,
+      salePrice: 10, taxRate: 15, currentStock: 1,
+    } });
+    const raceKeys = [randomUUID(), randomUUID()];
+    const race = await Promise.allSettled(raceKeys.map(id =>
+      pos.createOrder(dto(id, [{ productId: raceProduct.id, quantity: 1 }], '11.50') as any,
+        userA.id, tenantA.id, 'ADMIN')));
+    const winners = race.filter(r => r.status === 'fulfilled');
+    assert.equal(winners.length, 1, 'only one concurrent sale may commit');
+    const winner = winners[0] as PromiseFulfilledResult<any>;
+    assert.equal((await prisma.product.findUniqueOrThrow({ where: { id: raceProduct.id } })).currentStock, 0);
+    assert.equal(await prisma.posOrder.count({
+      where: { tenantId: tenantA.id, orderNumber: { in: raceKeys.map(id => 'POS-'+id) } },
+    }), 1);
+    assert.equal(await prisma.stockMovement.count({
+      where: { productId: raceProduct.id, type: 'SALE' },
+    }), 1);
+    assert.equal(await prisma.posPayment.count({ where: { orderId: winner.value.id } }), 1);
+
+    // Concurrent duplicate submission must never create two invoices or stock movements.
+    // The client may retry the same key after a serialization conflict.
+    const duplicateProduct = await prisma.product.create({ data: {
+      tenantId: tenantA.id, name: 'Duplicate', sku: 'POS-DUP-'+unique,
+      salePrice: 10, taxRate: 15, currentStock: 2,
+    } });
+    const duplicateKey = randomUUID();
+    const duplicateDto = dto(duplicateKey, [{ productId: duplicateProduct.id, quantity: 1 }], '11.50');
+    const attempts = await Promise.allSettled([0, 1].map(() =>
+      pos.createOrder(duplicateDto as any, userA.id, tenantA.id, 'ADMIN')));
+    assert.ok(attempts.some(r => r.status === 'fulfilled'), 'at least one duplicate request must commit');
+    const accepted = attempts.find(r => r.status === 'fulfilled') as PromiseFulfilledResult<any>;
+    const confirmed = await pos.createOrder(duplicateDto as any, userA.id, tenantA.id, 'ADMIN');
+    assert.equal(confirmed.id, accepted.value.id, 'retry must return original order');
+    assert.equal(await prisma.posOrder.count({
+      where: { tenantId: tenantA.id, orderNumber: 'POS-'+duplicateKey },
+    }), 1);
+    assert.equal((await prisma.product.findUniqueOrThrow({ where: { id: duplicateProduct.id } })).currentStock, 1);
+    assert.equal(await prisma.stockMovement.count({ where: { productId: duplicateProduct.id, type: 'SALE' } }), 1);
+    assert.equal(await prisma.posPayment.count({ where: { orderId: confirmed.id } }), 1);
+
     const actorA = { user: { userId: userA.id, tenantId: tenantA.id, role: 'ADMIN' } };
     const actorB = { user: { userId: userB.id, tenantId: tenantB.id, role: 'ADMIN' } };
     assert.equal((await users.getPreferences(actorA)).language, 'ar');
