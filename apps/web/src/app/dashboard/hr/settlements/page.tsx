@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import api from '@/lib/api';
+import EmployeePicker from '@/components/hr/EmployeePicker';
 import { Calculator, CheckCircle2, ReceiptText, WalletCards, X, Landmark } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -23,7 +24,6 @@ const reasons = [
 
 export default function EndServiceSettlementsPage() {
   const [items, setItems] = useState<any[]>([]);
-  const [employees, setEmployees] = useState<any[]>([]);
   const [preview, setPreview] = useState<any>(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -32,21 +32,17 @@ export default function EndServiceSettlementsPage() {
   const [accountingData, setAccountingData] = useState<any>({});
   const [paymentItem, setPaymentItem] = useState<any>(null);
   const [paymentData, setPaymentData] = useState<any>({});
+  const [paymentRecordItem,setPaymentRecordItem] = useState<any>(null);
+  const [paymentRecord,setPaymentRecord] = useState({paymentReference:'',paymentMethod:'BANK_TRANSFER'});
   const [form, setForm] = useState<any>({
     reason: 'RESIGNATION', initiatedBy: 'EMPLOYEE',
     lastWorkingDate: new Date().toISOString().split('T')[0],
     deductOutstandingLoans: true,
   });
 
-  const load = () => Promise.all([
-    api.get('/hr/end-service-settlements').then(r => setItems(r.data.data || [])),
-    api.get('/hr/employees?limit=200').then(r => setEmployees(r.data.data || [])),
-  ]).catch(console.error);
+  const load = () => api.get('/hr/end-service-settlements')
+    .then(r=>setItems(r.data.data||[])).catch(console.error);
   useEffect(() => { load(); }, []);
-
-  const employeeOptions = useMemo(() => employees.map(e => ({
-    value: e.id, label: `${e.firstName} ${e.lastName} · ${e.employeeCode}`
-  })), [employees]);
 
   const payload = () => ({
     employeeId: form.employeeId,
@@ -81,11 +77,31 @@ export default function EndServiceSettlementsPage() {
       alert(err?.response?.data?.message || 'تعذر إنشاء المخالصة');
     } finally { setBusy(false); }
   };
-  const transition = async (id: string, action: 'approve'|'pay') => {
-    const msg = action === 'approve' ? 'اعتماد المخالصة وقفل مبالغها؟' : 'تأكيد دفع المخالصة وإنهاء خدمة الموظف وتسوية القرض المحسوم؟';
-    if (!confirm(msg)) return;
-    await api.post(`/hr/end-service-settlements/${id}/${action}`, {});
-    await load();
+  const transition = async (id:string) => {
+    if (!confirm('اعتماد المخالصة وقفل مبالغها؟')) return;
+    setBusy(true);
+    try {
+      await api.post(`/hr/end-service-settlements/${id}/approve`,{});
+      await load();
+    } catch(e:any) { alert(e.response?.data?.message||'تعذر اعتماد المخالصة'); }
+    finally { setBusy(false); }
+  };
+
+  const recordSettlementPayment = async (e:React.FormEvent) => {
+    e.preventDefault();
+    if(!paymentRecordItem||paymentRecord.paymentReference.trim().length<6)return;
+    if(!confirm('أؤكد توفر إثبات دفع حقيقي مطابق لمرجع العملية المدخل. تسجيل الصرف لا ينهي خدمة الموظف.'))return;
+    setBusy(true);
+    try {
+      await api.post(`/hr/end-service-settlements/${paymentRecordItem.id}/pay`,{
+        paymentReference:paymentRecord.paymentReference.trim(),
+        paymentMethod:paymentRecord.paymentMethod,
+      });
+      setPaymentRecordItem(null);
+      setPaymentRecord({paymentReference:'',paymentMethod:'BANK_TRANSFER'});
+      await load();
+    } catch(e:any){ alert(e.response?.data?.message||'تعذر توثيق دفع المخالصة'); }
+    finally { setBusy(false); }
   };
 
   const loadAccounts = async () => {
@@ -190,8 +206,11 @@ export default function EndServiceSettlementsPage() {
               </div>
               <div className="flex items-center gap-2">
                 <span className="px-2 py-1 rounded-full bg-slate-800 text-slate-300 text-xs">{item.status}</span>
-                {item.status === 'DRAFT' && <Button size="sm" onClick={() => transition(item.id,'approve')}><CheckCircle2 className="h-3 w-3" /> اعتماد</Button>}
-                {item.status === 'APPROVED' && <Button size="sm" onClick={() => transition(item.id,'pay')}><WalletCards className="h-3 w-3" /> دفع وإنهاء</Button>}
+                {item.status === 'DRAFT' && <Button size="sm" onClick={() => transition(item.id)}><CheckCircle2 className="h-3 w-3" /> اعتماد</Button>}
+                {item.status === 'APPROVED' && <Button size="sm" onClick={() => {
+                  setPaymentRecordItem(item);
+                  setPaymentRecord({paymentReference:'',paymentMethod:'BANK_TRANSFER'});
+                }}><WalletCards className="h-3 w-3" /> توثيق السداد</Button>}
                 {['APPROVED','PAID'].includes(item.status) && (
                   <Button size="sm" variant="ghost" onClick={() => openAccounting(item)} isLoading={busy}>
                     <Landmark className="h-3 w-3" /> ترحيل الاستحقاق
@@ -209,7 +228,8 @@ export default function EndServiceSettlementsPage() {
 
       <Modal isOpen={open} onClose={() => { setOpen(false); setPreview(null); }} title="مخالصة نهاية خدمة" size="xl">
         <div className="space-y-4">
-          <Select label="الموظف" required options={employeeOptions} value={form.employeeId || ''} onChange={e => { setForm({ ...form, employeeId: e.target.value }); setPreview(null); }} />
+          <EmployeePicker required value={form.employeeId||''}
+            onChange={employeeId=>{setForm((prev:any)=>({...prev,employeeId}));setPreview(null);}}/>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Select label="سبب انتهاء العلاقة" options={reasons} value={form.reason} onChange={e => { setForm({ ...form, reason: e.target.value }); setPreview(null); }} />
             <Select label="من بادر بالإنهاء" options={[{value:'EMPLOYEE',label:'الموظف'},{value:'EMPLOYER',label:'صاحب العمل'},{value:'MUTUAL',label:'اتفاق مشترك'}]} value={form.initiatedBy} onChange={e => setForm({ ...form, initiatedBy: e.target.value })} />
@@ -326,6 +346,29 @@ export default function EndServiceSettlementsPage() {
           <div className="flex justify-end gap-3">
             <Button type="button" variant="ghost" onClick={() => setAccountingItem(null)}><X className="h-4 w-4" /> إلغاء</Button>
             <Button type="submit" isLoading={busy}><Landmark className="h-4 w-4" /> ترحيل الاستحقاق</Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal isOpen={!!paymentRecordItem} onClose={() => setPaymentRecordItem(null)} title="توثيق سداد مخالصة نهاية الخدمة" size="lg">
+        <form onSubmit={recordSettlementPayment} className="space-y-4">
+          <div className="rounded-lg border border-amber-500/40 p-3 text-sm text-amber-200">
+            يتطلب تسجيل السداد مرجع عملية دفع حقيقية. هذا إجراء توثيقي وليس تنفيذ تحويل بنكي أو إنهاء خدمة الموظف.
+          </div>
+          <p className="text-sm text-slate-300">صافي المخالصة: {Number(paymentRecordItem?.netSettlement||0).toLocaleString('ar-SA')} ر.س</p>
+          <Input label="مرجع الدفع البنكي أو رقم سند الصرف" required
+            value={paymentRecord.paymentReference} maxLength={160}
+            onChange={e=>setPaymentRecord({...paymentRecord,paymentReference:e.target.value})}/>
+          <Select label="طريقة الدفع" required options={[
+            {value:'BANK_TRANSFER',label:'تحويل بنكي'},
+            {value:'CASH',label:'نقدًا'},
+            {value:'CHEQUE',label:'شيك'},
+            {value:'OTHER',label:'طريقة أخرى موثقة'},
+          ]} value={paymentRecord.paymentMethod}
+            onChange={e=>setPaymentRecord({...paymentRecord,paymentMethod:e.target.value})}/>
+          <div className="flex justify-end gap-3">
+            <Button type="button" variant="ghost" onClick={()=>setPaymentRecordItem(null)}>إلغاء</Button>
+            <Button type="submit" isLoading={busy} disabled={paymentRecord.paymentReference.trim().length<6}>تسجيل مرجع السداد</Button>
           </div>
         </form>
       </Modal>

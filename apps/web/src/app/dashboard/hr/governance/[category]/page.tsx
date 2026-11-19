@@ -2,8 +2,21 @@
 
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import api from '@/lib/api';
+import AsyncCombobox from '@/components/ui/AsyncCombobox';
+
+const WORKFLOW_ACTIONS: Record<string, {code:string;label:string}[]> = {
+  VIOLATIONS: [{code:'REPORT_DETAIL',label:'تفاصيل البلاغ'},{code:'REVIEW_FINDING',label:'نتيجة المراجعة'}],
+  INVESTIGATIONS: [{code:'INTERVIEW',label:'محضر استماع'},{code:'FACT_FINDING',label:'نتيجة التحقيق'},{code:'CUSTODY_LOSS_REVIEW',label:'تقييم عهدة مفقودة أو متضررة'}],
+  EVIDENCE: [{code:'EVIDENCE_REVIEW',label:'فحص دليل'},{code:'CHAIN_OF_CUSTODY',label:'سلسلة حيازة الدليل'}],
+  DISCIPLINE: [{code:'NOTICE_PROPOSED',label:'إشعار مقترح'},{code:'FINAL_REVIEW',label:'مراجعة مستقلة'},{code:'APPEAL_REVIEWED',label:'مراجعة التظلم'},{code:'DISCIPLINE_DISPOSITION',label:'إغلاق المراجعة دون جزاء'}],
+  CONFLICTS: [{code:'DISCLOSURE',label:'إفصاح'},{code:'MITIGATION_PLAN',label:'خطة معالجة'},{code:'MITIGATION_REVIEW',label:'تقييم المعالجة'}],
+  CLAIMS: [{code:'CLAIM_PROPOSED',label:'مطالبة مقترحة'},{code:'CLAIM_REVIEWED',label:'مراجعة مستقلة'},{code:'SETTLEMENT_OFFER',label:'عرض تسوية'},{code:'CLAIM_DISPOSITION',label:'توثيق مآل المطالبة'}],
+  LEGAL: [{code:'CASE_REFERENCE',label:'مرجع القضية'},{code:'HEARING',label:'جلسة قضائية'},{code:'JUDGMENT_RECORDED',label:'القرار القضائي'},{code:'CASE_DISPOSITION',label:'توثيق مآل القضية'}],
+  OFFBOARDING: [{code:'HANDOVER',label:'تسليم الأعمال'},{code:'ASSET_RETURN_CHECK',label:'فحص العهد'},{code:'ACCESS_REVOKED_CONFIRMED',label:'مراجعة صلاحيات الوصول'}],
+  COMPLIANCE: [{code:'CONTROL_FINDING',label:'ملاحظة رقابية'},{code:'CORRECTIVE_ACTION',label:'إجراء تصحيحي'},{code:'CONTROL_VERIFIED',label:'تحقق من المعالجة'}],
+};
 
 const SPACES: Record<string, {label: string;category:string}> = {
   violations: {label:'البلاغات والمخالفات',category:'VIOLATIONS'},
@@ -22,11 +35,25 @@ export default function GovernanceWorkspace() {
   const key = typeof params.category === 'string' ? params.category : '';
   const space = SPACES[key];
   const [records,setRecords] = useState<any[]>([]);
-  const [employees,setEmployees] = useState<any[]>([]);
+  const [page,setPage] = useState(1);
+  const [total,setTotal] = useState(0);
+  const [searchInput,setSearchInput]=useState('');
+  const [appliedSearch,setAppliedSearch]=useState('');
+  const [statusFilter,setStatusFilter]=useState('');
+  const loadSequence=useRef(0);
   const [contracts,setContracts] = useState<any[]>([]);
   const [selected,setSelected] = useState<any>(null);
+  const [related,setRelated] = useState<any>(null);
   const [form,setForm] = useState({ employeeId:'',contractId:'',title:'',description:'',priority:'NORMAL' });
   const [note,setNote] = useState('');
+  const [investigators,setInvestigators] = useState<any[]>([]);
+  const [investigatorUserId,setInvestigatorUserId] = useState('');
+  const [assignmentRationale,setAssignmentRationale] = useState('');
+  const [actionCode,setActionCode] = useState('');
+  const [actionNarrative,setActionNarrative] = useState('');
+  const [actionAmount,setActionAmount] = useState('');
+  const [actionDate,setActionDate] = useState('');
+  const [custodyAssignmentId,setCustodyAssignmentId] = useState('');
   const [evidence,setEvidence] = useState<any[]>([]);
   const [file,setFile] = useState<File|null>(null);
   const [evidenceDescription,setEvidenceDescription] = useState('');
@@ -35,41 +62,77 @@ export default function GovernanceWorkspace() {
   const [error,setError] = useState('');
   const [busy,setBusy] = useState(true);
 
+  const searchEmployees=useCallback(async (search:string, signal:AbortSignal)=>{
+    const r=await api.get('/hr/employees?search='+encodeURIComponent(search)+'&page=1&limit=25',{signal});
+    return (r.data?.data||[]).map((e:any)=>({
+      value:e.id,label:e.employeeCode+' — '+e.firstName+' '+e.lastName,
+    }));
+  },[]);
+  const resolveEmployee=useCallback(async (value:string, signal:AbortSignal)=>{
+    const r=await api.get('/hr/employees/'+encodeURIComponent(value),{signal});
+    const e=r.data;
+    return e?{value:e.id,label:e.employeeCode+' — '+e.firstName+' '+e.lastName}:null;
+  },[]);
   const load = async () => {
     if (!space) return;
-    setBusy(true); setError('');
+    const seq=++loadSequence.current;
+    setBusy(true);setError('');
     try {
-      const [cases,staff] = await Promise.all([
-        api.get('/hr/governance?category='+encodeURIComponent(space.category)),
-        api.get('/hr/employees?limit=200'),
-      ]);
+      const params=new URLSearchParams({category:space.category,page:String(page),limit:'25'});
+      if(appliedSearch)params.set('search',appliedSearch);
+      if(statusFilter)params.set('status',statusFilter);
+      const cases=await api.get('/hr/governance?'+params.toString());
+      if(seq!==loadSequence.current)return;
       setRecords(cases.data?.data || []);
-      setEmployees(staff.data?.data || []);
-    } catch(e:any) { setError(e.response?.data?.message || 'تعذر تحميل البيانات أو لا توجد صلاحية'); }
-    finally { setBusy(false); }
+      setTotal(cases.data?.count || 0);
+    }catch(e:any){
+      if(seq===loadSequence.current)setError(e.response?.data?.message || 'تعذر تحميل البيانات أو لا توجد صلاحية');
+    }finally{
+      if(seq===loadSequence.current)setBusy(false);
+    }
   };
-  useEffect(()=>{setSelected(null);void load();},[key]);
+  useEffect(()=>{
+    setSelected(null);setPage(1);setSearchInput('');setAppliedSearch('');setStatusFilter('');
+    setInvestigators([]);setInvestigatorUserId('');setAssignmentRationale('');
+    if(space?.category==='INVESTIGATIONS') {
+      api.get('/users?role=ADMIN&status=ACTIVE')
+        .then(r=>setInvestigators(r.data?.data||[]))
+        .catch(()=>setError('تعذر جلب المستخدمين المؤهلين لتكليف التحقيق'));
+    }
+  },[key]);
+  useEffect(()=>{void load();},[key,page,appliedSearch,statusFilter]);
   useEffect(()=>{
     setContracts([]);
     if(!form.employeeId) return;
-    api.get('/hr/contracts?employeeId='+encodeURIComponent(form.employeeId))
-      .then(r=>setContracts(r.data?.data||[]))
-      .catch(()=>setContracts([]));
+    const controller = new AbortController();
+    let active = true;
+    api.get('/hr/contracts?employeeId='+encodeURIComponent(form.employeeId),{signal:controller.signal})
+      .then(r=>{if(active)setContracts(r.data?.data||[]);})
+      .catch(()=>{if(active)setContracts([]);});
+    return ()=>{active=false;controller.abort();};
   },[form.employeeId]);
 
   const submit = async (e:React.FormEvent) => {
-    e.preventDefault();setSaving(true);setError('');
+    e.preventDefault();
+    if(!form.employeeId){setError('يجب اختيار الموظف قبل حفظ القضية');return;}
+    setSaving(true);setError('');
     try {
       await api.post('/hr/governance',{...form,contractId:form.contractId||undefined,category:space.category});
       setForm({employeeId:'',contractId:'',title:'',description:'',priority:'NORMAL'});
-      await load();
+      if(page!==1)setPage(1);
+      else await load();
     } catch(e:any){setError(e.response?.data?.message||'تعذر حفظ القضية');}
     finally{setSaving(false);}
   };
   const openCase=async(id:string)=>{
     try{
-      const [r,files]=await Promise.all([api.get('/hr/governance/'+id),api.get('/hr/governance/'+id+'/evidence')]);
-      setSelected(r.data);setEvidence(files.data||[]);setResolution('');setNote('');setFile(null);
+      const [r,files,linked]=await Promise.all([
+        api.get('/hr/governance/'+id),
+        api.get('/hr/governance/'+id+'/evidence'),
+        api.get('/hr/governance/'+id+'/context'),
+      ]);
+      setRelated(linked.data);setSelected(r.data);setInvestigatorUserId(r.data?.assignedToId||'');setEvidence(files.data||[]);setResolution('');setNote('');setFile(null);
+      setActionCode('');setActionNarrative('');setActionAmount('');setActionDate('');setCustodyAssignmentId('');
     }
     catch(e:any){setError(e.response?.data?.message||'تعذر فتح القضية');}
   };
@@ -103,6 +166,32 @@ export default function GovernanceWorkspace() {
       URL.revokeObjectURL(url);
     }catch(e:any){setError(e.response?.data?.message||'تعذر تنزيل الدليل');}
   };
+  const assignInvestigator=async()=>{
+    if(!selected||!investigatorUserId||assignmentRationale.trim().length<10)return;
+    setSaving(true);setError('');
+    try {
+      const r=await api.post('/hr/governance/'+selected.id+'/assign-investigator',{
+        investigatorUserId,rationale:assignmentRationale.trim(),
+      });
+      setSelected(r.data);setAssignmentRationale('');
+      await load();
+    }catch(e:any){setError(e.response?.data?.message||'تعذر اعتماد تكليف المحقق');}
+    finally{setSaving(false);}
+  };
+  const addWorkflowAction=async()=>{
+    if(!selected || !actionCode || actionNarrative.trim().length < 10) return;
+    setSaving(true);setError('');
+    try {
+      const body:any={code:actionCode,narrative:actionNarrative.trim()};
+      if(actionAmount.trim())body.amount=Number(actionAmount);
+      if(actionDate)body.dueDate=actionDate;
+      if(actionCode==='CUSTODY_LOSS_REVIEW')body.custodyAssignmentId=custodyAssignmentId;
+      const r=await api.post('/hr/governance/'+selected.id+'/actions',body);
+      setSelected(r.data);setActionCode('');setActionNarrative('');setActionAmount('');setActionDate('');setCustodyAssignmentId('');
+      await load();
+    }catch(e:any){setError(e.response?.data?.message||'تعذر حفظ الإجراء المتخصص');}
+    finally{setSaving(false);}
+  };
   const addNote=async()=>{
     if(!selected||!note.trim())return;
     setSaving(true);try{
@@ -134,12 +223,11 @@ export default function GovernanceWorkspace() {
     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
       <form onSubmit={submit} className="scc-card space-y-3">
         <h2 className="font-semibold text-white">فتح ملف جديد</h2>
-        <label className="block text-sm text-slate-300">الموظف
-          <select required className={input} value={form.employeeId} onChange={e=>setForm({...form,employeeId:e.target.value})}>
-            <option value="">اختر الموظف</option>
-            {employees.map(x=><option key={x.id} value={x.id}>{x.employeeCode} — {x.firstName} {x.lastName}</option>)}
-          </select>
-        </label>
+        <AsyncCombobox label="الموظف" required
+          value={form.employeeId} loadOptions={searchEmployees} resolveValue={resolveEmployee}
+          placeholder="اختر الموظف" searchPlaceholder="ابحث بالاسم أو الرقم الوظيفي"
+          onChange={value=>setForm(prev=>({...prev,employeeId:value,contractId:''}))}
+        />
         <label className="block text-sm text-slate-300">العقد المرتبط (اختياري)
           <select className={input} value={form.contractId} onChange={e=>setForm({...form,contractId:e.target.value})}>
             <option value="">دون عقد محدد</option>
@@ -161,6 +249,25 @@ export default function GovernanceWorkspace() {
       </form>
       <section className="scc-card space-y-3">
         <h2 className="text-white font-semibold">ملفات {space.label}</h2>
+        <form className="flex flex-wrap gap-2" onSubmit={e=>{
+          e.preventDefault();
+          setPage(1);
+          setAppliedSearch(searchInput.trim());
+        }}>
+          <input className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-900 p-2 text-white text-sm"
+            value={searchInput} maxLength={100} onChange={e=>setSearchInput(e.target.value)}
+            placeholder="ابحث في عنوان القضية أو وصفها"/>
+          <button type="submit" className="rounded-lg border border-slate-600 px-3 py-2 text-white">بحث</button>
+        </form>
+        <label className="block text-sm text-slate-300">حالة القضية
+          <select className={input} value={statusFilter} onChange={e=>{setStatusFilter(e.target.value);setPage(1);}}>
+            <option value="">جميع الحالات</option>
+            <option value="OPEN">مفتوحة</option>
+            <option value="IN_REVIEW">قيد المراجعة</option>
+            <option value="RESOLVED">تمت المراجعة</option>
+            <option value="CLOSED">مغلقة</option>
+          </select>
+        </label>
         {busy&&<p className="text-slate-400">تحميل...</p>}
         {!busy&&records.length===0&&<p className="text-slate-400">لا توجد ملفات مسجلة.</p>}
         {records.map(item=><button type="button" onClick={()=>openCase(item.id)} key={item.id}
@@ -168,6 +275,15 @@ export default function GovernanceWorkspace() {
           <span className="block font-semibold">{item.title}</span>
           <span className="text-xs text-slate-400">{item.status} · {item.priority} · {new Date(item.createdAt).toLocaleDateString('ar-SA')}</span>
         </button>)}
+        <div className="flex items-center justify-between gap-2 text-sm text-slate-300 pt-2">
+          <button type="button" disabled={busy||page<=1}
+            onClick={()=>setPage(v=>Math.max(1,v-1))}
+            className="rounded-lg border border-slate-600 px-3 py-2 disabled:opacity-40">السابق</button>
+          <span>الصفحة {page} من {Math.max(1,Math.ceil(total/25))} · إجمالي الملفات {total}</span>
+          <button type="button" disabled={busy||page*25>=total}
+            onClick={()=>setPage(v=>v+1)}
+            className="rounded-lg border border-slate-600 px-3 py-2 disabled:opacity-40">التالي</button>
+        </div>
       </section>
     </div>
     {selected&&<section className="scc-card space-y-3">
@@ -175,6 +291,26 @@ export default function GovernanceWorkspace() {
       <p className="text-slate-300 whitespace-pre-wrap">{selected.description}</p>
       <p className="text-xs text-slate-400">الحالة: {selected.status} · رقم الملف: {selected.id} · الموظف: {selected.employeeId}</p>
       <div className="flex flex-wrap gap-3 text-sm text-primary-400"><Link href={'/dashboard/hr/employees/'+selected.employeeId}>ملف الموظف</Link><Link href="/dashboard/hr/contracts">العقود</Link><Link href="/dashboard/hr/assets">العهد</Link><Link href="/dashboard/hr/settlements">المخالصات</Link></div>
+      {related&&<section className="rounded-lg border border-slate-700 p-3 space-y-2">
+        <h3 className="text-white font-semibold">الربط الحي بمساحات عمل الموظف</h3>
+        <p className="text-sm text-slate-300">ملف الموظف: {related.employee?.employeeCode} — {related.employee?.firstName} {related.employee?.lastName} ({related.employee?.status})</p>
+        <p className="text-sm text-slate-300">العقود: {related.contracts?.length||0} · العهد المسجلة: {related.custody?.length||0} · المخالصات: {related.settlements?.length||0} · حالات الانضمام والمغادرة: {related.lifecycle?.length||0}</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          {(related.contracts||[]).map((c:any)=><div key={c.id} className="text-sm text-slate-300">
+            عقد: {c.contractNumber} — {c.status} {c.id===related.linkedContractId?'(مرتبط بالقضية)':''}
+          </div>)}
+          {(related.custody||[]).map((a:any)=><div key={a.id} className="text-sm text-slate-300">
+            عهدة: {a.asset?.name} — {a.status}
+          </div>)}
+          {(related.settlements||[]).map((p:any)=><div key={p.id} className="text-sm text-slate-300">
+            مخالصة: {p.status}
+          </div>)}
+          {(related.lifecycle||[]).map((p:any)=><div key={p.id} className="text-sm text-slate-300">
+            {p.type==='OFFBOARDING'?'مغادرة':'انضمام'} — {p.status}
+          </div>)}
+        </div>
+        <p className="text-xs text-slate-500">البيانات مرجعية من النظام وليست اعتمادًا أو تنفيذًا ماليًا؛ قوائم الربط محددة بعدد سجلات.</p>
+      </section>}
       <div className="space-y-2"><h3 className="text-white font-semibold">سجل الإجراءات</h3>
         {(selected.events||[]).map((event:any)=><div key={event.id} className="border-t border-slate-700 p-2 text-slate-300 text-sm">
           <div>{event.action} — {event.details}</div>
@@ -200,6 +336,57 @@ export default function GovernanceWorkspace() {
           <button type="button" onClick={uploadEvidence} disabled={saving||!file} className="rounded-lg border border-slate-600 px-3 py-2 text-white disabled:opacity-50">رفع وحفظ الدليل</button>
         </>}
       </section>
+      {space.category==='INVESTIGATIONS'&&selected.status!=='CLOSED'&&<section className="rounded-lg border border-slate-700 p-3 space-y-3">
+        <h3 className="font-semibold text-white">تكليف المحقق المسؤول</h3>
+        <label className="block text-sm text-slate-300">المحقق من حسابات المنشأة
+          <select className={input} value={investigatorUserId} onChange={e=>setInvestigatorUserId(e.target.value)}>
+            <option value="">اختر المستخدم</option>
+            {investigators.map(u=><option key={u.id} value={u.id}>{u.firstName} {u.lastName} — {u.email}</option>)}
+          </select>
+        </label>
+        <label className="block text-sm text-slate-300">مبرر التكليف
+          <textarea className={input} maxLength={1000} value={assignmentRationale}
+            onChange={e=>setAssignmentRationale(e.target.value)} rows={2}/>
+        </label>
+        <button type="button" onClick={assignInvestigator} disabled={saving||!investigatorUserId||assignmentRationale.trim().length<10}
+          className="rounded-lg border border-primary-500 px-3 py-2 text-white disabled:opacity-50">تسجيل تكليف المحقق</button>
+        <p className="text-xs text-slate-400">المحقق المكلّف وحده يستطيع تسجيل جلسات الاستماع ونتائج التحقيق.</p>
+      </section>}
+      {selected.status!=='CLOSED'&&<section className="rounded-lg border border-slate-700 p-3 space-y-3">
+        <h3 className="font-semibold text-white">الإجراءات المتخصصة — {space.label}</h3>
+        <label className="block text-sm text-slate-300">نوع الإجراء
+          <select value={actionCode} onChange={e=>setActionCode(e.target.value)} className={input}>
+            <option value="">اختر نوع الإجراء</option>
+            {(WORKFLOW_ACTIONS[space.category]||[]).map(item=><option key={item.code} value={item.code}>{item.label}</option>)}
+          </select>
+        </label>
+        {actionCode==='CUSTODY_LOSS_REVIEW'&&<label className="block text-sm text-slate-300">
+          العهدة المطلوب تقييمها
+          <select className={input} value={custodyAssignmentId}
+            onChange={e=>setCustodyAssignmentId(e.target.value)}>
+            <option value="">اختر العهدة النشطة</option>
+            {(related?.custody||[]).filter((a:any)=>a.status==='ACTIVE').map((a:any)=>
+              <option key={a.id} value={a.id}>{a.asset?.name||a.id} · {a.id.slice(-8)}</option>)}
+          </select>
+        </label>}
+        <label className="block text-sm text-slate-300">المحضر أو التفاصيل
+          <textarea value={actionNarrative} maxLength={4000} minLength={10}
+            onChange={e=>setActionNarrative(e.target.value)} rows={4} className={input}/>
+        </label>
+        {(space.category==='CLAIMS'||space.category==='LEGAL')&&<label className="block text-sm text-slate-300">{actionCode==='SETTLEMENT_OFFER'?'مبلغ عرض التسوية (إلزامي، لا ينفذ خصمًا)':'المبلغ المرجعي (اختياري، لا يترتب عليه خصم)'}
+          <input type="number" min="0" max="1000000000" step="0.01" value={actionAmount}
+            onChange={e=>setActionAmount(e.target.value)} className={input}/>
+        </label>}
+        {(space.category==='LEGAL'||space.category==='OFFBOARDING'||space.category==='COMPLIANCE')&&
+          <label className="block text-sm text-slate-300">تاريخ مرتبط بالإجراء (اختياري)
+            <input type="date" value={actionDate} onChange={e=>setActionDate(e.target.value)} className={input}/>
+          </label>}
+        <button type="button" onClick={addWorkflowAction} disabled={saving||!actionCode||actionNarrative.trim().length<10||
+          (actionCode==='SETTLEMENT_OFFER'&&!actionAmount.trim())||
+          (actionCode==='CUSTODY_LOSS_REVIEW'&&!custodyAssignmentId)}
+          className="rounded-lg border border-primary-500 px-3 py-2 text-white disabled:opacity-50">حفظ الإجراء في سجل القضية</button>
+        <p className="text-xs text-slate-400">يُسجل الإجراء باسم المستخدم، دون تنفيذ اقتطاع أو جزاء أو دفع تلقائي.</p>
+      </section>}
       {selected.status!=='CLOSED'&&<>
         <label className="block text-slate-300 text-sm">إضافة إفادة أو إجراء
           <textarea className={input} rows={3} value={note} onChange={e=>setNote(e.target.value)}/>

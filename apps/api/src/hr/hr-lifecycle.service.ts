@@ -72,14 +72,21 @@ export class HrLifecycleService {
     if (!lifecycle) throw new NotFoundException('HR lifecycle case not found');
     if (['COMPLETED', 'CANCELLED'].includes(lifecycle.status)) throw new ConflictException('Lifecycle case is closed');
     await this.assertAssignedUser(tenantId, dto.assignedToId);
-    const max = await prisma.hrLifecycleTask.aggregate({ where: { caseId }, _max: { order: true } });
-    return prisma.hrLifecycleTask.create({
-      data: {
-        tenantId, caseId, title: dto.title, description: dto.description || null,
-        assignedToId: dto.assignedToId || null, dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
-        order: dto.order ?? ((max._max.order || 0) + 1),
-      },
-    });
+    return prisma.$transaction(async tx => {
+      const claimed = await tx.hrLifecycleCase.updateMany({
+        where: { tenantId, id: caseId, status: { in: ['OPEN', 'IN_PROGRESS'] } },
+        data: { updatedAt: new Date() },
+      });
+      if (claimed.count !== 1) throw new ConflictException('Lifecycle case is closed');
+      const max = await tx.hrLifecycleTask.aggregate({ where: { tenantId, caseId }, _max: { order: true } });
+      return tx.hrLifecycleTask.create({
+        data: {
+          tenantId, caseId, title: dto.title, description: dto.description || null,
+          assignedToId: dto.assignedToId || null, dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
+          order: dto.order ?? ((max._max.order || 0) + 1),
+        },
+      });
+    }, { isolationLevel: 'Serializable' });
   }
 
   async updateTask(req: any, caseId: string, taskId: string, dto: any) {
@@ -90,6 +97,9 @@ export class HrLifecycleService {
     const task = await prisma.hrLifecycleTask.findFirst({ where: { ...tenantWhere(tenantId), id: taskId, caseId } });
     if (!task) throw new NotFoundException('Lifecycle task not found');
     if (dto.status && !TASK_STATUSES.has(dto.status)) throw new BadRequestException('Unsupported task status');
+    if(lifecycle.type==='OFFBOARDING' && dto.status==='SKIPPED') {
+      throw new ConflictException('Offboarding tasks must be completed, not skipped');
+    }
     await this.assertAssignedUser(tenantId, dto.assignedToId);
 
     const data: any = {};
@@ -106,7 +116,14 @@ export class HrLifecycleService {
       data.completedById = null;
     }
 
-    await prisma.hrLifecycleTask.update({ where: { id: taskId }, data });
+    await prisma.$transaction(async tx => {
+      const claimed = await tx.hrLifecycleCase.updateMany({
+        where: { tenantId, id: caseId, status: { in: ['OPEN', 'IN_PROGRESS'] } },
+        data: { updatedAt: new Date() },
+      });
+      if (claimed.count !== 1) throw new ConflictException('Lifecycle case is closed');
+      await tx.hrLifecycleTask.update({ where: { id: taskId, tenantId, caseId }, data });
+    }, { isolationLevel: 'Serializable' });
     await this.recomputeCase(caseId, tenantId);
     return this.findOne(req, caseId);
   }
@@ -121,8 +138,16 @@ export class HrLifecycleService {
     if (['COMPLETED', 'CANCELLED'].includes(lifecycle.status)) {
       throw new ConflictException('Lifecycle case is closed');
     }
-    const incomplete = lifecycle.tasks.filter((task) => !['DONE','SKIPPED'].includes(task.status));
-    if (incomplete.length) throw new ConflictException('All lifecycle tasks must be done or skipped');
+    if (!lifecycle.tasks.length) {
+      throw new ConflictException('Lifecycle case must contain at least one task before completion');
+    }
+    const incomplete = lifecycle.tasks.filter((task) =>
+      lifecycle.type==='OFFBOARDING' ? task.status!=='DONE' : !['DONE','SKIPPED'].includes(task.status));
+    if (incomplete.length) throw new ConflictException(
+      lifecycle.type==='OFFBOARDING'
+        ? 'All offboarding tasks must be completed, not skipped'
+        : 'All lifecycle tasks must be done or skipped',
+    );
 
     if (lifecycle.type === 'ONBOARDING') {
       const readiness = await this.getOnboardingReadiness(tenantId, lifecycle.employeeId);
@@ -140,11 +165,98 @@ export class HrLifecycleService {
 
     const scope = { ...tenantWhere(tenantId), id };
     const updated = await prisma.hrLifecycleCase.updateMany({
-      where: { ...scope, status: { in: ['OPEN', 'IN_PROGRESS'] } },
+      where: { ...scope, status: { in: ['OPEN', 'IN_PROGRESS'] }, updatedAt: lifecycle.updatedAt },
       data: { status: 'COMPLETED', completedAt: new Date() },
     });
     if (updated.count !== 1) throw new ConflictException('Lifecycle case is closed');
     return prisma.hrLifecycleCase.findFirstOrThrow({ where: scope });
+  }
+
+  async finalizeExit(req: any, id: string, dto: {
+    confirmation: string; lastWorkingDate: string; reason: string;
+  }) {
+    const tenantId=req.user?.tenantId;
+    const actor=req.user?.userId || req.user?.sub || req.user?.id;
+    if(!tenantId || !actor)throw new BadRequestException('Authenticated tenant operator required');
+    if(dto?.confirmation!=='FINALIZE_EMPLOYMENT_EXIT') {
+      throw new BadRequestException('Explicit finalization confirmation required');
+    }
+    const reason=dto.reason?.trim()||'';
+    const dateText=dto.lastWorkingDate||'';
+    if(reason.length<10 || reason.length>1000 || !/^\d{4}-\d{2}-\d{2}$/.test(dateText)) {
+      throw new BadRequestException('Documented termination reason and ISO date are required');
+    }
+    const terminationDate=new Date(dateText+'T00:00:00.000Z');
+    if(!Number.isFinite(terminationDate.valueOf()) ||
+       terminationDate.toISOString().slice(0,10)!==dateText ||
+       dateText>new Date().toISOString().slice(0,10)) {
+      throw new BadRequestException('Termination date cannot be invalid or in the future');
+    }
+    return prisma.$transaction(async tx=>{
+      const lifecycle=await tx.hrLifecycleCase.findFirst({
+        where:{tenantId,id,type:'OFFBOARDING',status:{in:['OPEN','IN_PROGRESS']}},
+        include:{tasks:true},
+      });
+      if(!lifecycle)throw new NotFoundException('Open offboarding lifecycle case not found');
+      if(!lifecycle.tasks.length || lifecycle.tasks.some(task=>task.status!=='DONE')) {
+        throw new ConflictException('All offboarding tasks must be explicitly completed before finalization');
+      }
+      const employee=await tx.employee.findFirst({
+        where:{tenantId,id:lifecycle.employeeId},
+        select:{id:true,userId:true,status:true,terminationDate:true,hireDate:true},
+      });
+      if(!employee || employee.status==='TERMINATED') {
+        throw new ConflictException('Employee must exist and not already be terminated');
+      }
+      if(terminationDate.getTime()<employee.hireDate.getTime())throw new BadRequestException('Last working date precedes hire date');
+      const custody=await tx.assetCustodyAssignment.count({
+        where:{tenantId,employeeId:employee.id,status:'ACTIVE'},
+      });
+      if(custody>0)throw new ConflictException('Active custody assignments must be returned first');
+      if(employee.userId===actor)throw new ConflictException('Cannot deactivate the operator own account');
+      if(employee.userId) {
+        const target=await tx.user.findFirst({
+          where:{tenantId,id:employee.userId},
+          select:{id:true,role:true},
+        });
+        if(!target)throw new ConflictException('Employee account must belong to the same tenant');
+        if(['ADMIN','SUPER_ADMIN'].includes(target.role)) {
+          throw new ConflictException('Administrative account exit requires separate identity-governance approval');
+        }
+        await tx.user.updateMany({
+          where:{tenantId,id:target.id},data:{status:'INACTIVE'},
+        });
+        await tx.session.updateMany({
+          where:{userId:target.id,revokedAt:null},data:{revokedAt:new Date()},
+        });
+      }
+      await tx.employee.updateMany({
+        where:{tenantId,id:employee.id,status:{not:'TERMINATED'}},
+        data:{status:'TERMINATED',terminationDate},
+      });
+      await tx.employeeContract.updateMany({
+        where:{tenantId,employeeId:employee.id,status:'ACTIVE'},
+        data:{status:'TERMINATED',terminatedAt:terminationDate,terminationReason:reason},
+      });
+      const changed=await tx.hrLifecycleCase.updateMany({
+        where:{tenantId,id,status:{in:['OPEN','IN_PROGRESS']},updatedAt:lifecycle.updatedAt},
+        data:{status:'COMPLETED',completedAt:new Date()},
+      });
+      if(changed.count!==1)throw new ConflictException('Offboarding case changed concurrently');
+      const operator=await tx.user.findFirst({
+        where:{tenantId,id:actor},select:{id:true},
+      });
+      await tx.auditLog.create({
+        data:{
+          tenantId,userId:operator?.id||null,action:'HR_EMPLOYMENT_EXIT_FINALIZED',
+          entityType:'EMPLOYEE',entityId:employee.id,
+          oldValues:{status:employee.status,terminationDate:employee.terminationDate?.toISOString()||null},
+          newValues:{status:'TERMINATED',terminationDate:dateText,reason,
+            lifecycleCaseId:id,actorUserId:actor,accessRevoked:!!employee.userId},
+        },
+      });
+      return tx.hrLifecycleCase.findFirstOrThrow({where:{tenantId,id},include:{tasks:true}});
+    },{isolationLevel:'Serializable'});
   }
 
   async cancel(req: any, id: string) {
@@ -177,13 +289,16 @@ export class HrLifecycleService {
         canComplete = readiness.ready;
       }
       if (lifecycle?.type === 'OFFBOARDING') {
-        const readiness = await this.getOffboardingReadiness(tenantId, lifecycle.employeeId);
-        canComplete = readiness.ready;
+        // Closing an exit case must always be an explicit audited operation,
+        // never a side-effect of marking the last task DONE.
+        canComplete = false;
       }
     }
 
-    await prisma.hrLifecycleCase.update({
-      where: { id: caseId },
+    // A concurrent explicit completion or cancellation must never be undone
+    // by a stale task-status recomputation.
+    await prisma.hrLifecycleCase.updateMany({
+      where: { tenantId, id: caseId, status: { in: ['OPEN', 'IN_PROGRESS'] } },
       data: canComplete
         ? { status: 'COMPLETED', completedAt: new Date() }
         : { status: anyStarted ? 'IN_PROGRESS' : 'OPEN', completedAt: null },
@@ -223,35 +338,44 @@ export class HrLifecycleService {
   }
 
   private async getOffboardingReadiness(tenantId: string, employeeId: string) {
-    const [activeCustody, employee, activeContracts, paidSettlement] = await Promise.all([
+    // Administrative clearance and payroll settlement are independent workflows.
+    // Never assert that employee entitlements were paid merely to finish offboarding.
+    const [activeCustody, employee, activeContracts] = await Promise.all([
       prisma.assetCustodyAssignment.count({
         where: { ...tenantWhere(tenantId), employeeId, status: 'ACTIVE' },
       }),
       prisma.employee.findFirst({
         where: { ...tenantWhere(tenantId), id: employeeId },
-        select: { status: true, terminationDate: true },
+        select: { status: true, terminationDate: true, userId: true },
       }),
       prisma.employeeContract.count({
         where: { tenantId, employeeId, status: 'ACTIVE' },
-      }),
-      prisma.endServiceSettlement.findFirst({
-        where: { ...tenantWhere(tenantId), employeeId, status: 'PAID' },
-        orderBy: { paidAt: 'desc' },
-        select: { id: true, paidAt: true },
       }),
     ]);
 
     if (activeCustody > 0) {
       return { ready: false, reason: 'Employee still has active asset custody assignments' };
     }
-    if (!paidSettlement) {
-      return { ready: false, reason: 'Paid end-service settlement is required before offboarding completion' };
-    }
     if (!employee || employee.status !== 'TERMINATED' || !employee.terminationDate) {
       return { ready: false, reason: 'Employee must be terminated before offboarding completion' };
     }
     if (activeContracts > 0) {
       return { ready: false, reason: 'Active employment contracts must be terminated before offboarding completion' };
+    }
+
+    if (employee.userId) {
+      const [activeUser, activeSessions] = await Promise.all([
+        prisma.user.count({ where: { id: employee.userId, tenantId, status: 'ACTIVE' } }),
+        prisma.session.count({
+          where: { userId: employee.userId, revokedAt: null, expiresAt: { gt: new Date() } },
+        }),
+      ]);
+      if (activeUser > 0) {
+        return { ready: false, reason: 'Active employee user must be deactivated before offboarding completion' };
+      }
+      if (activeSessions > 0) {
+        return { ready: false, reason: 'Employee login sessions must be revoked before offboarding completion' };
+      }
     }
 
     return { ready: true, reason: '' };

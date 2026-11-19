@@ -3,7 +3,7 @@ import { getToken, getRefreshToken, getTenantSlug, getRole, getRememberPreferenc
 import { sessionAuth } from './session-auth';
 
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api',
+  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001',
   headers: {
     'Content-Type': 'application/json',
   },

@@ -152,6 +152,36 @@ export class HrAssetCustodyService {
       });
       if (!assignment) throw new NotFoundException('Custody assignment not found');
       if (assignment.status !== 'ACTIVE') throw new ConflictException('Custody assignment is already closed');
+      // Claim the assignment before posting any financial entry. A concurrent
+      // close must not derecognize or impair the same asset twice.
+      const claimed=await tx.assetCustodyAssignment.updateMany({
+        where:{tenantId,id,status:'ACTIVE'},
+        data:{status:dto.status,returnedAt:new Date()},
+      });
+      if(claimed.count!==1)throw new ConflictException('Custody assignment was concurrently closed');
+
+      if(dto.status==='LOST'||dto.status==='DAMAGED') {
+        if(!dto.governanceCaseId) {
+          throw new BadRequestException('Completed investigation case required for loss or impairment');
+        }
+        const investigation=await tx.hrGovernanceCase.findFirst({
+          where:{
+            tenantId,id:dto.governanceCaseId,employeeId:assignment.employeeId,
+            category:'INVESTIGATIONS',status:{in:['RESOLVED','CLOSED']},
+          },
+          select:{id:true},
+        });
+        if(!investigation)throw new ConflictException('Resolved investigation for custodian is required');
+        const approvals=await tx.hrGovernanceEvent.findMany({
+          where:{tenantId,caseId:investigation.id,action:'CUSTODY_LOSS_REVIEW'},
+          select:{details:true},
+        });
+        const linked=approvals.some(row=>{
+          try{return JSON.parse(row.details)?.custodyAssignmentId===assignment.id;}
+          catch{return false;}
+        });
+        if(!linked)throw new ConflictException('Investigation does not document this exact custody assignment');
+      }
 
       const asset = assignment.asset;
       const currentValue = Number(asset.currentValue);
@@ -264,7 +294,7 @@ export class HrAssetCustodyService {
           employee: { select: { id: true, employeeCode: true, firstName: true, lastName: true } },
         },
       });
-    });
+    }, { isolationLevel:'Serializable' });
   }
 
   async selfAssignments(req: any) {
