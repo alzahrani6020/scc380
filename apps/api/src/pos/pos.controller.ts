@@ -14,7 +14,7 @@ export class PosController {
   // ─── Sessions ───
   @Get('session/active')
   getActiveSession(@Request() req: any) {
-    return this.service.findActiveSession(req.user.id, req.user.tenantId, req.user.role);
+    return this.service.findActiveSession(req.user.userId, req.user.tenantId, req.user.role);
   }
 
   @Post('session/open')
