@@ -92,14 +92,12 @@ CREATE INDEX "pos_payments_orderId_idx" ON "pos_payments"("orderId");
 
 ALTER TABLE "pos_sessions" ADD CONSTRAINT "pos_sessions_tenantId_fkey"
   FOREIGN KEY ("tenantId") REFERENCES "tenants"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "pos_sessions" ADD CONSTRAINT "pos_sessions_branchId_fkey"
-  FOREIGN KEY ("branchId") REFERENCES "branches"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
 ALTER TABLE "pos_orders" ADD CONSTRAINT "pos_orders_tenantId_fkey"
   FOREIGN KEY ("tenantId") REFERENCES "tenants"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "pos_orders" ADD CONSTRAINT "pos_orders_sessionId_fkey"
   FOREIGN KEY ("sessionId") REFERENCES "pos_sessions"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "pos_orders" ADD CONSTRAINT "pos_orders_branchId_fkey"
-  FOREIGN KEY ("branchId") REFERENCES "branches"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
 ALTER TABLE "pos_order_items" ADD CONSTRAINT "pos_order_items_tenantId_fkey"
   FOREIGN KEY ("tenantId") REFERENCES "tenants"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "pos_order_items" ADD CONSTRAINT "pos_order_items_orderId_fkey"
@@ -110,3 +108,15 @@ ALTER TABLE "pos_payments" ADD CONSTRAINT "pos_payments_tenantId_fkey"
   FOREIGN KEY ("tenantId") REFERENCES "tenants"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "pos_payments" ADD CONSTRAINT "pos_payments_orderId_fkey"
   FOREIGN KEY ("orderId") REFERENCES "pos_orders"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- The legacy migration chain does not create branches in fresh environments.
+-- Add branch FKs only when that independent module has been provisioned.
+DO $$
+BEGIN
+  IF to_regclass('public.branches') IS NOT NULL THEN
+    ALTER TABLE "pos_sessions" ADD CONSTRAINT "pos_sessions_branchId_fkey"
+      FOREIGN KEY ("branchId") REFERENCES "branches"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+    ALTER TABLE "pos_orders" ADD CONSTRAINT "pos_orders_branchId_fkey"
+      FOREIGN KEY ("branchId") REFERENCES "branches"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END $$;
