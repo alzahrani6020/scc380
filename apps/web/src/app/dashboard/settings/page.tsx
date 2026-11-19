@@ -1,8 +1,51 @@
 'use client';
 
-import { Settings, Palette, Bell, Shield, Globe } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import api from '@/lib/api';
+import { Settings, Palette, Bell, Shield, Globe, Save } from 'lucide-react';
+
+type Prefs = {
+  language: 'ar' | 'en';
+  notifyInvoices: boolean;
+  notifyEmployees: boolean;
+  notifyFleet: boolean;
+  notifyWeeklyReports: boolean;
+};
+const defaultPrefs: Prefs = {
+  language: 'ar', notifyInvoices: true, notifyEmployees: true,
+  notifyFleet: true, notifyWeeklyReports: true,
+};
 
 export default function SettingsPage() {
+  const [preferences, setPreferences] = useState<Prefs>(defaultPrefs);
+  const [ready, setReady] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState('');
+  useEffect(() => {
+    api.get<Prefs>('/users/me/preferences')
+      .then(({ data }) => setPreferences(data))
+      .catch(() => setStatus('تعذر تحميل الإعدادات المحفوظة.'))
+      .finally(() => setReady(true));
+  }, []);
+
+  const save = async () => {
+    setSaving(true);
+    setStatus('');
+    try {
+      await api.patch('/users/me/preferences', preferences);
+      const { data } = await api.get<Prefs>('/users/me/preferences');
+      if (Object.keys(preferences).some(k =>
+        data[k as keyof Prefs] !== preferences[k as keyof Prefs])) {
+        throw new Error('Settings verification mismatch');
+      }
+      setStatus('تم حفظ الإعدادات والتحقق من استرجاعها.');
+    } catch {
+      setStatus('فشل حفظ الإعدادات أو التحقق منها. لم يتم تأكيد النجاح.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fade-in-up">
       <div>
@@ -23,9 +66,9 @@ export default function SettingsPage() {
           <div className="space-y-4">
             <div>
               <label className="block text-sm text-slate-400 mb-2">اللغة</label>
-              <select className="scc-input" disabled>
-                <option>العربية</option>
-                <option>English</option>
+              <select className="scc-input" disabled={!ready || saving} value={preferences.language} onChange={e => setPreferences(p => ({ ...p, language: e.target.value as Prefs['language'] }))}>
+                <option value="ar">العربية</option>
+                <option value="en">English</option>
               </select>
             </div>
             <div>
@@ -44,10 +87,17 @@ export default function SettingsPage() {
             <h3 className="font-bold text-white">الإشعارات</h3>
           </div>
           <div className="space-y-3">
-            {['إشعارات الفواتير', 'إشعارات الموظفين', 'إشعارات المركبات', 'التقارير الأسبوعية'].map((item) => (
-              <label key={item} className="flex items-center justify-between py-2 cursor-pointer">
-                <span className="text-slate-300 text-sm">{item}</span>
-                <input type="checkbox" disabled defaultChecked className="w-5 h-5 rounded border-slate-600 bg-slate-800 text-primary-500 focus:ring-primary-500" />
+            {([
+              ['notifyInvoices', 'إشعارات الفواتير'],
+              ['notifyEmployees', 'إشعارات الموظفين'],
+              ['notifyFleet', 'إشعارات المركبات'],
+              ['notifyWeeklyReports', 'التقارير الأسبوعية'],
+            ] as [keyof Prefs, string][]).map(([key, label]) => (
+              <label key={key} className="flex items-center justify-between py-2 cursor-pointer">
+                <span className="text-slate-300 text-sm">{label}</span>
+                <input type="checkbox" disabled={!ready || saving} checked={Boolean(preferences[key])}
+                  onChange={e => setPreferences(p => ({ ...p, [key]: e.target.checked }))}
+                  className="w-5 h-5 rounded border-slate-600 bg-slate-800 text-primary-500 focus:ring-primary-500" />
               </label>
             ))}
           </div>
@@ -66,7 +116,7 @@ export default function SettingsPage() {
             </div>
             <div>
               <label className="block text-sm text-slate-400 mb-2">كلمة المرور الجديدة</label>
-              <input type="password" className="scc-input" placeholder="••••••••" />
+              <input type="password" disabled className="scc-input" placeholder="••••••••" />
             </div>
           </div>
         </div>
@@ -94,9 +144,14 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      <p role="status" className="text-amber-300 text-sm">
-        هذه الإعدادات للعرض فقط؛ الحفظ وتغيير كلمة المرور غير متاحين حتى ربطهما بخدمة موثقة.
-      </p>
+      <p className="text-amber-300 text-sm">تغيير كلمة المرور يتطلب مساراً أمنياً مستقلاً؛ الحقول الأمنية معطلة هنا.</p>
+      {status && <p role="status" className="text-sm text-amber-300">{status}</p>}
+      <div className="flex justify-end">
+        <button onClick={save} disabled={!ready || saving} className="scc-btn-primary">
+          <Save className="h-5 w-5" />
+          {saving ? 'جارٍ الحفظ...' : 'حفظ الإعدادات'}
+        </button>
+      </div>
     </div>
   );
 }

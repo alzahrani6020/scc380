@@ -3,7 +3,7 @@ import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard, RequirePermissions } from '../auth/guards/permissions.guard';
 import { UsersService } from './users.service';
-import { IsString, IsOptional } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsIn } from 'class-validator';
 
 class UpdateUserDto {
   @IsString() @IsOptional() firstName?: string;
@@ -12,6 +12,14 @@ class UpdateUserDto {
   @IsString() @IsOptional() role?: string;
   @IsString() @IsOptional() status?: string;
   @IsString() @IsOptional() preferences?: string;
+}
+
+class UpdatePreferencesDto {
+  @IsOptional() @IsIn(['ar', 'en']) language?: 'ar' | 'en';
+  @IsOptional() @IsBoolean() notifyInvoices?: boolean;
+  @IsOptional() @IsBoolean() notifyEmployees?: boolean;
+  @IsOptional() @IsBoolean() notifyFleet?: boolean;
+  @IsOptional() @IsBoolean() notifyWeeklyReports?: boolean;
 }
 
 @ApiTags('Users')
@@ -27,6 +35,14 @@ export class UsersController {
 
   @Get('me')
   getMe(@Req() req: any) { return this.service.findOne(req, req.user?.userId); }
+
+  @Get('me/preferences')
+  getPreferences(@Req() req: any) { return this.service.getPreferences(req); }
+
+  @Patch('me/preferences')
+  savePreferences(@Req() req: any, @Body() dto: UpdatePreferencesDto) {
+    return this.service.savePreferences(req, dto);
+  }
 
   @Get(':id')
   @RequirePermissions('user:read')

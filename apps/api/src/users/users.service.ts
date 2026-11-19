@@ -3,6 +3,43 @@ import { prisma } from '@scc/database';
 
 @Injectable()
 export class UsersService {
+  async getPreferences(req: any) {
+    const user = await prisma.user.findFirst({
+      where: { id: req.user?.userId, tenantId: req.user?.tenantId ?? null },
+      select: { preferences: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+    const prefs = user.preferences && typeof user.preferences === 'object' &&
+      !Array.isArray(user.preferences) ? user.preferences as Record<string, any> : {};
+    const settings = prefs.sccSettings && typeof prefs.sccSettings === 'object' &&
+      !Array.isArray(prefs.sccSettings) ? prefs.sccSettings as Record<string, unknown> : {};
+    return {
+      language: settings.language === 'en' ? 'en' : 'ar',
+      notifyInvoices: settings.notifyInvoices !== false,
+      notifyEmployees: settings.notifyEmployees !== false,
+      notifyFleet: settings.notifyFleet !== false,
+      notifyWeeklyReports: settings.notifyWeeklyReports !== false,
+    };
+  }
+
+  async savePreferences(req: any, dto: {
+    language?: 'ar' | 'en'; notifyInvoices?: boolean; notifyEmployees?: boolean;
+    notifyFleet?: boolean; notifyWeeklyReports?: boolean;
+  }) {
+    const where = { id: req.user?.userId, tenantId: req.user?.tenantId ?? null };
+    const user = await prisma.user.findFirst({ where, select: { preferences: true } });
+    if (!user) throw new NotFoundException('User not found');
+    const existing = user.preferences && typeof user.preferences === 'object' &&
+      !Array.isArray(user.preferences) ? user.preferences as Record<string, any> : {};
+    const prior = existing.sccSettings && typeof existing.sccSettings === 'object' &&
+      !Array.isArray(existing.sccSettings) ? existing.sccSettings as Record<string, unknown> : {};
+    await prisma.user.updateMany({
+      where,
+      data: { preferences: { ...existing, sccSettings: { ...prior, ...dto } } },
+    });
+    return this.getPreferences(req);
+  }
+
   async findAll(req: any, query: any) {
     const where: any = {};
     if (req.user?.role !== 'SUPER_ADMIN') {

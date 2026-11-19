@@ -96,8 +96,40 @@ jobs:
       - name: Apply test database migrations
         run: pnpm --filter @scc/database exec prisma migrate deploy --schema prisma/schema.prisma
 
+      - name: Verify POS migration replays safely and rejects schema drift
+        run: |
+          set -euo pipefail
+          migration="packages/database/prisma/migrations/20261119070000_reconcile_pos_tables/migration.sql"
+          # Existing matching schema: running the SQL again must not alter business data.
+          if ! psql "$DIRECT_URL" -X -v ON_ERROR_STOP=1 -f "$migration"; then
+            psql "$DIRECT_URL" -X -A -F '|' -c "
+              SELECT c.relname, a.attname, pg_get_expr(d.adbin,d.adrelid)
+              FROM pg_attrdef d
+              JOIN pg_attribute a ON a.attrelid=d.adrelid AND a.attnum=d.adnum
+              JOIN pg_class c ON c.oid=d.adrelid
+              WHERE c.relname IN ('pos_sessions','pos_orders','pos_order_items','pos_payments')
+              ORDER BY c.relname,a.attname"
+            exit 1
+          fi
+          echo "POS_MIGRATION_EXISTING_SCHEMA_PASS"
+          # Simulate drift inside a transaction. An error must roll back the drop.
+          if psql "$DIRECT_URL" -X -v ON_ERROR_STOP=1 \
+              -c 'BEGIN; DROP INDEX public."pos_sessions_userId_idx";' -f "$migration"; then
+            echo "::error::Migration accepted a schema missing a required index"
+            exit 1
+          fi
+          exists=$(psql "$DIRECT_URL" -X -A -t -c \
+            "SELECT to_regclass('public.\"pos_sessions_userId_idx\"') IS NOT NULL")
+          test "$exists" = "t"
+          echo "POS_MIGRATION_DRIFT_REJECTED_AND_ROLLED_BACK_PASS"
+
       - name: Run DB-backed CRM, HR and Accounting E2E
         run: pnpm --filter @scc/api test:db-e2e
+
+      - name: Verify POS atomic financial transaction and user preferences against PostgreSQL
+        env:
+          CRM_DB_E2E: '1'
+        run: pnpm --filter @scc/api exec tsx --test --test-concurrency=1 test/pos-atomic-db.e2e.spec.ts
 
       - name: Build API dependency graph
         run: pnpm turbo run build --filter=@scc/api...
