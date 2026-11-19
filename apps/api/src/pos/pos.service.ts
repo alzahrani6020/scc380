@@ -1,6 +1,9 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { prisma, tenantWhere } from '@scc/database';
 import { PosPaymentMethod } from '@prisma/client';
+import { PaymentMethod } from '@scc/database';
+import { AccountMappingService, AccountingRole } from '../accounting-core/account-mapping.service';
+import { AccountingPostingService, PostingLine } from '../accounting-core/accounting-posting.service';
 import { CreatePosOrderDto, CreatePosSessionDto, ClosePosSessionDto } from './dto/pos.dto';
 
 function generateOrderNumber(): string {
@@ -9,6 +12,10 @@ function generateOrderNumber(): string {
 
 @Injectable()
 export class PosService {
+  constructor(
+    private readonly mapping: AccountMappingService = new AccountMappingService(),
+    private readonly posting: AccountingPostingService = new AccountingPostingService(),
+  ) {}
   // ─── Sessions ───
   async findActiveSession(userId: string, tenantId: string | undefined, userRole: string) {
     const tw = userRole === 'SUPER_ADMIN' ? {} : tenantWhere(tenantId);
@@ -153,6 +160,31 @@ export class PosService {
       const paid = Math.round(payments.reduce((sum, payment) => sum + payment.amount, 0) * 100) / 100;
       if (Math.abs(total - paid) > 0.009) throw new BadRequestException('Payment amount does not match server total');
 
+      // Resolve every accounting account BEFORE any stock write. Missing accounts
+      // must reject the entire sale rather than silently create unposted revenue.
+      const costTotal = Math.round(lines.reduce((sum, line) =>
+        sum + Number(line.product.costPrice || 0) * line.item.quantity, 0) * 100) / 100;
+      const roles: AccountingRole[] = [
+        ...(subtotal > 0 ? ['SALES_REVENUE' as const] : []),
+        ...(totalTax > 0 ? ['VAT_PAYABLE' as const] : []),
+        ...(costTotal > 0 ? ['INVENTORY' as const, 'COGS' as const] : []),
+      ];
+      const accounts = roles.length
+        ? await this.mapping.resolveInTransaction(tx, tenantId, roles)
+        : {} as Record<string, { id: string }>;
+      const paymentLines: PostingLine[] = [];
+      for (const payment of payments) {
+        // The POS payment enum includes options not represented by the
+        // accounting payment enum. Reject those until explicitly mapped.
+        if (!Object.values(PaymentMethod).includes(payment.method as unknown as PaymentMethod)) {
+          throw new BadRequestException(`Accounting mapping unavailable for POS payment ${payment.method}`);
+        }
+        const account = await this.mapping.resolvePaymentAccountInTransaction(
+          tx, tenantId, payment.method as unknown as PaymentMethod,
+        );
+        paymentLines.push({ accountId: account.id, debitAmount: payment.amount });
+      }
+
       // Conditional update prevents negative inventory even under racing requests.
       for (const line of lines) {
         const updated = await tx.product.updateMany({
@@ -188,6 +220,24 @@ export class PosService {
           },
         });
       }
+      // A single balanced posting links cash, revenue, VAT and inventory cost
+      // to the same order. All inserts participate in the same serializable
+      // transaction: accounting rejection rolls back sale and stock changes.
+      const journalLines: PostingLine[] = [...paymentLines];
+      if (subtotal > 0) journalLines.push({ accountId: accounts.SALES_REVENUE.id, creditAmount: subtotal });
+      if (totalTax > 0) journalLines.push({ accountId: accounts.VAT_PAYABLE.id, creditAmount: totalTax });
+      if (costTotal > 0) journalLines.push(
+        { accountId: accounts.COGS.id, debitAmount: costTotal },
+        { accountId: accounts.INVENTORY.id, creditAmount: costTotal },
+      );
+      await this.posting.postInTransaction(tx, {
+        tenantId,
+        entryNumber: `POS-${order.id}`,
+        description: `POS sale ${order.orderNumber}`,
+        reference: order.orderNumber,
+        sourceType: 'POS_ORDER', sourceId: order.id,
+        lines: journalLines,
+      });
       return order;
     }, { isolationLevel: 'Serializable', timeout: 15000 });
   }
