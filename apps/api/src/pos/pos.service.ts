@@ -78,106 +78,118 @@ export class PosService {
     return order;
   }
 
-  async createOrder(dto: CreatePosOrderDto, sessionId: string, tenantId: string | undefined, userRole: string) {
-    // Verify session exists and is open
-    const tw = userRole === 'SUPER_ADMIN' ? {} : tenantWhere(tenantId);
-    const session = await prisma.posSession.findFirst({
-      where: { id: sessionId, ...tw, status: 'OPEN' },
-    });
-    if (!session) throw new BadRequestException('No open session found');
-
-    // Calculate totals
-    let subtotal = 0;
-    let totalDiscount = 0;
-    let totalTax = 0;
-
-    const orderItems = dto.items.map(item => {
-      const qty = item.quantity;
-      const price = parseFloat(item.unitPrice);
-      const discount = parseFloat(item.discount || '0');
-      const taxRate = parseFloat(item.taxRate || '15');
-      const itemSubtotal = qty * price;
-      const itemDiscount = qty * discount;
-      const taxableAmount = itemSubtotal - itemDiscount;
-      const itemTax = taxableAmount * (taxRate / 100);
-      const itemTotal = taxableAmount + itemTax;
-
-      subtotal += itemSubtotal;
-      totalDiscount += itemDiscount;
-      totalTax += itemTax;
-
-      return {
-        productId: item.productId,
-        productName: item.productName,
-        quantity: qty,
-        unitPrice: price,
-        discount: itemDiscount,
-        taxRate,
-        total: itemTotal,
-        tenantId: userRole === 'SUPER_ADMIN' ? undefined : tenantId,
-      };
-    });
-
-    const total = subtotal - totalDiscount + totalTax;
-
-    // Validate payments
-    const totalPayments = dto.payments.reduce((sum, p) => sum + parseFloat(p.amount), 0);
-    if (Math.abs(totalPayments - total) > 0.01) {
-      throw new BadRequestException(`Payment amount ${totalPayments} does not match order total ${total}`);
-    }
-
-    // Create order
-    const order = await prisma.posOrder.create({
-      data: {
-        orderNumber: generateOrderNumber(),
-        sessionId,
-        customerName: dto.customerName,
-        customerPhone: dto.customerPhone,
-        subtotal,
-        discount: totalDiscount,
-        taxRate: 15,
-        taxAmount: totalTax,
-        total,
-        tenantId: userRole === 'SUPER_ADMIN' ? undefined : tenantId,
-        items: { createMany: { data: orderItems } },
-        payments: {
-          createMany: {
-            data: dto.payments.map(p => ({
-              method: p.method as PosPaymentMethod,
-              amount: parseFloat(p.amount),
-              reference: p.reference,
-              tenantId: userRole === 'SUPER_ADMIN' ? undefined : tenantId,
-            })),
-          },
-        },
-      },
+  async createOrder(dto: CreatePosOrderDto, userId: string, tenantId: string | undefined, userRole: string) {
+    // Tenant identity is derived exclusively from the authenticated JWT.
+    // SUPER_ADMIN without an explicit tenant cannot create a financial transaction.
+    if (!userId || !tenantId) throw new BadRequestException('Tenant-scoped session is required');
+    const orderNumber = 'POS-' + dto.clientOrderId;
+    const existing = await prisma.posOrder.findFirst({
+      where: { orderNumber, tenantId },
       include: { items: true, payments: true },
     });
+    if (existing) return existing;
 
-    // Update stock for products
-    for (const item of dto.items) {
-      if (item.productId) {
-        await prisma.product.update({
-          where: { id: item.productId },
-          data: { currentStock: { decrement: item.quantity } },
+    if (!dto.items?.length || !dto.payments?.length) {
+      throw new BadRequestException('Items and payments are required');
+    }
+    if (dto.items.some(i => !i.productId) ||
+        new Set(dto.items.map(i => i.productId)).size !== dto.items.length) {
+      throw new BadRequestException('Unique inventory product IDs are required');
+    }
+
+    // Serializable transactions prevent overselling across concurrent POS terminals.
+    // Every stock decrement, ledger movement, payment and order must commit together.
+    return prisma.$transaction(async (tx) => {
+      const repeat = await tx.posOrder.findFirst({
+        where: { orderNumber, tenantId },
+        include: { items: true, payments: true },
+      });
+      if (repeat) return repeat;
+      const session = await tx.posSession.findFirst({
+        where: { userId, tenantId, status: 'OPEN' },
+        select: { id: true },
+      });
+      if (!session) throw new BadRequestException('Open POS session is required');
+
+      let subtotal = 0;
+      let totalTax = 0;
+      const lines = [];
+      for (const item of dto.items) {
+        const product = await tx.product.findFirst({
+          where: { id: item.productId, tenantId, isActive: true, isService: false },
+          select: { id: true, name: true, salePrice: true, taxRate: true, currentStock: true, costPrice: true },
         });
-        // Record stock movement
-        await prisma.stockMovement.create({
+        if (!product) throw new BadRequestException('Product not available in your tenant');
+        if (!Number.isInteger(item.quantity) || item.quantity <= 0) {
+          throw new BadRequestException('Invalid item quantity');
+        }
+        // Price/tax are server-authoritative; client values cannot alter charged totals.
+        const price = Number(product.salePrice);
+        const taxRate = Number(product.taxRate);
+        if (!Number.isFinite(price) || price < 0 || !Number.isFinite(taxRate) ||
+            taxRate < 0 || taxRate > 100) {
+          throw new BadRequestException('Invalid product price or tax');
+        }
+        const lineNet = Math.round(price * item.quantity * 100) / 100;
+        const lineTax = Math.round(lineNet * taxRate) / 10000 * 100;
+        subtotal += lineNet;
+        totalTax += lineTax;
+        lines.push({
+          product, item, price, taxRate,
+          total: Math.round((lineNet + lineTax) * 100) / 100,
+        });
+      }
+      subtotal = Math.round(subtotal * 100) / 100;
+      totalTax = Math.round(totalTax * 100) / 100;
+      const total = Math.round((subtotal + totalTax) * 100) / 100;
+      const payments = dto.payments.map(payment => {
+        const amount = Number(payment.amount);
+        if (!Number.isFinite(amount) || amount <= 0 ||
+            !Object.values(PosPaymentMethod).includes(payment.method as PosPaymentMethod)) {
+          throw new BadRequestException('Invalid payment');
+        }
+        return { method: payment.method as PosPaymentMethod, amount, reference: payment.reference, tenantId };
+      });
+      const paid = Math.round(payments.reduce((sum, payment) => sum + payment.amount, 0) * 100) / 100;
+      if (Math.abs(total - paid) > 0.009) throw new BadRequestException('Payment amount does not match server total');
+
+      // Conditional update prevents negative inventory even under racing requests.
+      for (const line of lines) {
+        const updated = await tx.product.updateMany({
+          where: { id: line.product.id, tenantId, isActive: true, isService: false,
+            currentStock: { gte: line.item.quantity } },
+          data: { currentStock: { decrement: line.item.quantity } },
+        });
+        if (updated.count !== 1) throw new BadRequestException('Insufficient stock');
+      }
+
+      const order = await tx.posOrder.create({
+        data: {
+          orderNumber, sessionId: session.id, tenantId,
+          customerName: dto.customerName, customerPhone: dto.customerPhone,
+          subtotal, discount: 0, taxRate: 15, taxAmount: totalTax, total,
+          items: { createMany: { data: lines.map(line => ({
+            productId: line.product.id, productName: line.product.name,
+            quantity: line.item.quantity, unitPrice: line.price,
+            discount: 0, taxRate: line.taxRate, total: line.total, tenantId,
+          })) } },
+          payments: { createMany: { data: payments } },
+        },
+        include: { items: true, payments: true },
+      });
+      for (const line of lines) {
+        await tx.stockMovement.create({
           data: {
-            productId: item.productId,
-            type: 'SALE',
-            quantity: item.quantity,
-            unitCost: 0,
-            totalCost: 0,
-            reference: order.orderNumber,
-            referenceId: order.id,
-            tenantId: userRole === 'SUPER_ADMIN' ? undefined : tenantId,
+            productId: line.product.id, tenantId, type: 'SALE',
+            quantity: line.item.quantity,
+            unitCost: line.product.costPrice,
+            totalCost: Number(line.product.costPrice) * line.item.quantity,
+            reference: order.orderNumber, referenceId: order.id,
           },
         });
       }
-    }
-
-    return order;
+      return order;
+    }, { isolationLevel: 'Serializable', timeout: 15000 });
   }
 
   // ─── Daily Report ───
