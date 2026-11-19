@@ -11,6 +11,7 @@ interface Product {
   currentStock: number;
   barcode?: string;
   imageUrl?: string;
+  taxRate?: number;
 }
 
 interface CartItem {
@@ -19,6 +20,7 @@ interface CartItem {
   price: number;
   quantity: number;
   total: number;
+  taxRate: number;
 }
 
 export default function PosPage() {
@@ -32,9 +34,17 @@ export default function PosPage() {
   const [search, setSearch] = useState('');
   const [receipt, setReceipt] = useState<any>(null);
   const receiptRef = useRef<HTMLDivElement>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionReady, setSessionReady] = useState(false);
+  const [opening, setOpening] = useState(false);
+  const orderKey = useRef<string | null>(null);
 
   useEffect(() => {
     fetchProducts();
+    api.get('/pos/session/active')
+      .then(res => setSessionId(res.data?.id || null))
+      .catch(() => setMessage('تعذر التحقق من جلسة نقطة البيع.'))
+      .finally(() => setSessionReady(true));
   }, []);
 
   const fetchProducts = async () => {
@@ -50,6 +60,7 @@ export default function PosPage() {
   };
 
   const addToCart = (product: Product) => {
+    if (orderKey.current) orderKey.current = null;
     if (product.currentStock <= 0) return;
     const existing = cart.find(item => item.productId === product.id);
     if (existing) {
@@ -65,15 +76,18 @@ export default function PosPage() {
         price: Number(product.salePrice),
         quantity: 1,
         total: Number(product.salePrice),
+        taxRate: Number(product.taxRate ?? 15),
       }]);
     }
   };
 
   const removeFromCart = (productId: string) => {
+    orderKey.current = null;
     setCart(cart.filter(item => item.productId !== productId));
   };
 
   const updateQuantity = (productId: string, qty: number) => {
+    orderKey.current = null;
     if (qty <= 0) {
       removeFromCart(productId);
       return;
@@ -86,9 +100,9 @@ export default function PosPage() {
   };
 
   const subtotal = cart.reduce((sum, item) => sum + item.total, 0);
-  const taxRate = 0.15;
-  const taxAmount = subtotal * taxRate;
-  const total = subtotal + taxAmount;
+  const taxAmount = cart.reduce((sum, item) =>
+    sum + Math.round(item.total * item.taxRate) / 100, 0);
+  const total = Math.round((subtotal + taxAmount) * 100) / 100;
   const change = Math.max(0, Number(cashReceived || 0) - total);
 
   const handleBarcode = (e: React.KeyboardEvent) => {
@@ -101,11 +115,71 @@ export default function PosPage() {
     }
   };
 
-  // API createOrder currently passes a user ID where PosService expects an open
-  // POS session ID. Never place financial orders until the API contract is fixed
-  // and verified with an approved test session.
-  const submitOrder = () => {
-    setMessage('تسجيل المبيعات متوقف مؤقتاً: يلزم إصلاح ربط جلسة نقطة البيع على الخادم والتحقق منه.');
+  const openSession = async () => {
+    if (opening || sessionId) return;
+    setOpening(true);
+    try {
+      const { data } = await api.post('/pos/session/open', { openingCash: '0.00' });
+      if (!data?.id) throw new Error('Session response missing ID');
+      setSessionId(data.id);
+      setMessage('تم فتح جلسة نقطة البيع.');
+    } catch {
+      setMessage('تعذر فتح جلسة نقطة البيع. تحقق من الصلاحيات أو وجود جلسة مفتوحة.');
+    } finally {
+      setOpening(false);
+    }
+  };
+
+  const submitOrder = async () => {
+    if (!sessionId || !sessionReady || cart.length === 0 || loading) return;
+    if (!cart.every(item => item.quantity > 0 && Number.isInteger(item.quantity))) {
+      setMessage('الكمية غير صالحة.');
+      return;
+    }
+    if (!Number.isFinite(Number(cashReceived)) || Number(cashReceived) < total) {
+      setMessage('المبلغ النقدي المستلم أقل من إجمالي الفاتورة.');
+      return;
+    }
+    setLoading(true);
+    const clientOrderId = orderKey.current || crypto.randomUUID();
+    orderKey.current = clientOrderId;
+    try {
+      const { data } = await api.post('/pos/orders', {
+        clientOrderId,
+        customerName: customerName || undefined,
+        items: cart.map(item => ({
+          productId: item.productId, productName: item.name, quantity: item.quantity,
+          unitPrice: item.price.toFixed(4),
+        })),
+        payments: [{ method: 'CASH', amount: total.toFixed(2) }],
+      });
+      if (!data?.id || !data?.orderNumber) throw new Error('Missing confirmed order');
+      setReceipt({
+        orderNumber: data.orderNumber,
+        date: new Date().toLocaleString('ar-SA'),
+        items: (data.items || []).map((item: any) => ({
+          productId: item.productId, name: item.productName,
+          quantity: item.quantity, price: Number(item.unitPrice), total: Number(item.total),
+        })),
+        subtotal: Number(data.subtotal), taxAmount: Number(data.taxAmount),
+        total: Number(data.total), cashReceived: Number(cashReceived), change:
+          Math.max(0, Number(cashReceived) - Number(data.total)),
+        customerName: customerName || 'عميل نقدي',
+      });
+      orderKey.current = null;
+      setMessage('تم تسجيل عملية البيع في الخادم بنجاح.');
+      setCart([]);
+      setCashReceived('');
+      setCustomerName('');
+      await fetchProducts();
+    } catch (error: any) {
+      // Keep the same client order ID on retry; server deduplicates committed orders.
+      const code = error?.response?.status;
+      setMessage(code === 400 ? 'تعذر إتمام البيع: راجع الجلسة والمخزون والمبلغ.' :
+        'لم يتأكد حفظ البيع. أعد المحاولة دون إنشاء عملية جديدة.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const filteredProducts = products.filter(p =>
@@ -123,6 +197,14 @@ export default function PosPage() {
         </div>
       )}
 
+      <div className="mb-4 flex items-center gap-3 text-sm">
+        <span>{!sessionReady ? 'جارٍ التحقق من الجلسة...' : sessionId ? 'جلسة البيع مفتوحة' : 'لا توجد جلسة بيع مفتوحة'}</span>
+        {!sessionId && sessionReady && (
+          <button disabled={opening} onClick={openSession} className="rounded bg-blue-600 px-3 py-2 disabled:opacity-50">
+            {opening ? 'جارٍ فتح الجلسة...' : 'فتح جلسة بيع برصيد افتتاحي صفر'}
+          </button>
+        )}
+      </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Products Panel */}
         <div className="lg:col-span-2 space-y-4">
@@ -209,7 +291,7 @@ export default function PosPage() {
 
           <div className="border-t border-slate-800 pt-3 space-y-1 text-sm">
             <div className="flex justify-between"><span>الإجمالي:</span><span>{subtotal.toFixed(2)} ريال</span></div>
-            <div className="flex justify-between"><span>الضريبة (15%):</span><span>{taxAmount.toFixed(2)} ريال</span></div>
+            <div className="flex justify-between"><span>الضريبة:</span><span>{taxAmount.toFixed(2)} ريال</span></div>
             <div className="flex justify-between text-lg font-bold text-blue-400"><span>الإجمالي النهائي:</span><span>{total.toFixed(2)} ريال</span></div>
           </div>
 
@@ -230,10 +312,10 @@ export default function PosPage() {
 
           <button
             onClick={submitOrder}
-            disabled={true}
+            disabled={!sessionId || !sessionReady || cart.length === 0 || loading}
             className="w-full py-3 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:cursor-not-allowed font-bold transition-colors"
           >
-            إتمام البيع غير متاح حتى اعتماد جلسة نقطة البيع
+            {loading ? 'جارٍ إرسال الطلب...' : 'إتمام البيع'}
           </button>
 
           {receipt && (
