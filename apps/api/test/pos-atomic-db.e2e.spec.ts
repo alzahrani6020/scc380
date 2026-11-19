@@ -3,6 +3,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { prisma } from '@scc/database';
 import { PosService } from '../src/pos/pos.service';
+import { InventoryService } from '../src/inventory/inventory.service';
+import { AccountMappingService } from '../src/accounting-core/account-mapping.service';
+import { AccountingPostingService } from '../src/accounting-core/accounting-posting.service';
 import { UsersService } from '../src/users/users.service';
 
 test('POS: open-session ownership, atomic stock, idempotency, tenant isolation and settings persistence', {
@@ -73,6 +76,7 @@ test('POS: open-session ownership, atomic stock, idempotency, tenant isolation a
     const journalAccounts = await Promise.all([
       ['1110', 'Cash', 'ASSET'],
       ['1130', 'Inventory', 'ASSET'],
+      ['2100', 'Inventory opening counterpart', 'LIABILITY'],
       ['2110', 'VAT payable', 'LIABILITY'],
       ['4100', 'Sales revenue', 'REVENUE'],
       ['5600', 'Cost of goods sold', 'EXPENSE'],
@@ -203,6 +207,46 @@ test('POS: open-session ownership, atomic stock, idempotency, tenant isolation a
       where: { tenantId: tenantA.id, sourceType: 'POS_ORDER', sourceId: confirmed.id },
     }), 1);
 
+
+    // Verify the full public service pipeline: create product -> receive stock
+    // (balanced opening journal) -> visible inventory -> POS sale -> stock
+    // decrement and balanced sale journal.
+    const inventory = new InventoryService(new AccountMappingService(), new AccountingPostingService());
+    const receivedProduct = await inventory.createProduct({
+      name: 'Real inventory flow', sku: 'POS-RECEIPT-'+unique,
+      salePrice: '10.00', costPrice: '3.00', taxRate: '15.00',
+    } as any, tenantA.id, 'ADMIN');
+    assert.equal(receivedProduct.currentStock, 0);
+    const receipt = await inventory.createMovement({
+      productId: receivedProduct.id, type: 'IN', quantity: 2,
+      unitCost: '3.00', counterAccountId: ledgerByCode['2100'],
+    } as any, tenantA.id, 'ADMIN');
+    assert.equal(receipt.currentStock, 2);
+    assert.equal(receipt.accountingPosted, true);
+    assert.equal(receipt.journal?.status, 'POSTED');
+    assert.deepEqual(
+      receipt.journal.lines.map((l: any) => [l.accountId, Number(l.debitAmount), Number(l.creditAmount)]),
+      [[ledgerByCode['1130'], 6, 0], [ledgerByCode['2100'], 0, 6]],
+    );
+    const visibleInventory = await inventory.findAllProducts(tenantA.id, 'ADMIN');
+    assert.equal(visibleInventory.find(p => p.id === receivedProduct.id)?.currentStock, 2);
+    const flowOrder = await pos.createOrder(
+      dto(randomUUID(), [{ productId: receivedProduct.id, quantity: 1 }], '11.50') as any,
+      userA.id, tenantA.id, 'ADMIN',
+    );
+    assert.equal((await prisma.product.findUniqueOrThrow({ where: { id: receivedProduct.id } })).currentStock, 1);
+    const saleLedger = await prisma.journalEntryHeader.findFirstOrThrow({
+      where: { tenantId: tenantA.id, sourceType: 'POS_ORDER', sourceId: flowOrder.id },
+      include: { lines: true },
+    });
+    assert.equal(saleLedger.status, 'POSTED');
+    const saleDebit = saleLedger.lines.reduce((n, l) => n + Number(l.debitAmount), 0);
+    const saleCredit = saleLedger.lines.reduce((n, l) => n + Number(l.creditAmount), 0);
+    assert.equal(saleDebit, 14.5);
+    assert.equal(saleCredit, 14.5);
+    assert.equal(await prisma.stockMovement.count({
+      where: { tenantId: tenantA.id, productId: receivedProduct.id, type: 'SALE', referenceId: flowOrder.id },
+    }), 1);
 
     const actorA = { user: { userId: userA.id, tenantId: tenantA.id, role: 'ADMIN' } };
     const actorB = { user: { userId: userB.id, tenantId: tenantB.id, role: 'ADMIN' } };
