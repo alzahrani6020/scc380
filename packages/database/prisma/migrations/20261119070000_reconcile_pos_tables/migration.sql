@@ -43,7 +43,7 @@ BEGIN
       ('pos_orders','status','"PosOrderStatus"',true,true),
       ('pos_orders','branchId','text',false,false),
       ('pos_orders','createdAt','timestamp(3) without time zone',true,true),
-      ('pos_orders','updatedAt','timestamp(3) without time zone',true,true),
+      ('pos_orders','updatedAt','timestamp(3) without time zone',true,false),
       ('pos_order_items','id','text',true,false),
       ('pos_order_items','tenantId','text',true,false),
       ('pos_order_items','orderId','text',true,false),
