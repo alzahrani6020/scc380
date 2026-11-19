@@ -96,6 +96,24 @@ jobs:
       - name: Apply test database migrations
         run: pnpm --filter @scc/database exec prisma migrate deploy --schema prisma/schema.prisma
 
+      - name: Verify POS migration replays safely and rejects schema drift
+        run: |
+          set -euo pipefail
+          migration="packages/database/prisma/migrations/20261119070000_reconcile_pos_tables/migration.sql"
+          # Existing matching schema: running the SQL again must not alter business data.
+          psql "$DIRECT_URL" -X -v ON_ERROR_STOP=1 -f "$migration"
+          echo "POS_MIGRATION_EXISTING_SCHEMA_PASS"
+          # Simulate drift inside a transaction. An error must roll back the drop.
+          if psql "$DIRECT_URL" -X -v ON_ERROR_STOP=1 \
+              -c 'BEGIN; DROP INDEX public."pos_sessions_userId_idx";' -f "$migration"; then
+            echo "::error::Migration accepted a schema missing a required index"
+            exit 1
+          fi
+          exists=$(psql "$DIRECT_URL" -X -A -t -c \
+            "SELECT to_regclass('public.\"pos_sessions_userId_idx\"') IS NOT NULL")
+          test "$exists" = "t"
+          echo "POS_MIGRATION_DRIFT_REJECTED_AND_ROLLED_BACK_PASS"
+
       - name: Run DB-backed CRM, HR and Accounting E2E
         run: pnpm --filter @scc/api test:db-e2e
 
