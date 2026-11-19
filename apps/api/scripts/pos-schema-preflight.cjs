@@ -288,13 +288,31 @@ async function captureMetadata() {
           (SELECT COUNT(*)::integer FROM public.pos_sessions WHERE status='OPEN') AS open_pos_sessions,
           (SELECT COUNT(*)::integer FROM public.pos_orders) AS prior_pos_orders
       `;
+      // Tenant-scoped readiness: report only tenant identity, account role,
+      // configured account code and existence status. No balances or PII.
+      const tenantAccountReadiness = await tx.$queryRaw`
+        WITH required_roles(role, fallback_code) AS (
+          VALUES ('CASH','1110'), ('INVENTORY','1130'),
+                 ('VAT_PAYABLE','2110'), ('SALES_REVENUE','4100'), ('COGS','5600')
+        )
+        SELECT t.id AS tenant_id, t.name AS tenant_name, r.role,
+          COALESCE(NULLIF(t.settings->'accounting'->'accountMapping'->>r.role, ''), r.fallback_code) AS expected_code,
+          (a.id IS NOT NULL) AS account_ready
+        FROM public.tenants t CROSS JOIN required_roles r
+        LEFT JOIN public.chart_of_accounts a
+          ON a."tenantId"=t.id
+          AND a.code=COALESCE(NULLIF(t.settings->'accounting'->'accountMapping'->>r.role, ''), r.fallback_code)
+          AND a."isActive"=true
+        WHERE t.status='ACTIVE'
+        ORDER BY t.id,r.role
+      `;
       failureStage = 'MIGRATIONS';
       const runtimeSha = process.env.RENDER_GIT_COMMIT || '';
       return {
         report: 'POS_SCHEMA_PREFLIGHT', status: 'METADATA_CAPTURED', capturedAt: new Date().toISOString(),
         baselineSha: BASELINE_SHA, probeSha: /^[a-f0-9]{40}$/.test(runtimeSha) ? runtimeSha : null,
         expectedHost: EXPECTED_HOST,
-        context, tables, enums, columns, constraints, uniqueIndexes, allPosIndexes, posDefaults, financialReadiness,
+        context, tables, enums, columns, constraints, uniqueIndexes, allPosIndexes, posDefaults, financialReadiness, tenantAccountReadiness,
         expectedMigration: {
           name: EXPECTED_MIGRATION, expectedChecksum: EXPECTED_CHECKSUM, sourceChecksumVerified: true,
           recorded: expectedEntries.length > 0,
