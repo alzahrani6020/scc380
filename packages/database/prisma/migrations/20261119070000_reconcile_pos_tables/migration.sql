@@ -130,7 +130,7 @@ BEGIN
         AND NOT i.indisprimary
     )
     SELECT count(*) INTO mismatch FROM
-      (SELECT * FROM expected EXCEPT SELECT * FROM actual) missing;
+      (SELECT * FROM required EXCEPT SELECT * FROM actual) missing;
     IF mismatch <> 0 THEN
       RAISE EXCEPTION 'POS_SCHEMA_PREFLIGHT_BLOCKED: required indexes missing or different';
     END IF;
@@ -144,12 +144,18 @@ BEGIN
       ('pos_order_items','pos_order_items_productId_fkey'),
       ('pos_payments','pos_payments_tenantId_fkey'),
       ('pos_payments','pos_payments_orderId_fkey'),
-      ('pos_sessions','pos_sessions_branchId_fkey'),
-      ('pos_orders','pos_orders_branchId_fkey'),
       ('pos_sessions','pos_sessions_pkey'),
       ('pos_orders','pos_orders_pkey'),
       ('pos_order_items','pos_order_items_pkey'),
       ('pos_payments','pos_payments_pkey')
+    ), conditional_branch(tab,name) AS (
+      SELECT 'pos_sessions'::text, 'pos_sessions_branchId_fkey'::text
+      WHERE to_regclass('public.branches') IS NOT NULL
+      UNION ALL
+      SELECT 'pos_orders'::text, 'pos_orders_branchId_fkey'::text
+      WHERE to_regclass('public.branches') IS NOT NULL
+    ), required AS (
+      SELECT * FROM expected UNION ALL SELECT * FROM conditional_branch
     ), actual AS (
       SELECT c.relname::text tab,k.conname::text name
       FROM pg_catalog.pg_constraint k
