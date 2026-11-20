@@ -45,22 +45,24 @@ if grep -Eq 'SCHEMA[[:space:]]+-[[:space:]]+(auth|supabase_migrations|realtime|s
   exit 4
 fi
 
+# Persist the validated archive BEFORE restoration. A restore error must never
+# erase the only backup. Keep it marked unverified until integrity checks pass.
+dest="$BACKUP_DIR/scc380-unverified-$(date -u +%Y%m%dT%H%M%SZ)-$.dump"
+mv -- "$tmp" "$dest"
+trap - EXIT
 # Restore is attempted ONLY after the target's identity and emptiness checks.
-PGCONNECT_TIMEOUT=10 pg_restore --exit-on-error --single-transaction --no-owner --no-privileges --dbname="$RESTORE_DATABASE_URL" "$tmp"
+PGCONNECT_TIMEOUT=10 pg_restore --exit-on-error --single-transaction --no-owner --no-privileges --dbname="$RESTORE_DATABASE_URL" "$dest"
 source_tenants=$(psql -X -qAt -v ON_ERROR_STOP=1 "$DATABASE_URL" -c 'SELECT count(*) FROM public.tenants')
 target_tenants=$(psql -X -qAt -v ON_ERROR_STOP=1 "$RESTORE_DATABASE_URL" -c 'SELECT count(*) FROM public.tenants')
 source_orders=$(psql -X -qAt -v ON_ERROR_STOP=1 "$DATABASE_URL" -c 'SELECT count(*) FROM public.pos_orders')
 target_orders=$(psql -X -qAt -v ON_ERROR_STOP=1 "$RESTORE_DATABASE_URL" -c 'SELECT count(*) FROM public.pos_orders')
 if [[ "$source_tenants" != "$target_tenants" || "$source_orders" != "$target_orders" ]]; then
-  echo 'FAIL: restored control counts differ; archive retained for investigation' >&2
-  dest="$BACKUP_DIR/scc380-restore-unverified-$(date -u +%Y%m%dT%H%M%SZ).dump"
-  mv -- "$tmp" "$dest"
-  trap - EXIT
+  echo "FAIL: restored control counts differ; archive retained: $dest" >&2
   exit 5
 fi
-dest="$BACKUP_DIR/scc380-verified-$(date -u +%Y%m%dT%H%M%SZ).dump"
-mv -- "$tmp" "$dest"
-trap - EXIT
+verified="$BACKUP_DIR/scc380-verified-$(date -u +%Y%m%dT%H%M%SZ)-$.dump"
+mv -- "$dest" "$verified"
+dest="$verified"
 echo 'STATUS: PASS - BACKUP_RESTORED_TO_ISOLATED_DATABASE'
 printf 'SOURCE_DB: %s\nRESTORE_DB: %s\nBACKUP: %s\n' "$source_db" "$target_db" "$dest"
 sha256sum -- "$dest"
