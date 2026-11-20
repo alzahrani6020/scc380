@@ -268,6 +268,19 @@ test('POS: open-session ownership, atomic stock, idempotency, tenant isolation a
     assert.equal((await prisma.product.findUniqueOrThrow({ where: { id: madaProduct.id } })).currentStock, 2);
     assert.equal(await prisma.posOrder.count({ where: { tenantId: tenantA.id, orderNumber: 'POS-'+madaOrderId } }), 0);
 
+    // Reject incorrect settlement-account classification without mutating stock.
+    const invalidSettlement = await prisma.chartOfAccount.create({ data: {
+      tenantId: tenantA.id, code: '1151', name: 'Invalid settlement classification', type: 'LIABILITY',
+    } });
+    await prisma.tenant.update({ where: { id: tenantA.id }, data: {
+      settings: { accounting: { paymentMethodMapping: { MADA: invalidSettlement.code } } },
+    } });
+    await assert.rejects(
+      () => pos.createOrder(madaDto(madaOrderId) as any, userA.id, tenantA.id, 'ADMIN'),
+      /must be an ASSET account/,
+    );
+    assert.equal((await prisma.product.findUniqueOrThrow({ where: { id: madaProduct.id } })).currentStock, 2);
+
     const madaClearing = await prisma.chartOfAccount.create({ data: {
       tenantId: tenantA.id, code: '1150', name: 'Mada settlement clearing', type: 'ASSET',
     } });
