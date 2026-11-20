@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { prisma } from '@scc/database';
 import { PosService } from '../src/pos/pos.service';
+import { PosController } from '../src/pos/pos.controller';
 import { InventoryService } from '../src/inventory/inventory.service';
 import { AccountMappingService } from '../src/accounting-core/account-mapping.service';
 import { AccountingPostingService } from '../src/accounting-core/accounting-posting.service';
@@ -11,6 +12,15 @@ import { UsersService } from '../src/users/users.service';
 test('POS: open-session ownership, atomic stock, idempotency, tenant isolation and settings persistence', {
   skip: process.env.CRM_DB_E2E !== '1' ? 'CRM_DB_E2E=1 required' : false,
 }, async () => {
+  // Daily report date must be bound from the query string, not a route param.
+  const reportArgs = Reflect.getMetadata('__routeArguments__', PosController, 'getDailyReport') as Record<string, { data?: string; index?: number }> | undefined;
+  assert.ok(reportArgs, 'daily report parameter metadata must exist');
+  assert.ok(
+    Object.entries(reportArgs).some(([key, value]) =>
+      key.startsWith('4:') && value.index === 1 && value.data === 'date'),
+    'GET /pos/reports/daily must read ?date=YYYY-MM-DD',
+  );
+
   const unique = randomUUID().slice(0, 12);
   const [tenantA, tenantB] = await Promise.all([
     prisma.tenant.create({ data: { name: 'POS A '+unique, slug: 'pos-a-'+unique } }),
