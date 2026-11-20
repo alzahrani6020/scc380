@@ -248,6 +248,49 @@ test('POS: open-session ownership, atomic stock, idempotency, tenant isolation a
       where: { tenantId: tenantA.id, productId: receivedProduct.id, type: 'SALE', referenceId: flowOrder.id },
     }), 1);
 
+    // POS-only payment methods must fail closed until mapped to an active
+    // tenant account; they must never silently post to cash.
+    const madaProduct = await prisma.product.create({ data: {
+      tenantId: tenantA.id, name: 'Mada payment', sku: 'POS-MADA-'+unique,
+      salePrice: 10, taxRate: 15, costPrice: 0, currentStock: 2,
+    } });
+    const madaDto = (orderId: string) => ({
+      clientOrderId: orderId, items: [{
+        productId: madaProduct.id, productName: 'Mada payment',
+        quantity: 1, unitPrice: '10.00',
+      }], payments: [{ method: 'MADA', amount: '11.50' }],
+    });
+    const madaOrderId = randomUUID();
+    await assert.rejects(
+      () => pos.createOrder(madaDto(madaOrderId) as any, userA.id, tenantA.id, 'ADMIN'),
+      /Missing accounting payment-method mapping for POS MADA/,
+    );
+    assert.equal((await prisma.product.findUniqueOrThrow({ where: { id: madaProduct.id } })).currentStock, 2);
+    assert.equal(await prisma.posOrder.count({ where: { tenantId: tenantA.id, orderNumber: 'POS-'+madaOrderId } }), 0);
+
+    const madaClearing = await prisma.chartOfAccount.create({ data: {
+      tenantId: tenantA.id, code: '1150', name: 'Mada settlement clearing', type: 'ASSET',
+    } });
+    await prisma.tenant.update({ where: { id: tenantA.id }, data: {
+      settings: { accounting: { paymentMethodMapping: { MADA: '1150' } } },
+    } });
+    const madaOrder = await pos.createOrder(madaDto(madaOrderId) as any, userA.id, tenantA.id, 'ADMIN');
+    assert.equal((await prisma.product.findUniqueOrThrow({ where: { id: madaProduct.id } })).currentStock, 1);
+    const madaJournal = await prisma.journalEntryHeader.findFirstOrThrow({
+      where: { tenantId: tenantA.id, sourceType: 'POS_ORDER', sourceId: madaOrder.id },
+      include: { lines: true },
+    });
+    assert.equal(madaJournal.status, 'POSTED');
+    assert.deepEqual(
+      madaJournal.lines.map(l => [l.accountId, Number(l.debitAmount), Number(l.creditAmount)]),
+      [
+        [madaClearing.id, 11.5, 0],
+        [ledgerByCode['4100'], 0, 10],
+        [ledgerByCode['2110'], 0, 1.5],
+      ],
+    );
+    assert.equal(await prisma.posPayment.count({ where: { orderId: madaOrder.id, method: 'MADA' } }), 1);
+
     const actorA = { user: { userId: userA.id, tenantId: tenantA.id, role: 'ADMIN' } };
     const actorB = { user: { userId: userB.id, tenantId: tenantB.id, role: 'ADMIN' } };
     assert.equal((await users.getPreferences(actorA)).language, 'ar');
