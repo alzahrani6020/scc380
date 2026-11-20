@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# SCC380 POS: export production PostgreSQL and VERIFY restoration in a separate empty database.
+# This script is MANUAL ONLY. It is not part of migrations, deployment, or app startup.
+set -euo pipefail
+umask 077
+
+for tool in psql pg_dump pg_restore sha256sum mktemp; do
+  command -v "$tool" >/dev/null 2>&1 || { printf 'FAIL: missing %s\n' "$tool" >&2; exit 2; }
+done
+: "${DATABASE_URL:?Set source DATABASE_URL privately}"
+: "${RESTORE_DATABASE_URL:?Set an isolated EMPTY database URL privately}"
+: "${BACKUP_DIR:?Set an off-service, durable backup directory}"
+: "${EXPECTED_SOURCE_DB:=scc_main_qbf1}"
+
+mkdir -p -- "$BACKUP_DIR"
+[[ -d "$BACKUP_DIR" && -w "$BACKUP_DIR" ]] || { echo 'FAIL: backup destination unavailable' >&2; exit 2; }
+
+source_db=$(psql -X -qAt -v ON_ERROR_STOP=1 "$DATABASE_URL" -c 'SELECT current_database()')
+target_db=$(psql -X -qAt -v ON_ERROR_STOP=1 "$RESTORE_DATABASE_URL" -c 'SELECT current_database()')
+if [[ "$source_db" != "$EXPECTED_SOURCE_DB" || -z "$target_db" || "$target_db" == "$source_db" ]]; then
+  echo 'FAIL: source database identity mismatch or restore target is production' >&2
+  exit 3
+fi
+# Prevent writing into a database containing application data. Do not drop anything.
+target_tables=$(psql -X -qAt -v ON_ERROR_STOP=1 "$RESTORE_DATABASE_URL" -c "SELECT count(*) FROM pg_catalog.pg_tables WHERE schemaname NOT IN ('pg_catalog','information_schema')")
+if [[ "$target_tables" != "0" ]]; then
+  echo 'FAIL: restore target is not empty; refusing overwrite' >&2
+  exit 3
+fi
+
+tmp=$(mktemp "$BACKUP_DIR/.scc380-pos-XXXXXXXX.dump")
+trap 'rm -f -- "$tmp"' EXIT
+PGCONNECT_TIMEOUT=10 pg_dump --format=custom --no-owner --no-privileges --dbname="$DATABASE_URL" --file="$tmp"
+[[ -s "$tmp" ]] || { echo 'FAIL: empty backup' >&2; exit 4; }
+contents=$(pg_restore --list "$tmp")
+for required in 'TABLE public tenants' 'TABLE public products' 'TABLE public pos_orders' 'TABLE public chart_of_accounts'; do
+  # pg_restore listing has an owner column, so match the table name before owner.
+  if ! grep -Eq "(^|[[:space:]])${required// /[[:space:]]+}([[:space:]]|$)" <<< "$contents"; then
+    echo "FAIL: archive does not contain expected SCC380 relation: $required" >&2
+    exit 4
+  fi
+done
+if grep -Eq 'SCHEMA[[:space:]]+-[[:space:]]+(auth|supabase_migrations|realtime|storage)' <<< "$contents"; then
+  echo 'FAIL: archive looks like a different Supabase database' >&2
+  exit 4
+fi
+
+# Restore is attempted ONLY after the target's identity and emptiness checks.
+PGCONNECT_TIMEOUT=10 pg_restore --exit-on-error --single-transaction --no-owner --no-privileges --dbname="$RESTORE_DATABASE_URL" "$tmp"
+source_tenants=$(psql -X -qAt -v ON_ERROR_STOP=1 "$DATABASE_URL" -c 'SELECT count(*) FROM public.tenants')
+target_tenants=$(psql -X -qAt -v ON_ERROR_STOP=1 "$RESTORE_DATABASE_URL" -c 'SELECT count(*) FROM public.tenants')
+source_orders=$(psql -X -qAt -v ON_ERROR_STOP=1 "$DATABASE_URL" -c 'SELECT count(*) FROM public.pos_orders')
+target_orders=$(psql -X -qAt -v ON_ERROR_STOP=1 "$RESTORE_DATABASE_URL" -c 'SELECT count(*) FROM public.pos_orders')
+if [[ "$source_tenants" != "$target_tenants" || "$source_orders" != "$target_orders" ]]; then
+  echo 'FAIL: restored control counts differ; archive retained for investigation' >&2
+  dest="$BACKUP_DIR/scc380-restore-unverified-$(date -u +%Y%m%dT%H%M%SZ).dump"
+  mv -- "$tmp" "$dest"
+  trap - EXIT
+  exit 5
+fi
+dest="$BACKUP_DIR/scc380-verified-$(date -u +%Y%m%dT%H%M%SZ).dump"
+mv -- "$tmp" "$dest"
+trap - EXIT
+echo 'STATUS: PASS - BACKUP_RESTORED_TO_ISOLATED_DATABASE'
+printf 'SOURCE_DB: %s\nRESTORE_DB: %s\nBACKUP: %s\n' "$source_db" "$target_db" "$dest"
+sha256sum -- "$dest"
