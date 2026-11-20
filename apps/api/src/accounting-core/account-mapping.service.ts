@@ -146,6 +146,11 @@ export class AccountMappingService {
         `Missing active payment account mapping: POS ${method}=${code}`,
       );
     }
+    if (account.type !== 'ASSET') {
+      throw new BadRequestException(
+        `Invalid POS payment mapping: ${method}=${code} must be an ASSET account`,
+      );
+    }
     return account;
   }
 
