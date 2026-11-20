@@ -1,0 +1,34 @@
+name: POS Backup Script Safety
+on:
+  pull_request:
+    paths:
+      - 'scripts/pos-production-backup-restore-verify.sh'
+      - '.github/workflows/pos-backup-script-safety.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-backup-script:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate script syntax and release safety guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          file=scripts/pos-production-backup-restore-verify.sh
+          bash -n "$file"
+          # Static guard invariants: never restore into source database,
+          # do not allow nonempty targets, do not destroy existing data.
+          grep -Fq '"$target_db" == "$source_db"' "$file"
+          grep -Fq '"$target_tables" != "0"' "$file"
+          grep -Fq -- '--single-transaction' "$file"
+          grep -Fq -- '--exit-on-error' "$file"
+          if grep -Eq '(^|[[:space:]])(DROP DATABASE|DROP TABLE|TRUNCATE|--clean|--create)([[:space:]]|$)' "$file"; then
+            echo 'FAIL: dangerous operation in backup verifier' >&2
+            exit 1
+          fi
+          echo 'PASS: syntax and static safety invariants'
