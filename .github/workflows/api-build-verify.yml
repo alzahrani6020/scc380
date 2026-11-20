@@ -126,9 +126,45 @@ jobs:
       - name: Run DB-backed CRM, HR and Accounting E2E
         run: pnpm --filter @scc/api test:db-e2e
 
-      - name: Verify POS atomic financial transaction and user preferences against PostgreSQL
+      - name: Simulate SCC380 production-like backup and restore with populated data
+        shell: bash
+        run: |
+          set -euo pipefail
+          # This is a disposable CI database only; never connects to Render production.
+          psql "$DIRECT_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO tenants ("id", "name", "slug", "updatedAt")
+          VALUES ('pos-restore-fixture', 'POS isolated restore fixture', 'pos-restore-fixture', now());
+          INSERT INTO chart_of_accounts ("id", "tenantId", "code", "name", "type", "updatedAt")
+          VALUES ('pos-restore-account', 'pos-restore-fixture', '1110', 'Fixture cash', 'ASSET', now());
+          INSERT INTO products ("id", "tenantId", "name", "sku", "costPrice", "salePrice", "currentStock", "updatedAt")
+          VALUES ('pos-restore-product', 'pos-restore-fixture', 'Fixture inventory', 'POS-RESTORE-001', 3, 10, 2, now());
+          SQL
+          psql "postgresql://scc:scc@127.0.0.1:5432/postgres" -X -v ON_ERROR_STOP=1 -c 'CREATE DATABASE scc_pos_restored'
+          mkdir -p "$RUNNER_TEMP/scc380-pos-restore"
+          chmod 700 "$RUNNER_TEMP/scc380-pos-restore"
+          docker run --rm --network host \
+            -v "$PWD/scripts/pos-production-backup-restore-verify.sh:/verify-scc380.sh:ro" \
+            -v "$RUNNER_TEMP/scc380-pos-restore:/backups" \
+            -e DATABASE_URL="$DATABASE_URL" \
+            -e RESTORE_DATABASE_URL='postgresql://scc:scc@127.0.0.1:5432/scc_pos_restored' \
+            -e EXPECTED_SOURCE_DB=scc_test \
+            -e BACKUP_DIR=/backups \
+            postgres:17 bash /verify-scc380.sh
+          restore_url='postgresql://scc:scc@127.0.0.1:5432/scc_pos_restored'
+          test "$(psql "$restore_url" -XAt -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM tenants WHERE id='pos-restore-fixture'")" = "1"
+          test "$(psql "$restore_url" -XAt -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM products WHERE id='pos-restore-product' AND \"currentStock\"=2")" = "1"
+          test "$(psql "$restore_url" -XAt -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM chart_of_accounts WHERE id='pos-restore-account' AND type='ASSET'")" = "1"
+          original_migrations=$(psql "$DIRECT_URL" -XAt -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM _prisma_migrations")
+          restored_migrations=$(psql "$restore_url" -XAt -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM _prisma_migrations")
+          test "$original_migrations" = "$restored_migrations"
+          test "$original_migrations" -gt 0
+          echo 'SCC380_POPULATED_SCHEMA_ARCHIVE_AND_RESTORE_PASS'
+
+      - name: Verify POS atomic financial transaction and user preferences on RESTORED database
         env:
           CRM_DB_E2E: '1'
+          DATABASE_URL: postgresql://scc:scc@127.0.0.1:5432/scc_pos_restored
+          DIRECT_URL: postgresql://scc:scc@127.0.0.1:5432/scc_pos_restored
         run: pnpm --filter @scc/api exec tsx --test --test-concurrency=1 test/pos-atomic-db.e2e.spec.ts
 
       - name: Build API dependency graph
