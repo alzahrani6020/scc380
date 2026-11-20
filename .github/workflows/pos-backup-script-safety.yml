@@ -45,6 +45,7 @@ jobs:
           docker exec -e PGPASSWORD=fixture-only "$cid" psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE scc_main_qbf1'
           docker exec -e PGPASSWORD=fixture-only "$cid" psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE scc380_restore_acceptance'
           docker exec -e PGPASSWORD=fixture-only "$cid" psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE scc380_nonempty'
+          docker exec -e PGPASSWORD=fixture-only "$cid" psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE scc380_restore_failure'
           docker exec -e PGPASSWORD=fixture-only -i "$cid" psql -h localhost -U postgres -d scc_main_qbf1 -v ON_ERROR_STOP=1 <<'SQL'
           CREATE TABLE tenants(id text primary key);
           CREATE TABLE products(id text primary key);
@@ -56,6 +57,9 @@ jobs:
           INSERT INTO chart_of_accounts VALUES ('fixture-account');
           SQL
           docker exec -e PGPASSWORD=fixture-only "$cid" psql -h localhost -U postgres -d scc380_nonempty -v ON_ERROR_STOP=1 -c 'CREATE TABLE keep_me(id int)'
+          # A view is not a table, so the empty-table guard passes, but restoring a
+          # table of the same name must fail. The backup must still be retained.
+          docker exec -e PGPASSWORD=fixture-only "$cid" psql -h localhost -U postgres -d scc380_restore_failure -v ON_ERROR_STOP=1 -c 'CREATE VIEW tenants AS SELECT 1::text AS id'
           docker cp "$file" "$cid":/verify-scc380.sh
           source_url='postgresql://postgres:fixture-only@localhost:5432/scc_main_qbf1'
           restore_url='postgresql://postgres:fixture-only@localhost:5432/scc380_restore_acceptance'
@@ -69,6 +73,12 @@ jobs:
             echo 'FAIL: script allowed restore onto existing data' >&2; exit 1
           fi
           docker exec -e PGPASSWORD=fixture-only "$cid" psql -h localhost -U postgres -d scc380_nonempty -tAc "SELECT count(*) FROM keep_me" >/dev/null
+          # An isolated restore failure must not delete the already-created backup.
+          if docker exec -e DATABASE_URL="$source_url" -e RESTORE_DATABASE_URL='postgresql://postgres:fixture-only@localhost:5432/scc380_restore_failure' -e BACKUP_DIR=/tmp/failed-restore-backup "$cid" bash /verify-scc380.sh; then
+            echo 'FAIL: conflicting restore unexpectedly succeeded' >&2; exit 1
+          fi
+          docker exec "$cid" bash -c 'test "$(find /tmp/failed-restore-backup -maxdepth 1 -type f -name "scc380-unverified-*.dump" | wc -l)" -eq 1'
+          echo 'PASS: restore failure retained an unverified archive'
           docker exec -e DATABASE_URL="$source_url" -e RESTORE_DATABASE_URL="$restore_url" -e BACKUP_DIR=/tmp/fixture-backup "$cid" bash /verify-scc380.sh | tee backup-result.log
           grep -Fq 'STATUS: PASS - BACKUP_RESTORED_TO_ISOLATED_DATABASE' backup-result.log
           docker exec -e PGPASSWORD=fixture-only "$cid" psql -h localhost -U postgres -d scc380_restore_acceptance -tAc 'SELECT count(*) FROM tenants' | grep -qx 1
