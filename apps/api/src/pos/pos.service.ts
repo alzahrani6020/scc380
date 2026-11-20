@@ -1,7 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { prisma, tenantWhere } from '@scc/database';
 import { PosPaymentMethod } from '@prisma/client';
-import { PaymentMethod } from '@scc/database';
 import { AccountMappingService, AccountingRole } from '../accounting-core/account-mapping.service';
 import { AccountingPostingService, PostingLine } from '../accounting-core/accounting-posting.service';
 import { CreatePosOrderDto, CreatePosSessionDto, ClosePosSessionDto } from './dto/pos.dto';
@@ -174,13 +173,10 @@ export class PosService {
         : {} as Record<string, { id: string }>;
       const paymentLines: PostingLine[] = [];
       for (const payment of payments) {
-        // The POS payment enum includes options not represented by the
-        // accounting payment enum. Reject those until explicitly mapped.
-        if (!Object.values(PaymentMethod).includes(payment.method as unknown as PaymentMethod)) {
-          throw new BadRequestException(`Accounting mapping unavailable for POS payment ${payment.method}`);
-        }
-        const account = await this.mapping.resolvePaymentAccountInTransaction(
-          tx, tenantId, payment.method as unknown as PaymentMethod,
+        // All POS methods use their own tenant-approved ledger mapping.
+        // Cash defaults to the cash account; non-cash methods require configuration.
+        const account = await this.mapping.resolvePosPaymentAccountInTransaction(
+          tx, tenantId, payment.method,
         );
         paymentLines.push({ accountId: account.id, debitAmount: payment.amount });
       }
