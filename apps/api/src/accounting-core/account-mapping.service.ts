@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { PaymentMethod, Prisma, prisma } from '@scc/database';
+import { PaymentMethod, PosPaymentMethod, Prisma, prisma } from '@scc/database';
 
 export type AccountingRole =
   | 'CASH'
@@ -110,6 +110,40 @@ export class AccountMappingService {
     if (!account) {
       throw new BadRequestException(
         `Missing active payment account mapping: ${method}=${code}`,
+      );
+    }
+    return account;
+  }
+
+  // POS-specific payment methods (CARD, MADA, WALLET) do not all exist
+  // in PaymentMethod. Require an explicit tenant mapping instead of
+  // silently posting non-cash receipts to cash.
+  async resolvePosPaymentAccountInTransaction(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    method: PosPaymentMethod,
+  ) {
+    const tenant = await this.loadTenant(tx, tenantId);
+    const accounting = this.readAccounting(tenant.settings);
+    const mapping = accounting.paymentMethodMapping;
+    const configured = mapping && typeof mapping === 'object' && !Array.isArray(mapping)
+      ? (mapping as Record<string, unknown>)[method]
+      : undefined;
+    const code = typeof configured === 'string' && configured.trim()
+      ? configured.trim()
+      : method === PosPaymentMethod.CASH ? DEFAULT_CODES.CASH : null;
+    if (!code) {
+      throw new BadRequestException(
+        `Missing accounting payment-method mapping for POS ${method}`,
+      );
+    }
+    const account = await tx.chartOfAccount.findFirst({
+      where: { tenantId, code, isActive: true },
+      select: { id: true, code: true, name: true, type: true },
+    });
+    if (!account) {
+      throw new BadRequestException(
+        `Missing active payment account mapping: POS ${method}=${code}`,
       );
     }
     return account;
