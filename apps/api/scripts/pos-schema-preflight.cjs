@@ -15,7 +15,7 @@ const EXPECTED_DATABASE = 'scc_main_qbf1';
 const EXPECTED_HOST = 'dpg-dboalnjrjlhs73asosf0-a';
 const EXPECTED_SCHEMA = 'public';
 const EXPECTED_MIGRATION = '20261119070000_reconcile_pos_tables';
-const EXPECTED_CHECKSUM = '007a7fd82d6493138cdd85f239b2728a94a5f154f68268d4fd9516e19883f696';
+const EXPECTED_CHECKSUM = 'ebb23300d65ce6fdad141d8134ac64d19a8c6c97d861d52052405830dabc6891';
 const BASELINE_SHA = 'cb3f2d76537113833ea274547e495e413752772c';
 let emitted = false;
 let server;
