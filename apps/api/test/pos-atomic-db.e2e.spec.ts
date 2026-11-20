@@ -314,6 +314,62 @@ test('POS: open-session ownership, atomic stock, idempotency, tenant isolation a
     );
     assert.equal(await prisma.posPayment.count({ where: { orderId: madaOrder.id, method: 'MADA' } }), 1);
 
+    // Release drill: inspect the invoice, read the daily report, reconcile cash,
+    // close the terminal and prove a different tenant cannot access the invoice.
+    const fetchedOrder = await pos.findOrderById(flowOrder.id, tenantA.id, 'ADMIN');
+    assert.equal(fetchedOrder.id, flowOrder.id);
+    assert.equal(fetchedOrder.items.length, 1);
+    assert.equal(fetchedOrder.payments.length, 1);
+    assert.equal(Number(fetchedOrder.total), 11.5);
+    await assert.rejects(
+      () => pos.findOrderById(flowOrder.id, tenantB.id, 'ADMIN'),
+      /Order not found/,
+    );
+    console.log('POS_RELEASE_DRILL_PASS invoice_retrieval_and_tenant_isolation');
+
+    const daily = await pos.getDailyReport(tenantA.id, 'ADMIN');
+    assert.ok(daily.totalOrders >= 1);
+    assert.ok(Number(daily.totalSales) >= 11.5);
+    assert.ok(daily.orders.some(item => item.id === flowOrder.id));
+    const reportWithDate = await pos.getDailyReport(tenantA.id, 'ADMIN',
+      new Date().toISOString().slice(0, 10));
+    assert.ok(reportWithDate.orders.some(item => item.id === flowOrder.id));
+    console.log('POS_RELEASE_DRILL_PASS daily_report_and_date_query');
+
+    const sessionPayments = await prisma.posPayment.findMany({
+      where: { tenantId: tenantA.id, order: { sessionId: session.id }, method: 'CASH' },
+    });
+    const cashReceived = sessionPayments.reduce((sum, payment) => sum + Number(payment.amount), 0);
+    assert.ok(cashReceived > 0);
+    await assert.rejects(
+      () => pos.closeSession(session.id, { closingCash: String(cashReceived) } as any,
+        tenantB.id, 'ADMIN'),
+      /Open session not found/,
+    );
+    const closed = await pos.closeSession(session.id,
+      { closingCash: String(cashReceived) } as any, tenantA.id, 'ADMIN');
+    assert.equal(closed.status, 'CLOSED');
+    assert.equal(Number(closed.expectedCash), cashReceived);
+    assert.equal(Number(closed.closingCash), cashReceived);
+    await assert.rejects(
+      () => pos.closeSession(session.id, { closingCash: String(cashReceived) } as any,
+        tenantA.id, 'ADMIN'),
+      /Open session not found/,
+    );
+    console.log('POS_RELEASE_DRILL_PASS cash_reconciliation_terminal_close_and_double_close_rejection');
+
+    assert.equal((await prisma.product.findUniqueOrThrow({
+      where: { id: receivedProduct.id },
+    })).currentStock, 1);
+    const postedSale = await prisma.journalEntryHeader.findFirstOrThrow({
+      where: { tenantId: tenantA.id, sourceType: 'POS_ORDER', sourceId: flowOrder.id },
+      include: { lines: true },
+    });
+    assert.equal(postedSale.status, 'POSTED');
+    assert.equal(postedSale.lines.reduce((n, line) => n + Number(line.debitAmount), 0),
+      postedSale.lines.reduce((n, line) => n + Number(line.creditAmount), 0));
+    console.log('POS_RELEASE_DRILL_PASS final_inventory_and_balanced_posted_journal');
+
     const actorA = { user: { userId: userA.id, tenantId: tenantA.id, role: 'ADMIN' } };
     const actorB = { user: { userId: userB.id, tenantId: tenantB.id, role: 'ADMIN' } };
     assert.equal((await users.getPreferences(actorA)).language, 'ar');
