@@ -40,3 +40,6 @@ infrastructure/docker/**/data/
 infrastructure/nginx/ssl/
 
 .vercel
+
+# Turborepo local cache
+.turbo/

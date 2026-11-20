@@ -16,7 +16,8 @@
     "docker:up": "docker compose -f infrastructure/docker/dev/docker-compose.yml up -d",
     "docker:down": "docker compose -f infrastructure/docker/dev/docker-compose.yml down",
     "docker:prod": "docker compose -f infrastructure/docker/prod/docker-compose.yml up -d",
-    "setup": "pnpm install && pnpm db:generate && pnpm docker:up"
+    "setup": "pnpm install && pnpm db:generate && pnpm docker:up",
+    "preflight": "node scripts/preflight.cjs"
   },
   "pnpm": {
     "overrides": {
