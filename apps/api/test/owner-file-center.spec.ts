@@ -39,6 +39,9 @@ test('file payment is bound to tenant, verified identity, exact SKU, and fully s
   assert.match(api, /SCC380-FILE-/);
   assert.match(api, /x\.status === 'COMPLETED'/);
   assert.match(api, /settled \+ 0\.009 >= Number\(invoice\.total\)/);
+  assert.match(api, /FILE_PROVIDER_SETTLEMENT_VERIFIED/);
+  assert.match(api, /TRUSTED_GATEWAY/);
+  assert.match(api, /proof\.scope !== scope/);
 });
 test('partial delivery is strictly text-only and checked within 500 lines', () => {
   assert.match(api, /\['text\/plain', 'text\/csv'\]/);
