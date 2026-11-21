@@ -26,6 +26,11 @@ export default function DownloadActivityReport() {
     try {
       const params = new URLSearchParams();
       if (invoiceNumber) params.set('invoiceNumber', invoiceNumber.trim());
+      params.set('scope', scope);
+      if (scope === 'PARTIAL') {
+        if (from) params.set('from', from);
+        if (to) params.set('to', to);
+      }
       const result = await api.get<Access>('/analytics/activity/download-access?' + params.toString());
       setAccess(result.data);
     } catch {
@@ -115,7 +120,7 @@ export default function DownloadActivityReport() {
     {error && <p role="alert" className="rounded-lg border border-red-700 p-3 text-sm text-red-300">{error}</p>}
     {!eligible && <section className="space-y-3 rounded-lg border border-slate-700 p-4">
       <h2 className="font-bold">طلب موافقة المالك على التنزيل</h2>
-      <p className="text-sm text-slate-300">يُرسل الطلب من حسابك الموثق مباشرة. سيحدد المالك الموافقة أو الرفض بناءً على الفترة والنطاق.</p>
+      <p className="text-sm text-slate-300">يُرسل الطلب من حسابك الموثق مباشرة. سيحدد المالك الموافقة أو الرفض بناءً على الفترة والنطاق. بعد الموافقة على التقرير الجزئي اختر الفترة نفسها ثم اضغط تحقق من أهلية التنزيل.</p>
       <label className="block text-sm">الغرض من الطلب (اختياري)
         <textarea maxLength={300} value={reason} onChange={e => setReason(e.target.value)}
           className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 p-2" rows={2} />
