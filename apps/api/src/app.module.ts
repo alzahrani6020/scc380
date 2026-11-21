@@ -40,6 +40,7 @@ import { StockTransferModule } from './stock-transfer/stock-transfer.module';
 import { AlertsModule } from './alerts/alerts.module';
 import { ComplianceModule } from './compliance/compliance.module';
 import { RealEstateModule } from './real-estate/real-estate.module';
+import { OwnerFilesController } from './owner-files/owner-files.controller';
 
 @Module({
   imports: [
@@ -88,7 +89,7 @@ import { RealEstateModule } from './real-estate/real-estate.module';
     RealEstateModule,
     ScheduleModule.forRoot(),
   ],
-  controllers: [AppController],
+  controllers: [AppController, OwnerFilesController],
   providers: [
     AppService,
     RetentionService,
