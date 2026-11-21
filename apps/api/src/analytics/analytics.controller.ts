@@ -330,7 +330,7 @@ export class AnalyticsController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   async ownerApprovals(@Request() req: any) {
-    this.requireOwner(req);
+    await this.requireOwner(req);
     return prisma.auditLog.findMany({
       where: {
         entityType: 'ACTIVITY_REPORT_ACCESS',
@@ -349,7 +349,7 @@ export class AnalyticsController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   async approveExport(@Request() req: any, @Body() body: { email?: string; scope?: string; revoke?: boolean }) {
-    this.requireOwner(req);
+    await this.requireOwner(req);
     if (typeof body?.email !== 'string' || body.email.length > 254 || !body.email.includes('@') ||
         !['FULL', 'PARTIAL'].includes(body?.scope || '')) {
       throw new BadRequestException('Email and valid scope are required');
