@@ -5,6 +5,7 @@ import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import { FileDown } from 'lucide-react';
 import Button from './ui/Button';
+import api from '@/lib/api';
 
 interface PdfExporterProps {
   children: React.ReactNode;
@@ -57,6 +58,18 @@ export default function PdfExporter({
         heightLeft -= pageHeight;
       }
 
+      // The client-side export has no server delivery endpoint. Track the
+      // attempted save after generating the file, without exposing report data.
+      if (window.location.pathname.startsWith('/dashboard')) {
+        void api.post('/analytics/activity/event', {
+          action: 'DOWNLOAD_REQUEST',
+          path: window.location.pathname,
+          resource: filename.slice(0, 180),
+          source: 'CLIENT_PDF_EXPORT',
+        }).catch(() => {
+          // Audit telemetry must not interrupt an already authorized internal export.
+        });
+      }
       pdf.save(filename);
     } catch (err) {
       console.error('PDF export failed:', err);
