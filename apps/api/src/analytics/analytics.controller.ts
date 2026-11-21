@@ -223,8 +223,11 @@ export class AnalyticsController {
     };
   }
 
-  private async latestOwnerDecision(userId: string, tenantId: string | null) {
-    const row = await prisma.auditLog.findFirst({
+  private async latestOwnerDecision(userId: string, tenantId: string | null,
+    requestedScope?: string, from?: string, to?: string) {
+    // A request-specific partial approval never expands to a different date range.
+    // A later revocation supersedes all earlier approvals.
+    const rows = await prisma.auditLog.findMany({
       where: {
         entityType: 'ACTIVITY_REPORT_ACCESS',
         entityId: userId,
@@ -233,11 +236,20 @@ export class AnalyticsController {
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       select: { action: true, newValues: true },
+      take: 200,
     });
-    const values = row?.newValues as { scope?: string } | null;
-    return row?.action === 'DOWNLOAD_ACCESS_APPROVED'
-      ? values?.scope === 'FULL' ? 'FULL' : 'PARTIAL'
-      : null;
+    for (const row of rows) {
+      if (row.action === 'DOWNLOAD_ACCESS_REVOKED') return null;
+      const values = row.newValues as {
+        scope?: string; requestId?: string; from?: string | null; to?: string | null
+      } | null;
+      if (!values || !['FULL', 'PARTIAL'].includes(values.scope || '')) continue;
+      if (!values.requestId) return values.scope;
+      if (values.scope === 'FULL') return 'FULL';
+      if (requestedScope === 'PARTIAL' && from === values.from && to === values.to)
+        return 'PARTIAL';
+    }
+    return null;
   }
 
   private async verifiedPaidScope(req: any, invoiceNumber?: string) {
@@ -281,7 +293,7 @@ export class AnalyticsController {
     return invoice.items.some(i => i.product?.sku === this.reportFullSku) ? 'FULL' : 'PARTIAL';
   }
 
-  private async requireExportAccess(req: any, requested: string, invoiceNumber?: string) {
+  private async requireExportAccess(req: any, requested: string, invoiceNumber?: string, from?: string, to?: string) {
     if (!['FULL', 'PARTIAL'].includes(requested)) {
       throw new BadRequestException('scope must be FULL or PARTIAL');
     }
@@ -305,7 +317,7 @@ export class AnalyticsController {
       throw new ForbiddenException('Download access unavailable');
     }
     const [ownerDecision, paid] = await Promise.all([
-      this.latestOwnerDecision(req.user.userId, req.user.tenantId),
+      this.latestOwnerDecision(req.user.userId, req.user.tenantId, requested, from, to),
       this.verifiedPaidScope(req, invoiceNumber),
     ]);
     if (ownerDecision === 'FULL' || paid === 'FULL') return ownerDecision === 'FULL' ? 'OWNER_APPROVED' : 'PAID';
@@ -318,18 +330,227 @@ export class AnalyticsController {
   @Get('activity/download-access')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  async downloadAccess(@Request() req: any, @Query('invoiceNumber') invoiceNumber?: string) {
+  async downloadAccess(@Request() req: any, @Query('invoiceNumber') invoiceNumber?: string,
+    @Query('scope') requestedScope?: string, @Query('from') from?: string, @Query('to') to?: string) {
     if (await this.canManageOwnerConsole(req)) return { scope: 'FULL', source: 'OWNER' };
     if (!['ADMIN', 'AUDITOR'].includes(req.user.role) || !req.user.tenantId) {
       return { scope: null, source: null };
     }
     const [approved, paid] = await Promise.all([
-      this.latestOwnerDecision(req.user.userId, req.user.tenantId),
+      this.latestOwnerDecision(req.user.userId, req.user.tenantId, requestedScope, from, to),
       this.verifiedPaidScope(req, invoiceNumber),
     ]);
     const scope = approved === 'FULL' || paid === 'FULL'
       ? 'FULL' : approved === 'PARTIAL' || paid === 'PARTIAL' ? 'PARTIAL' : null;
     return { scope, source: approved === scope ? 'OWNER_APPROVED' : paid === scope ? 'PAID' : null };
+  }
+
+
+  // A download approval request is created by the authenticated applicant.
+  // No email or tenant from the browser is trusted. This request alone NEVER grants access.
+  @Post('activity/download-request')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  async createDownloadRequest(@Request() req: any,
+    @Body() body: { scope?: string; from?: string; to?: string; reason?: string }) {
+    if (!['ADMIN', 'AUDITOR'].includes(req.user?.role) ||
+        !req.user?.tenantId || !req.user?.userId) {
+      throw new ForbiddenException('An active tenant administrator or auditor is required');
+    }
+    const scope = body?.scope;
+    if (scope !== 'PARTIAL' && scope !== 'FULL') {
+      throw new BadRequestException('Scope must be PARTIAL or FULL');
+    }
+    const reason = typeof body?.reason === 'string' ? body.reason.trim() : '';
+    if (reason.length > 300 || (body?.reason !== undefined && typeof body.reason !== 'string')) {
+      throw new BadRequestException('Invalid request reason');
+    }
+    let from: string | null = null;
+    let to: string | null = null;
+    if (scope === 'PARTIAL') {
+      if (typeof body?.from !== 'string' || typeof body?.to !== 'string') {
+        throw new BadRequestException('Partial request requires date range');
+      }
+      // Validate both dates against the same policy used for the export.
+      const parsed = this.activityScope(req, body.from, body.to);
+      if (!parsed.createdAt.gte || !parsed.createdAt.lt) {
+        throw new BadRequestException('Invalid partial date range');
+      }
+      const days = (Date.parse(body.to + 'T00:00:00Z') - Date.parse(body.from + 'T00:00:00Z')) / 86400000;
+      if (!Number.isFinite(days) || days < 0 || days > 31) {
+        throw new BadRequestException('Partial date range exceeds 31 days');
+      }
+      from = body.from;
+      to = body.to;
+    } else if (body?.from || body?.to) {
+      throw new BadRequestException('Full request must not contain date filters');
+    }
+    const last = await prisma.auditLog.findFirst({
+      where: {
+        entityType: 'ACTIVITY_REPORT_REQUEST',
+        action: 'DOWNLOAD_APPROVAL_REQUESTED',
+        userId: req.user.userId,
+        tenantId: req.user.tenantId,
+        createdAt: { gte: new Date(Date.now() - 60_000) },
+      },
+      select: { id: true },
+    });
+    if (last) throw new BadRequestException('Please avoid repeated requests within one minute');
+    const request = await prisma.auditLog.create({
+      data: {
+        userId: req.user.userId,
+        tenantId: req.user.tenantId,
+        action: 'DOWNLOAD_APPROVAL_REQUESTED',
+        entityType: 'ACTIVITY_REPORT_REQUEST',
+        entityId: req.user.userId,
+        newValues: { scope, from, to, reason, resourceType: 'ACTIVITY_REPORT' },
+      },
+      select: { id: true, createdAt: true },
+    });
+    return { requestId: request.id, status: 'PENDING', createdAt: request.createdAt };
+  }
+
+  @Get('activity/my-requests')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  async myDownloadRequests(@Request() req: any) {
+    if (!req.user?.tenantId || !req.user?.userId) {
+      throw new ForbiddenException('Tenant session required');
+    }
+    const rows = await prisma.auditLog.findMany({
+      where: {
+        entityType: 'ACTIVITY_REPORT_REQUEST',
+        action: 'DOWNLOAD_APPROVAL_REQUESTED',
+        tenantId: req.user.tenantId,
+        userId: req.user.userId,
+      },
+      select: { id: true, createdAt: true, newValues: true },
+      take: 40,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    });
+    const ids = rows.map(r => r.id);
+    const decisions = ids.length ? await prisma.auditLog.findMany({
+      where: {
+        entityType: 'ACTIVITY_REPORT_ACCESS',
+        action: { in: ['DOWNLOAD_ACCESS_APPROVED', 'DOWNLOAD_REQUEST_REJECTED'] },
+        tenantId: req.user.tenantId,
+        entityId: req.user.userId,
+      },
+      select: { newValues: true, action: true, createdAt: true, id: true },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: 500,
+    }) : [];
+    return rows.map(row => {
+      const decision = decisions.find(d => (d.newValues as any)?.requestId === row.id);
+      return {
+        id: row.id, createdAt: row.createdAt, details: row.newValues,
+        status: decision?.action === 'DOWNLOAD_ACCESS_APPROVED' ? 'APPROVED'
+          : decision?.action === 'DOWNLOAD_REQUEST_REJECTED' ? 'REJECTED' : 'PENDING',
+      };
+    });
+  }
+
+  @Get('activity/owner/requests')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  async ownerDownloadRequests(@Request() req: any) {
+    await this.requireOwner(req);
+    const rows = await prisma.auditLog.findMany({
+      where: { entityType: 'ACTIVITY_REPORT_REQUEST', action: 'DOWNLOAD_APPROVAL_REQUESTED' },
+      select: {
+        id: true, tenantId: true, userId: true, createdAt: true, newValues: true,
+        user: { select: { email: true } },
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: 100,
+    });
+    const decisions = await prisma.auditLog.findMany({
+      where: {
+        entityType: 'ACTIVITY_REPORT_ACCESS',
+        action: { in: ['DOWNLOAD_ACCESS_APPROVED', 'DOWNLOAD_REQUEST_REJECTED'] },
+      },
+      select: { action: true, newValues: true, createdAt: true, id: true },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: 500,
+    });
+    return rows.map(row => {
+      const decision = decisions.find(d => (d.newValues as any)?.requestId === row.id);
+      return {
+        id: row.id, email: row.user?.email, tenantId: row.tenantId,
+        createdAt: row.createdAt, details: row.newValues,
+        status: decision?.action === 'DOWNLOAD_ACCESS_APPROVED' ? 'APPROVED'
+          : decision?.action === 'DOWNLOAD_REQUEST_REJECTED' ? 'REJECTED' : 'PENDING',
+      };
+    });
+  }
+
+  @Post('activity/owner/resolve-request')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  async resolveDownloadRequest(@Request() req: any,
+    @Body() body: { requestId?: string; decision?: string; reason?: string }) {
+    await this.requireOwner(req);
+    if (typeof body?.requestId !== 'string' || !/^[a-zA-Z0-9_-]{10,48}$/.test(body.requestId) ||
+        !['APPROVE', 'REJECT'].includes(body.decision || '')) {
+      throw new BadRequestException('Valid request and decision required');
+    }
+    const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
+    if (reason.length > 300 || (body.reason !== undefined && typeof body.reason !== 'string')) {
+      throw new BadRequestException('Invalid reason');
+    }
+    const row = await prisma.auditLog.findFirst({
+      where: {
+        id: body.requestId,
+        action: 'DOWNLOAD_APPROVAL_REQUESTED',
+        entityType: 'ACTIVITY_REPORT_REQUEST',
+      },
+      select: { id: true, userId: true, tenantId: true, newValues: true },
+    });
+    if (!row?.userId || !row.tenantId) throw new BadRequestException('Request does not exist');
+    const requested = row.newValues as { scope?: string; from?: string | null; to?: string | null } | null;
+    if (!['PARTIAL', 'FULL'].includes(requested?.scope || '')) {
+      throw new BadRequestException('Unsupported request scope');
+    }
+    const target = await prisma.user.findFirst({
+      where: { id: row.userId, tenantId: row.tenantId, status: 'ACTIVE',
+        role: { in: ['ADMIN', 'AUDITOR'] } },
+      select: { email: true },
+    });
+    if (!target) throw new BadRequestException('Requester is no longer eligible');
+
+    // One writer per request ID; use an advisory PostgreSQL transaction lock so
+    // two concurrent owner actions cannot approve and reject the same request.
+    return prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${row.id}))`;
+      const prior = await tx.auditLog.findFirst({
+        where: {
+          entityType: 'ACTIVITY_REPORT_ACCESS',
+          action: { in: ['DOWNLOAD_ACCESS_APPROVED', 'DOWNLOAD_REQUEST_REJECTED'] },
+          tenantId: row.tenantId,
+          entityId: row.userId,
+          // JSON path lookup ensures no decision is made twice on the same request.
+          newValues: { path: ['requestId'], equals: row.id },
+        },
+        select: { id: true, action: true },
+      });
+      if (prior) return { recorded: false, status: 'ALREADY_RESOLVED' };
+      const approval = body.decision === 'APPROVE';
+      await tx.auditLog.create({
+        data: {
+          tenantId: row.tenantId,
+          userId: req.user.userId,
+          entityType: 'ACTIVITY_REPORT_ACCESS',
+          entityId: row.userId,
+          action: approval ? 'DOWNLOAD_ACCESS_APPROVED' : 'DOWNLOAD_REQUEST_REJECTED',
+          newValues: {
+            requestId: row.id, scope: requested!.scope, subjectEmail: target.email,
+            from: requested?.from || null, to: requested?.to || null,
+            reason, decidedBy: req.user.userId,
+          },
+        },
+      });
+      return { recorded: true, status: approval ? 'APPROVED' : 'REJECTED' };
+    });
   }
 
   @Get('activity/owner/approvals')
@@ -386,7 +607,7 @@ export class AnalyticsController {
     @Query('from') from?: string, @Query('to') to?: string,
     @Query('scope') requestedScope?: string, @Query('invoiceNumber') invoiceNumber?: string) {
     const scope = requestedScope || 'PARTIAL';
-    const grantedBy = await this.requireExportAccess(req, scope, invoiceNumber);
+    const grantedBy = await this.requireExportAccess(req, scope, invoiceNumber, from, to);
     if (scope === 'PARTIAL' && (!from || !to)) {
       throw new BadRequestException('Partial download requires from and to dates');
     }
