@@ -15,5 +15,24 @@ export default function ActivityTracker() {
         // Tracking is non-blocking; never disrupt normal navigation.
       });
   }, [pathname]);
+  useEffect(() => {
+    const recordDownloads = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const link = target.closest('a[href]');
+      if (!(link instanceof HTMLAnchorElement)) return;
+      const hasDownload = link.hasAttribute('download');
+      let resource: URL;
+      try { resource = new URL(link.href, window.location.href); } catch { return; }
+      const fileLink = /\\.(pdf|csv|xlsx?|docx?|zip|png|jpe?g)$/i.test(resource.pathname);
+      if (!hasDownload && !fileLink) return;
+      if (resource.origin !== window.location.origin) return;
+      const path = window.location.pathname;
+      if (!path.startsWith('/dashboard')) return;
+      void api.post('/analytics/activity/event', { action: 'DOWNLOAD_REQUEST', path }).catch(() => {});
+    };
+    document.addEventListener('click', recordDownloads, true);
+    return () => document.removeEventListener('click', recordDownloads, true);
+  }, []);
   return null;
 }
