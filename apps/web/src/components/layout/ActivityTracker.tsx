@@ -29,7 +29,12 @@ export default function ActivityTracker() {
       if (resource.origin !== window.location.origin) return;
       const path = window.location.pathname;
       if (!path.startsWith('/dashboard')) return;
-      void api.post('/analytics/activity/event', { action: 'DOWNLOAD_REQUEST', path }).catch(() => {});
+      void api.post('/analytics/activity/event', {
+        action: 'DOWNLOAD_REQUEST',
+        path,
+        resource: resource.pathname.slice(0, 180),
+        source: 'SAME_ORIGIN_LINK',
+      }).catch(() => {});
     };
     document.addEventListener('click', recordDownloads, true);
     return () => document.removeEventListener('click', recordDownloads, true);

@@ -74,13 +74,24 @@ export class AnalyticsController {
   @Post('activity/event')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  async recordActivity(@Request() req: any, @Body() body: { action?: string; path?: string }) {
+  async recordActivity(@Request() req: any,
+    @Body() body: { action?: string; path?: string; resource?: string; source?: string }) {
     const action = body?.action;
     const path = body?.path;
     if (!['PAGE_VIEW', 'DOWNLOAD_REQUEST'].includes(action || '') ||
         typeof path !== 'string' || !/^\/[a-zA-Z0-9/_-]{0,180}$/.test(path) ||
         !path.startsWith('/dashboard')) {
       throw new BadRequestException('Invalid activity event');
+    }
+    // Metadata is for observability only; it never authorizes downloading a file.
+    if (body.resource !== undefined &&
+        (action !== 'DOWNLOAD_REQUEST' || typeof body.resource !== 'string' ||
+         body.resource.length > 180 || /[\u0000-\u001F\u007F]/.test(body.resource))) {
+      throw new BadRequestException('Invalid resource label');
+    }
+    if (body.source !== undefined &&
+        (action !== 'DOWNLOAD_REQUEST' || !['CLIENT_PDF_EXPORT', 'SAME_ORIGIN_LINK'].includes(body.source))) {
+      throw new BadRequestException('Invalid delivery source');
     }
     await prisma.auditLog.create({
       data: {
@@ -90,6 +101,9 @@ export class AnalyticsController {
         entityType: 'SITE_ACTIVITY',
         httpMethod: 'EVENT',
         httpPath: path,
+        newValues: action === 'DOWNLOAD_REQUEST'
+          ? { resource: body.resource ?? null, source: body.source ?? 'UNSPECIFIED' }
+          : undefined,
         ipAddress: typeof req.ip === 'string' ? req.ip : null,
         userAgent: typeof req.headers?.['user-agent'] === 'string'
           ? req.headers['user-agent'].slice(0, 256) : null,
@@ -132,7 +146,7 @@ export class AnalyticsController {
       where: { ...tenantWhere, createdAt: scope.createdAt },
       select: {
         id: true, action: true, httpPath: true, responseStatus: true,
-        createdAt: true, userId: true, ipAddress: true,
+        createdAt: true, userId: true, ipAddress: true, newValues: true,
         user: { select: { email: true, firstName: true, lastName: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -553,6 +567,151 @@ export class AnalyticsController {
     });
   }
 
+
+  // Owner-only operational overview. Counts are computed from the full database,
+  // not the 1000-row interactive activity preview. No new data collection is implied.
+  @Get('activity/owner/insights')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  async ownerInsights(@Request() req: any, @Query('days') daysInput?: string) {
+    await this.requireOwner(req);
+    const days = daysInput === undefined ? 30 : Number(daysInput);
+    if (!Number.isInteger(days) || days < 1 || days > 90) {
+      throw new BadRequestException('days must be between 1 and 90');
+    }
+    const since = new Date(Date.now() - days * 86400000);
+    const now = new Date();
+    const period = { createdAt: { gte: since, lte: now } };
+    const views = { ...period, entityType: 'SITE_ACTIVITY', action: 'PAGE_VIEW' };
+    const errorWhere = { ...period, responseStatus: { gte: 400 } };
+    const [
+      recordedEvents, pageViews, downloadRequests, streamedExports,
+      downloadApprovalRequests, grantedApprovals, rejectedRequests,
+      auditedHttpErrors, recentErrors, activeSessions, loginFailures,
+      successfulLogins, authenticatedUsers, topPages, topActors,
+      hrDocumentDeliveryStarts, storedHrDocuments,
+    ] = await Promise.all([
+      prisma.auditLog.count({ where: period }),
+      prisma.auditLog.count({ where: views }),
+      prisma.auditLog.count({
+        where: { ...period, action: 'DOWNLOAD_REQUEST' },
+      }),
+      prisma.auditLog.count({
+        where: { ...period, action: 'REPORT_EXPORT_STREAMED' },
+      }),
+      prisma.auditLog.count({
+        where: { ...period, entityType: 'ACTIVITY_REPORT_REQUEST', action: 'DOWNLOAD_APPROVAL_REQUESTED' },
+      }),
+      prisma.auditLog.count({
+        where: { ...period, entityType: 'ACTIVITY_REPORT_ACCESS', action: 'DOWNLOAD_ACCESS_APPROVED' },
+      }),
+      prisma.auditLog.count({
+        where: { ...period, entityType: 'ACTIVITY_REPORT_ACCESS', action: 'DOWNLOAD_REQUEST_REJECTED' },
+      }),
+      prisma.auditLog.count({ where: errorWhere }),
+      prisma.auditLog.findMany({
+        where: errorWhere,
+        select: {
+          id: true, createdAt: true, httpPath: true, httpMethod: true,
+          responseStatus: true, action: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+      }),
+      prisma.session.count({
+        where: { revokedAt: null, expiresAt: { gt: now } },
+      }),
+      prisma.loginAttempt.count({
+        where: { ...period, success: false },
+      }),
+      prisma.loginAttempt.count({
+        where: { ...period, success: true },
+      }),
+      prisma.auditLog.groupBy({
+        by: ['userId'],
+        where: { ...period, userId: { not: null } },
+        _count: { _all: true },
+      }),
+      prisma.auditLog.groupBy({
+        by: ['httpPath'],
+        where: { ...views, httpPath: { not: null } },
+        _count: { _all: true },
+      }),
+      prisma.auditLog.groupBy({
+        by: ['userId'],
+        where: { ...period, userId: { not: null } },
+        _count: { _all: true },
+      }),
+      prisma.auditLog.count({
+        where: { ...period, entityType: 'HR_EMPLOYEE_DOCUMENT', action: 'FILE_DELIVERY_STARTED' },
+      }),
+      prisma.employeeDocument.count(),
+    ]);
+
+    const actorRows = topActors
+      .filter(item => item.userId)
+      .sort((a, b) => b._count._all - a._count._all)
+      .slice(0, 10);
+    const users = await prisma.user.findMany({
+      where: { id: { in: actorRows.map(item => item.userId!).filter(Boolean) } },
+      select: { id: true, email: true, firstName: true, lastName: true, tenantId: true },
+    });
+    const userMap = new Map(users.map(user => [user.id, user]));
+    return {
+      period: { since: since.toISOString(), until: now.toISOString(), days },
+      summary: {
+        recordedEvents, pageViews, downloadRequests, streamedExports,
+        downloadApprovalRequests, grantedApprovals, rejectedRequests,
+        auditedHttpErrors, activeSessions, loginFailures, successfulLogins,
+        identifiedActiveUsers: authenticatedUsers.length,
+        hrDocumentDeliveryStarts, storedHrDocuments,
+      },
+      pages: topPages
+        .filter(item => item.httpPath)
+        .sort((a, b) => b._count._all - a._count._all)
+        .slice(0, 15)
+        .map(item => ({ path: item.httpPath, visits: item._count._all })),
+      actors: actorRows.map(item => ({
+        userId: item.userId,
+        email: userMap.get(item.userId!)?.email ?? 'unknown',
+        tenantId: userMap.get(item.userId!)?.tenantId ?? null,
+        events: item._count._all,
+      })),
+      recentErrors,
+      resourceInventory: [
+        {
+          type: 'ACTIVITY_REPORT',
+          route: '/analytics/activity/export',
+          availability: 'AVAILABLE',
+          downloadPolicy: 'OWNER_APPROVAL_OR_VERIFIED_PAYMENT',
+          supportedScopes: ['PARTIAL', 'FULL'],
+        },
+        {
+          type: 'HR_EMPLOYEE_DOCUMENT',
+          route: '/hr/employee-documents/:id/download',
+          availability: 'AVAILABLE',
+          downloadPolicy: 'HR_DOCUMENT_READ_PERMISSION',
+          supportedScopes: ['FULL'],
+          documentCount: storedHrDocuments,
+          deliveriesLoggedInPeriod: hrDocumentDeliveryStarts,
+        },
+        {
+          type: 'ANONYMOUS_SITE_FILES',
+          availability: 'NOT_INSTRUMENTED',
+          downloadPolicy: 'NOT_AUDITED_BY_OWNER_CENTER',
+          supportedScopes: [],
+        },
+      ],
+      coverage: {
+        pageViews: 'Authenticated dashboard navigation events only',
+        anonymousVisitors: 'NOT_COLLECTED',
+        fileDownloads: 'Activity report exports, server-side HR document delivery attempts, and instrumented same-origin file links',
+        deviceDownloadCompletion: 'NOT_VERIFIABLE',
+        periodCounts: 'Complete database counts; the event preview remains capped',
+      },
+    };
+  }
+
   @Get('activity/owner/approvals')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
@@ -622,8 +781,8 @@ export class AnalyticsController {
       createdAt: selected.createdAt,
     };
     const safe = (value: unknown): string => {
-      let str = String(value ?? '').replace(/[\\r\\n]+/g, ' ').slice(0, 500);
-      if (/^[\\s]*[=+@-]/.test(str)) str = "'" + str;
+      let str = String(value ?? '').replace(/[\r\n]+/g, ' ').slice(0, 500);
+      if (/^[\s]*[=+@-]/.test(str)) str = "'" + str;
       return '"' + str.replace(/"/g, '""') + '"';
     };
     await prisma.auditLog.create({
@@ -640,7 +799,7 @@ export class AnalyticsController {
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename="scc380-activity-' + scope.toLowerCase() + '.csv"');
     res.setHeader('Cache-Control', 'no-store');
-    res.write('\\uFEFF' + ['UTC time', 'User', 'Email', 'Action', 'Path', 'HTTP status', 'IP'].map(safe).join(',') + '\\r\\n');
+    res.write('\uFEFF' + ['UTC time', 'User', 'Email', 'Action', 'Path', 'HTTP status', 'IP'].map(safe).join(',') + '\r\n');
     let count = 0;
     let cursor: string | undefined;
     try {
@@ -661,7 +820,7 @@ export class AnalyticsController {
           e.createdAt.toISOString(),
           [e.user?.firstName, e.user?.lastName].filter(Boolean).join(' '),
           e.user?.email ?? '', e.action, e.httpPath ?? '', e.responseStatus ?? '', e.ipAddress ?? '',
-        ].map(safe).join(',')).join('\\r\\n') + '\\r\\n';
+        ].map(safe).join(',')).join('\r\n') + '\r\n';
         if (!res.write(csv)) {
           await new Promise<void>((resolve) => res.once('drain', resolve));
         }

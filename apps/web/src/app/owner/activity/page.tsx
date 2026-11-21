@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import api from '@/lib/api';
 import { Download, RefreshCw, Shield, Eye, LogIn, FileDown, Search } from 'lucide-react';
 import Link from 'next/link';
+import OwnerInsights from '@/components/owner/OwnerInsights';
 import { clearAuth, getRefreshToken } from '@/lib/auth';
 import { sessionAuth } from '@/lib/session-auth';
 
@@ -14,6 +15,7 @@ type Activity = {
   responseStatus: number | null;
   createdAt: string;
   ipAddress: string | null;
+  newValues: { resource?: string; source?: string } | null;
   user: { email: string; firstName: string; lastName: string } | null;
 };
 type Session = {
@@ -214,6 +216,7 @@ export default function SiteActivityDashboard() {
           <Download className="h-4 w-4" />{exporting ? 'جارٍ التحميل...' : 'تحميل التقرير CSV'}
         </button>
       </div>
+      <OwnerInsights />
       <section className="rounded-xl border border-slate-700 bg-slate-900 p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="font-bold">طلبات التنزيل التي تحتاج قرار المالك</h2>
@@ -299,8 +302,8 @@ export default function SiteActivityDashboard() {
             className="rounded-md border border-slate-700 bg-slate-950 py-2 pr-9 pl-3 text-sm" /></label>
         </div>
         <div className="overflow-x-auto"><table className="w-full min-w-[640px] text-right text-sm">
-          <thead className="text-slate-400"><tr><th className="p-2">التاريخ</th><th className="p-2">المستخدم</th><th className="p-2">الحدث</th><th className="p-2">الصفحة أو المورد</th><th className="p-2">حالة HTTP</th></tr></thead>
-          <tbody>{rows.map(e => <tr key={e.id} className="border-t border-slate-800"><td className="p-2">{readable(e.createdAt)}</td><td className="p-2">{e.user?.email || 'غير محدد'}</td><td className="p-2">{e.action === "PAGE_VIEW" ? "زيارة صفحة" : e.action === "POST_ERROR" ? "فشل طلب" : e.action}</td><td className="p-2 font-mono text-xs" dir="ltr">{e.httpPath || '—'}</td><td className="p-2">{e.responseStatus === null ? "غير منطبق" : e.responseStatus}</td></tr>)}</tbody>
+          <thead className="text-slate-400"><tr><th className="p-2">التاريخ</th><th className="p-2">المستخدم</th><th className="p-2">الحدث</th><th className="p-2">الصفحة أو المورد</th><th className="p-2">الملف / المورد</th><th className="p-2">حالة HTTP</th></tr></thead>
+          <tbody>{rows.map(e => <tr key={e.id} className="border-t border-slate-800"><td className="p-2">{readable(e.createdAt)}</td><td className="p-2">{e.user?.email || 'غير محدد'}</td><td className="p-2">{e.action === "PAGE_VIEW" ? "زيارة صفحة" : e.action === "POST_ERROR" ? "فشل طلب" : e.action}</td><td className="p-2 font-mono text-xs" dir="ltr">{e.httpPath || '—'}</td><td className="max-w-56 break-all p-2 font-mono text-xs" dir="ltr">{e.newValues?.resource || "—"}</td><td className="p-2">{e.responseStatus === null ? "غير منطبق" : e.responseStatus}</td></tr>)}</tbody>
         </table>{!rows.length && <p className="p-4 text-center text-sm text-slate-400">لا توجد أحداث مطابقة محفوظة في هذه الفترة.</p>}</div>
       </section>
       <div className="grid gap-4 lg:grid-cols-2">
