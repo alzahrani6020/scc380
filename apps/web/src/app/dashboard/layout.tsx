@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Menu } from 'lucide-react';
 import Sidebar from '@/components/layout/Sidebar';
+import ActivityTracker from '@/components/layout/ActivityTracker';
 import Header from '@/components/layout/Header';
 import api from '@/lib/api';
 
@@ -50,6 +51,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </button>
           <span className="mr-3 text-sm font-bold text-white">SCC 380 — القائمة</span>
         </div>
+        <ActivityTracker />
         <Header user={user} />
         <main className="p-4 sm:p-6 xl:p-8">
           {sessionError && (
