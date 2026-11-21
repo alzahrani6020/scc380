@@ -105,6 +105,16 @@ test('PostgreSQL file center: two tenants, audited approval, partial/full, cross
     const payment = await prisma.payment.create({ data: {
       tenantId: a.id, invoiceId: invoice.id, amount: 10, status: 'COMPLETED',
     } });
+    // A self-recorded ERP payment must NOT grant download without independent provider proof.
+    await assert.rejects(controller.download(makeReq(alice), payRequest.id, invoice.invoiceNumber, response()),
+      /Verified payment or owner approval/);
+    await prisma.auditLog.create({ data: {
+      tenantId: a.id, userId: owner.userId, entityType: 'OWNER_FILE_PAYMENT',
+      entityId: invoice.invoiceNumber, action: 'FILE_PROVIDER_SETTLEMENT_VERIFIED',
+      newValues: { fileId: file.id, userId: alice.userId, scope: 'PARTIAL',
+        receiptId: id + '-provider-receipt', settlement: 'SETTLED', source: 'TRUSTED_GATEWAY' },
+    } });
+    // This fixture simulates a server attestation; it is not a real PSP callback.
     const partialResponse = response();
     const partialStream = once(partialResponse, 'finish');
     const partialChunks: Buffer[] = [];
@@ -134,7 +144,7 @@ test('PostgreSQL file center: two tenants, audited approval, partial/full, cross
   } finally {
     process.env.SCC380_ACTIVITY_OWNER_EMAIL = previous;
     if (tenants.length) {
-      await prisma.auditLog.deleteMany({ where: { tenantId: { in: tenants }, entityType: 'OWNER_FILE_REQUEST' } });
+      await prisma.auditLog.deleteMany({ where: { tenantId: { in: tenants }, entityType: { in: ['OWNER_FILE_REQUEST', 'OWNER_FILE_PAYMENT'] } } });
       if (invoices.length) {
         await prisma.payment.deleteMany({ where: { invoiceId: { in: invoices } } });
         await prisma.invoice.deleteMany({ where: { id: { in: invoices } } });
