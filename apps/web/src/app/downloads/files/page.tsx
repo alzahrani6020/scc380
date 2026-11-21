@@ -11,6 +11,8 @@ export default function TenantFileCenter() {
   const [startLine, setStartLine] = useState(1);
   const [endLine, setEndLine] = useState(1);
   const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [uploadTitle, setUploadTitle] = useState('');
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const refresh = useCallback(async () => {
@@ -21,6 +23,27 @@ export default function TenantFileCenter() {
     } catch { setNotice('تعذر جلب الملفات أو الطلبات من الخادم.'); }
   },[]);
   useEffect(() => { void refresh(); },[refresh]);
+  async function upload() {
+    if (!uploadFile || !uploadTitle.trim()) { setNotice('اختر ملفًا وعنوانًا'); return; }
+    if (uploadFile.size > 1048576 || !['application/pdf','text/plain','text/csv'].includes(uploadFile.type)) {
+      setNotice('يجب أن يكون الملف PDF أو نصيًا وألا يتجاوز 1 ميجابايت'); return;
+    }
+    setBusy(true);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('Invalid result'));
+        reader.onerror = () => reject(new Error('Cannot read file'));
+        reader.readAsDataURL(uploadFile);
+      });
+      await api.post('/owner-files', { title: uploadTitle.trim(), fileName: uploadFile.name,
+        mimeType: uploadFile.type, contentBase64: dataUrl.slice(dataUrl.indexOf(',') + 1) });
+      setUploadFile(null); setUploadTitle('');
+      setNotice('سُجل الملف في مساحة الشركة.');
+      await refresh();
+    } catch { setNotice('فشل رفع الملف أو ليست لديك صلاحية مدير الشركة.'); }
+    finally { setBusy(false); }
+  }
   async function requestFile() {
     if (!fileId) { setNotice('اختر الملف أولًا'); return; }
     setBusy(true);
@@ -47,6 +70,13 @@ export default function TenantFileCenter() {
   return <main dir="rtl" className="mx-auto max-w-5xl space-y-5 px-4 py-8 text-white">
     <h1 className="text-2xl font-bold">مركز ملفات الشركة</h1>
     <p className="text-sm text-slate-300">ملفات هذه الشركة فقط. التنزيل يتطلب قرار المالك أو فاتورة مسددة تطابق الملف والمشتري. التنزيل الجزئي للملفات النصية فقط.</p>
+    <section className="space-y-3 rounded-xl border border-slate-700 bg-slate-900 p-4">
+      <h2 className="font-semibold">رفع ملف تجاري — لمدير الشركة فقط</h2>
+      <label className="block">عنوان الملف<input value={uploadTitle} onChange={e=>setUploadTitle(e.target.value)} maxLength={160} className="mt-2 block w-full rounded bg-slate-950 p-2"/></label>
+      <input aria-label="اختيار الملف" type="file" accept=".txt,.csv,.pdf" onChange={e=>setUploadFile(e.target.files?.[0] || null)} className="block w-full"/>
+      <p className="text-xs text-slate-400">ملفات PDF أو نص حتى 1 ميجابايت. لا يدعم تنزيل صفحات PDF الجزئي في هذا الإصدار.</p>
+      <button type="button" onClick={()=>void upload()} disabled={busy} className="rounded bg-blue-600 px-4 py-2 disabled:opacity-50">رفع الملف</button>
+    </section>
     <div className="space-y-3 rounded-xl border border-slate-700 bg-slate-900 p-4">
       <label className="block">الملف<select value={fileId} onChange={e=>setFileId(e.target.value)} className="mt-2 block w-full rounded bg-slate-950 p-2">
         <option value="">اختر ملفًا</option>{files.map(f=><option key={f.id} value={f.id}>{f.title} — {f.fileName} ({f.mimeType})</option>)}
