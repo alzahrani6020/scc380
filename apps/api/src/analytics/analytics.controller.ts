@@ -74,13 +74,24 @@ export class AnalyticsController {
   @Post('activity/event')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  async recordActivity(@Request() req: any, @Body() body: { action?: string; path?: string }) {
+  async recordActivity(@Request() req: any,
+    @Body() body: { action?: string; path?: string; resource?: string; source?: string }) {
     const action = body?.action;
     const path = body?.path;
     if (!['PAGE_VIEW', 'DOWNLOAD_REQUEST'].includes(action || '') ||
         typeof path !== 'string' || !/^\/[a-zA-Z0-9/_-]{0,180}$/.test(path) ||
         !path.startsWith('/dashboard')) {
       throw new BadRequestException('Invalid activity event');
+    }
+    // Metadata is for observability only; it never authorizes downloading a file.
+    if (body.resource !== undefined &&
+        (action !== 'DOWNLOAD_REQUEST' || typeof body.resource !== 'string' ||
+         body.resource.length > 180 || /[\u0000-\u001F\u007F]/.test(body.resource))) {
+      throw new BadRequestException('Invalid resource label');
+    }
+    if (body.source !== undefined &&
+        (action !== 'DOWNLOAD_REQUEST' || !['CLIENT_PDF_EXPORT', 'SAME_ORIGIN_LINK'].includes(body.source))) {
+      throw new BadRequestException('Invalid delivery source');
     }
     await prisma.auditLog.create({
       data: {
@@ -90,6 +101,9 @@ export class AnalyticsController {
         entityType: 'SITE_ACTIVITY',
         httpMethod: 'EVENT',
         httpPath: path,
+        newValues: action === 'DOWNLOAD_REQUEST'
+          ? { resource: body.resource ?? null, source: body.source ?? 'UNSPECIFIED' }
+          : undefined,
         ipAddress: typeof req.ip === 'string' ? req.ip : null,
         userAgent: typeof req.headers?.['user-agent'] === 'string'
           ? req.headers['user-agent'].slice(0, 256) : null,
