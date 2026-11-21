@@ -737,8 +737,8 @@ export class AnalyticsController {
       createdAt: selected.createdAt,
     };
     const safe = (value: unknown): string => {
-      let str = String(value ?? '').replace(/[\\r\\n]+/g, ' ').slice(0, 500);
-      if (/^[\\s]*[=+@-]/.test(str)) str = "'" + str;
+      let str = String(value ?? '').replace(/[\r\n]+/g, ' ').slice(0, 500);
+      if (/^[\s]*[=+@-]/.test(str)) str = "'" + str;
       return '"' + str.replace(/"/g, '""') + '"';
     };
     await prisma.auditLog.create({
@@ -755,7 +755,7 @@ export class AnalyticsController {
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename="scc380-activity-' + scope.toLowerCase() + '.csv"');
     res.setHeader('Cache-Control', 'no-store');
-    res.write('\\uFEFF' + ['UTC time', 'User', 'Email', 'Action', 'Path', 'HTTP status', 'IP'].map(safe).join(',') + '\\r\\n');
+    res.write('\uFEFF' + ['UTC time', 'User', 'Email', 'Action', 'Path', 'HTTP status', 'IP'].map(safe).join(',') + '\r\n');
     let count = 0;
     let cursor: string | undefined;
     try {
@@ -776,7 +776,7 @@ export class AnalyticsController {
           e.createdAt.toISOString(),
           [e.user?.firstName, e.user?.lastName].filter(Boolean).join(' '),
           e.user?.email ?? '', e.action, e.httpPath ?? '', e.responseStatus ?? '', e.ipAddress ?? '',
-        ].map(safe).join(',')).join('\\r\\n') + '\\r\\n';
+        ].map(safe).join(',')).join('\r\n') + '\r\n';
         if (!res.write(csv)) {
           await new Promise<void>((resolve) => res.once('drain', resolve));
         }
