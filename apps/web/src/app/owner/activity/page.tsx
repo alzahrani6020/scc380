@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import api from '@/lib/api';
-import { getRole } from '@/lib/auth';
 import { Download, RefreshCw, Shield, Eye, LogIn, FileDown, Search } from 'lucide-react';
 
 type Activity = {
@@ -43,7 +42,15 @@ export default function SiteActivityDashboard() {
   const [approvals, setApprovals] = useState<any[]>([]);
 
   const [error, setError] = useState('');
-  useEffect(() => { setRole(getRole()); }, []);
+  useEffect(() => {
+    let active = true;
+    api.get('/auth/me').then(result => {
+      if (active) setRole(result.data?.role || 'UNAUTHORIZED');
+    }).catch(() => {
+      if (active) setRole('UNAUTHORIZED');
+    });
+    return () => { active = false; };
+  }, []);
 
   const query = () => {
     const params = new URLSearchParams();
