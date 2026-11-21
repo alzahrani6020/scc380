@@ -135,7 +135,7 @@ export class OwnerFilesController {
   async decide(@Req() req: any, @Body() body: DecisionDto) {
     await this.owner(req);
     return prisma.$transaction(async tx => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${body.requestId}))`;
+      await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtext(${body.requestId}))`;
       const current = await tx.ownerFileRequest.findUnique({ where: { id: body.requestId } });
       if (!current) throw new NotFoundException('Request not found');
       if (current.requesterId === req.user.userId) throw new ForbiddenException('Self approval prohibited');
