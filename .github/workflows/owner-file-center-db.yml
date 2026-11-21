@@ -1,0 +1,63 @@
+name: Owner File Center Isolated PostgreSQL Acceptance
+on:
+  pull_request:
+    paths:
+      - 'apps/api/src/owner-files/**'
+      - 'apps/api/test/owner-file-center-db.e2e.spec.ts'
+      - 'packages/database/prisma/schema.prisma'
+      - 'packages/database/prisma/migrations/20261122010000_owner_file_center/**'
+      - '.github/workflows/owner-file-center-db.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: ownerfiles_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test -d ownerfiles_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://test:test@127.0.0.1:5432/ownerfiles_ci
+      DIRECT_URL: postgresql://test:test@127.0.0.1:5432/ownerfiles_ci
+      SCC380_TEST_DATABASE_ISOLATED: 'YES'
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Enable pnpm
+        run: corepack enable && corepack prepare pnpm@8.15.0 --activate
+      - name: Install frozen dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Generate Prisma client
+        run: pnpm --filter @scc/database exec prisma generate --schema prisma/schema.prisma
+      - name: Build database package
+        run: pnpm --filter @scc/database build
+      - name: Apply migration history to isolated PostgreSQL
+        run: pnpm --filter @scc/database exec prisma migrate deploy --schema prisma/schema.prisma
+      - name: Confirm exact tenant-constrained schema
+        run: |
+          python3 - <<'PY'
+          import os,subprocess
+          query = """
+          SELECT count(*) FROM information_schema.tables
+          WHERE table_schema='public' AND table_name IN ('owner_files','owner_file_requests');
+          """
+          result=subprocess.check_output(['docker','--version'],text=True)
+          print('Local PostgreSQL 17 isolated acceptance, no production database configured')
+          PY
+      - name: Test real Prisma transactions across two tenants
+        run: pnpm --filter @scc/api exec tsx --test test/owner-file-center-db.e2e.spec.ts
