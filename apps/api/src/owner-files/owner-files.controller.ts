@@ -154,7 +154,7 @@ export class OwnerFilesController {
       return { id: item.id, status: item.status };
     });
   }
-  private async paid(req: any, fileId: string, invoiceNumber?: string) {
+  private async paid(req: any, fileId: string, scope: 'FULL' | 'PARTIAL', invoiceNumber?: string) {
     if (!invoiceNumber || invoiceNumber.length > 80 || !req.user?.email) return false;
     const tenantId = this.tenant(req);
     const account = await prisma.user.findUnique({ where: { id: req.user.userId }, select: { emailVerified: true } });
@@ -166,7 +166,7 @@ export class OwnerFilesController {
     if (!contacts.length) return false;
     const invoice = await prisma.invoice.findFirst({
       where: { tenantId, invoiceNumber, status: 'PAID', contactId: { in: contacts.map(x => x.id) },
-        items: { some: { tenantId, product: { tenantId, sku: 'SCC380-FILE-' + fileId } } } },
+        items: { some: { tenantId, product: { tenantId, sku: 'SCC380-FILE-' + fileId + '-' + scope } } } },
       select: { total: true, payments: { select: { tenantId: true, amount: true, status: true } } },
     });
     if (!invoice || Number(invoice.total) <= 0) return false;
@@ -185,7 +185,7 @@ export class OwnerFilesController {
     if (request.status === 'REJECTED' || request.status === 'REVOKED') {
       throw new ForbiddenException('Download request is rejected or revoked');
     }
-    const authorized = request.status === 'APPROVED' || await this.paid(req, request.fileId, invoiceNumber);
+    const authorized = request.status === 'APPROVED' || await this.paid(req, request.fileId, request.scope as 'FULL' | 'PARTIAL', invoiceNumber);
     await prisma.auditLog.create({
       data: { tenantId, userId: req.user.userId, entityType: 'OWNER_FILE_REQUEST', entityId: request.id,
         action: authorized ? 'OWNER_FILE_DELIVERY_STARTED' : 'OWNER_FILE_DELIVERY_DENIED',
