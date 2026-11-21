@@ -36,7 +36,8 @@ test('owner layout must enforce authenticated API authorization on server before
   assert.match(ownerLayout, /fetch\(getOwnerApiOrigin\(\) \+ '\/analytics\/activity\/owner\/status'/);
   assert.match(ownerLayout, /Authorization: 'Bearer ' \+ token/);
   assert.match(ownerLayout, /cache: 'no-store'/);
-  assert.match(ownerLayout, /if \(!response\.ok\) notFound\(\)/);
-  assert.match(ownerLayout, /if \(result\.authorized !== true\) notFound\(\)/);
+  assert.match(ownerLayout, /if \(response\.status === 401\) redirect\('\/auth\/owner-resume'\)/);
+  assert.match(ownerLayout, /if \(response\.status === 403 \|\| response\.status === 404\) notFound\(\)/);
+  assert.match(ownerLayout, /if \(!authorized\) notFound\(\)/);
   assert.match(ownerLayout, /return <>\{children\}<\/>/);
 });
