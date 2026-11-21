@@ -553,6 +553,121 @@ export class AnalyticsController {
     });
   }
 
+
+  // Owner-only operational overview. Counts are computed from the full database,
+  // not the 1000-row interactive activity preview. No new data collection is implied.
+  @Get('activity/owner/insights')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  async ownerInsights(@Request() req: any, @Query('days') daysInput?: string) {
+    await this.requireOwner(req);
+    const days = daysInput === undefined ? 30 : Number(daysInput);
+    if (!Number.isInteger(days) || days < 1 || days > 90) {
+      throw new BadRequestException('days must be between 1 and 90');
+    }
+    const since = new Date(Date.now() - days * 86400000);
+    const now = new Date();
+    const period = { createdAt: { gte: since, lte: now } };
+    const views = { ...period, entityType: 'SITE_ACTIVITY', action: 'PAGE_VIEW' };
+    const errorWhere = { ...period, responseStatus: { gte: 400 } };
+    const [
+      recordedEvents, pageViews, downloadRequests, streamedExports,
+      downloadApprovalRequests, grantedApprovals, rejectedRequests,
+      auditedHttpErrors, recentErrors, activeSessions, loginFailures,
+      successfulLogins, authenticatedUsers, topPages, topActors,
+    ] = await Promise.all([
+      prisma.auditLog.count({ where: period }),
+      prisma.auditLog.count({ where: views }),
+      prisma.auditLog.count({
+        where: { ...period, action: 'DOWNLOAD_REQUEST' },
+      }),
+      prisma.auditLog.count({
+        where: { ...period, action: 'REPORT_EXPORT_STREAMED' },
+      }),
+      prisma.auditLog.count({
+        where: { ...period, entityType: 'ACTIVITY_REPORT_REQUEST', action: 'DOWNLOAD_APPROVAL_REQUESTED' },
+      }),
+      prisma.auditLog.count({
+        where: { ...period, entityType: 'ACTIVITY_REPORT_ACCESS', action: 'DOWNLOAD_ACCESS_APPROVED' },
+      }),
+      prisma.auditLog.count({
+        where: { ...period, entityType: 'ACTIVITY_REPORT_ACCESS', action: 'DOWNLOAD_REQUEST_REJECTED' },
+      }),
+      prisma.auditLog.count({ where: errorWhere }),
+      prisma.auditLog.findMany({
+        where: errorWhere,
+        select: {
+          id: true, createdAt: true, httpPath: true, httpMethod: true,
+          responseStatus: true, action: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+      }),
+      prisma.session.count({
+        where: { revokedAt: null, expiresAt: { gt: now } },
+      }),
+      prisma.loginAttempt.count({
+        where: { ...period, success: false },
+      }),
+      prisma.loginAttempt.count({
+        where: { ...period, success: true },
+      }),
+      prisma.auditLog.groupBy({
+        by: ['userId'],
+        where: { ...period, userId: { not: null } },
+        _count: { _all: true },
+      }),
+      prisma.auditLog.groupBy({
+        by: ['httpPath'],
+        where: { ...views, httpPath: { not: null } },
+        _count: { _all: true },
+      }),
+      prisma.auditLog.groupBy({
+        by: ['userId'],
+        where: { ...period, userId: { not: null } },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const actorRows = topActors
+      .filter(item => item.userId)
+      .sort((a, b) => b._count._all - a._count._all)
+      .slice(0, 10);
+    const users = await prisma.user.findMany({
+      where: { id: { in: actorRows.map(item => item.userId!).filter(Boolean) } },
+      select: { id: true, email: true, firstName: true, lastName: true, tenantId: true },
+    });
+    const userMap = new Map(users.map(user => [user.id, user]));
+    return {
+      period: { since: since.toISOString(), until: now.toISOString(), days },
+      summary: {
+        recordedEvents, pageViews, downloadRequests, streamedExports,
+        downloadApprovalRequests, grantedApprovals, rejectedRequests,
+        auditedHttpErrors, activeSessions, loginFailures, successfulLogins,
+        identifiedActiveUsers: authenticatedUsers.length,
+      },
+      pages: topPages
+        .filter(item => item.httpPath)
+        .sort((a, b) => b._count._all - a._count._all)
+        .slice(0, 15)
+        .map(item => ({ path: item.httpPath, visits: item._count._all })),
+      actors: actorRows.map(item => ({
+        userId: item.userId,
+        email: userMap.get(item.userId!)?.email ?? 'unknown',
+        tenantId: userMap.get(item.userId!)?.tenantId ?? null,
+        events: item._count._all,
+      })),
+      recentErrors,
+      coverage: {
+        pageViews: 'Authenticated dashboard navigation events only',
+        anonymousVisitors: 'NOT_COLLECTED',
+        fileDownloads: 'Activity report export and instrumented same-origin link clicks only',
+        deviceDownloadCompletion: 'NOT_VERIFIABLE',
+        periodCounts: 'Complete database counts; the event preview remains capped',
+      },
+    };
+  }
+
   @Get('activity/owner/approvals')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
