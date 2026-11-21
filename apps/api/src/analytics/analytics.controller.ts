@@ -146,7 +146,7 @@ export class AnalyticsController {
       where: { ...tenantWhere, createdAt: scope.createdAt },
       select: {
         id: true, action: true, httpPath: true, responseStatus: true,
-        createdAt: true, userId: true, ipAddress: true,
+        createdAt: true, userId: true, ipAddress: true, newValues: true,
         user: { select: { email: true, firstName: true, lastName: true } },
       },
       orderBy: { createdAt: 'desc' },
