@@ -113,6 +113,14 @@ test('PostgreSQL file center: two tenants, audited approval, partial/full, cross
     await partialStream;
     assert.equal(Buffer.concat(partialChunks).toString('utf8'), ['two','three'].join(String.fromCharCode(10)));
     assert.equal(payment.amount.toString(), '10');
+    // A partial-only purchase cannot authorize a full download of the same file.
+    const unpaidFull = await controller.request(makeReq(alice), { fileId: file.id, scope: 'FULL' });
+    await assert.rejects(controller.download(makeReq(alice), unpaidFull.id, invoice.invoiceNumber, response()),
+      /Verified payment or owner approval/);
+    // Reversed payment removes paid entitlement for subsequent requests.
+    await prisma.payment.update({ where: { id: payment.id }, data: { status: 'REFUNDED' } });
+    await assert.rejects(controller.download(makeReq(alice), payRequest.id, invoice.invoiceNumber, response()),
+      /Verified payment or owner approval/);
     const revoked = await controller.decide(makeReq(owner), { requestId: full.id, decision: 'REVOKE' });
     assert.equal(revoked.status, 'REVOKED');
     const audited = await prisma.auditLog.findMany({ where: { entityType: 'OWNER_FILE_REQUEST', entityId: full.id } });
