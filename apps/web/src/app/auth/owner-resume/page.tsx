@@ -3,12 +3,12 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { sessionAuth } from '@/lib/session-auth';
-import { setAuth, getRememberPreference, clearAuth } from '@/lib/auth';
+import { setAuth, getRememberPreference } from '@/lib/auth';
 
 // Public recovery UI: it does not expose owner data or accept arbitrary destinations.
 // The protected owner layout will re-validate the new access token at the API.
 export default function OwnerSessionRecovery() {
-  const [state, setState] = useState<'checking' | 'expired' | 'failed'>('checking');
+  const [state, setState] = useState<'checking' | 'expired'>('checking');
   useEffect(() => {
     let mounted = true;
     const restore = async () => {
