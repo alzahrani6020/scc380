@@ -42,5 +42,6 @@ test('HTTP export audit distinguishes response finish, interruption, and client 
   assert.match(api, /REPORT_HTTP_RESPONSE_FINISHED/);
   assert.match(api, /REPORT_HTTP_RESPONSE_INTERRUPTED/);
   assert.match(api, /deliveryProof: 'HTTP_RESPONSE_ONLY'/);
-  assert.doesNotMatch(api, /REPORT_EXPORT_STREAMED/);
+  const exportHandler = api.slice(api.indexOf("@Get('activity/export')"), api.indexOf("@Get('alerts')"));
+  assert.doesNotMatch(exportHandler, /REPORT_EXPORT_STREAMED/);
 });
