@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import api from '@/lib/api';
 import { Download, RefreshCw, Shield, Eye, LogIn, FileDown, Search } from 'lucide-react';
 import Link from 'next/link';
+import { clearAuth, getRefreshToken } from '@/lib/auth';
+import { sessionAuth } from '@/lib/session-auth';
 
 type Activity = {
   id: string;
@@ -58,6 +60,17 @@ export default function SiteActivityDashboard() {
     });
     return () => { active = false; };
   }, []);
+
+  const switchAccount = async () => {
+    try {
+      await sessionAuth('logout', { refreshToken: getRefreshToken() || undefined });
+    } catch {
+      try { await sessionAuth('clear'); } catch {}
+    } finally {
+      clearAuth();
+      window.location.href = '/auth/login';
+    }
+  };
 
   const query = () => {
     const params = new URLSearchParams();
@@ -145,7 +158,7 @@ export default function SiteActivityDashboard() {
         <>
           <p className="mb-2 text-slate-300">الحساب الموثق حاليًا لا يحمل صلاحية مالك النظام المطلوبة لعرض السجلات أو إصدار الموافقات.</p>
           <p className="mb-4 break-all text-sm text-slate-400">الحساب: {identityEmail || 'غير متاح'} — الدور الحالي: {role}</p>
-          <Link href="/auth/login" className="inline-flex rounded-lg bg-blue-600 px-4 py-2">الدخول بحساب المالك المخوّل ثم العودة للوحة</Link>
+          <button type="button" onClick={switchAccount} className="inline-flex rounded-lg bg-blue-600 px-4 py-2">تبديل الحساب وتسجيل الدخول كمالك</button>
         </>
       )}
       <p className="mt-4 text-xs text-slate-400">لا تُمنح صلاحيات المالك تلقائيًا بالوصول إلى الرابط؛ يجب أن تكون مرتبطة بحساب موثّق ومخوّل على الخادم.</p>
