@@ -9,7 +9,8 @@ const ownerPage = readFileSync(join(process.cwd(), '../web/src/app/owner/activit
 test('owner delegation is off unless verified email is configured', () => {
   assert.match(controller, /const configured = \(process\.env\.SCC380_ACTIVITY_OWNER_EMAIL \|\| ''\)/);
   assert.match(controller, /if \(!configured \|\| req\.user\?\.role !== 'ADMIN'/);
-  assert.match(controller, /account\.emailVerified/);
+  assert.match(controller, /!!req\.user\.sessionId/);
+  assert.doesNotMatch(controller.slice(controller.indexOf('private async canManageOwnerConsole'), controller.indexOf('private async requireOwner')), /account\.emailVerified/);
   assert.match(controller, /account\.status === 'ACTIVE'/);
   assert.match(controller, /account\.email\.toLowerCase\(\) === configured/);
 });
