@@ -213,6 +213,11 @@ export class AnalyticsController {
       throw new BadRequestException('Invalid invoice reference');
     }
     if (!req.user.tenantId || !req.user.email) return null;
+    const purchaser = await prisma.user.findUnique({
+      where: { id: req.user.userId },
+      select: { emailVerified: true },
+    });
+    if (!purchaser?.emailVerified) return null;
     const contactIds = (await prisma.contact.findMany({
       where: { tenantId: req.user.tenantId, email: { equals: req.user.email, mode: 'insensitive' } },
       select: { id: true },
@@ -229,9 +234,17 @@ export class AnalyticsController {
           some: { product: { sku: { in: [this.reportPartialSku, this.reportFullSku] } } },
         },
       },
-      select: { items: { select: { product: { select: { sku: true } } } } },
+      select: {
+        total: true,
+        payments: { select: { amount: true, status: true } },
+        items: { select: { product: { select: { sku: true } } } },
+      },
     });
     if (!invoice) return null;
+    const settled = invoice.payments
+      .filter(p => p.status === 'COMPLETED')
+      .reduce((sum, p) => sum + Number(p.amount), 0);
+    if (!(Number(invoice.total) > 0) || settled + 0.009 < Number(invoice.total)) return null;
     return invoice.items.some(i => i.product?.sku === this.reportFullSku) ? 'FULL' : 'PARTIAL';
   }
 
