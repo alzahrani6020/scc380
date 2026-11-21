@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Param, Request, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, Query, Request, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PosService } from './pos.service';
@@ -45,7 +45,7 @@ export class PosController {
 
   // ─── Reports ───
   @Get('reports/daily')
-  getDailyReport(@Request() req: any, @Param('date') date?: string) {
+  getDailyReport(@Request() req: any, @Query('date') date?: string) {
     return this.service.getDailyReport(req.user.tenantId, req.user.role, date);
   }
 }
