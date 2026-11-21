@@ -828,7 +828,16 @@ export class AnalyticsController {
           e.user?.email ?? '', e.action, e.httpPath ?? '', e.responseStatus ?? '', e.ipAddress ?? '',
         ].map(safe).join(',')).join('\r\n') + '\r\n';
         if (!res.write(csv)) {
-          await new Promise<void>((resolve) => res.once('drain', resolve));
+          // A disconnected client may never emit 'drain'. Stop the export on close.
+          await new Promise<void>(resolve => {
+            const finishWait = () => {
+              res.off('drain', finishWait);
+              res.off('close', finishWait);
+              resolve();
+            };
+            res.once('drain', finishWait);
+            res.once('close', finishWait);
+          });
         }
         count += rows.length;
         cursor = rows[rows.length - 1].id;
@@ -848,7 +857,19 @@ export class AnalyticsController {
         },
       });
     } catch (error) {
-      res.destroy(error instanceof Error ? error : new Error('Export failed'));
+      if (!res.destroyed) res.destroy(error instanceof Error ? error : new Error('Export failed'));
+      // Failure evidence is separate from completed HTTP responses.
+      await prisma.auditLog.create({
+        data: {
+          tenantId: req.user.tenantId ?? null,
+          userId: req.user.userId,
+          action: 'REPORT_EXPORT_FAILED',
+          entityType: 'SITE_ACTIVITY',
+          httpMethod: 'GET',
+          httpPath: '/analytics/activity/export',
+          newValues: { scope, grantedBy, records: count, deliveryProof: 'HTTP_RESPONSE_ONLY' },
+        },
+      }).catch(() => undefined);
     }
   }
 
