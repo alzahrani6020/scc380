@@ -110,7 +110,7 @@ export class AnalyticsController {
         throw new BadRequestException('Invalid date');
       return d;
     };
-    if (req.user.role !== 'SUPER_ADMIN' && !req.user.tenantId) {
+    if (req.user.role !== 'SUPER_ADMIN' && !req.activityOwnerAuthorized && !req.user.tenantId) {
       throw new ForbiddenException('Tenant context is required');
     }
     const start = parse(from);
@@ -120,7 +120,7 @@ export class AnalyticsController {
     const createdAt = { ...(start ? { gte: start } : {}), ...(end ? { lt: end } : {}) };
     // A tenant administrator/auditor may never see another tenant.
     return {
-      tenantId: req.user.role === 'SUPER_ADMIN' ? undefined : req.user.tenantId,
+      tenantId: (req.user.role === 'SUPER_ADMIN' || req.activityOwnerAuthorized === true) ? undefined : req.user.tenantId,
       createdAt,
     };
   }
@@ -145,7 +145,7 @@ export class AnalyticsController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   async getActivity(@Request() req: any, @Query('from') from?: string, @Query('to') to?: string) {
-    this.requireOwner(req);
+    await this.requireOwner(req);
     const { events, scope, tenantWhere } = await this.activityRows(req, from, to);
     const [sessions, logins] = await Promise.all([
       prisma.session.findMany({
@@ -184,10 +184,37 @@ export class AnalyticsController {
   private readonly reportPartialSku = 'SCC380-ACTIVITY-REPORT-PARTIAL';
   private readonly reportFullSku = 'SCC380-ACTIVITY-REPORT-FULL';
 
-  private requireOwner(req: any) {
-    if (req.user?.role !== 'SUPER_ADMIN') {
+  // Delegation is intentionally limited to this console, not a general SUPER_ADMIN elevation.
+  // Fail closed when no explicit owner identity is configured on the service.
+  private async canManageOwnerConsole(req: any): Promise<boolean> {
+    if (req.user?.role === 'SUPER_ADMIN') return true;
+    const configured = (process.env.SCC380_ACTIVITY_OWNER_EMAIL || '').trim().toLowerCase();
+    if (!configured || req.user?.role !== 'ADMIN' || !req.user?.userId) return false;
+    const account = await prisma.user.findUnique({
+      where: { id: req.user.userId },
+      select: { email: true, emailVerified: true, status: true, role: true },
+    });
+    return !!account && account.status === 'ACTIVE' && account.emailVerified &&
+      account.role === 'ADMIN' && account.email.toLowerCase() === configured &&
+      req.user.email?.toLowerCase() === configured;
+  }
+
+  private async requireOwner(req: any) {
+    if (!(await this.canManageOwnerConsole(req))) {
       throw new ForbiddenException('Owner authorization required');
     }
+    req.activityOwnerAuthorized = true;
+  }
+
+  @Get('activity/owner/status')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  async ownerStatus(@Request() req: any) {
+    return {
+      authorized: await this.canManageOwnerConsole(req),
+      accountRole: req.user.role,
+      email: req.user.email,
+    };
   }
 
   private async latestOwnerDecision(userId: string, tenantId: string | null) {
@@ -264,7 +291,10 @@ export class AnalyticsController {
         newValues: { scope: requested },
       },
     });
-    if (req.user.role === 'SUPER_ADMIN') return 'OWNER';
+    if (await this.canManageOwnerConsole(req)) {
+      req.activityOwnerAuthorized = true;
+      return 'OWNER';
+    }
     if (!['ADMIN', 'AUDITOR'].includes(req.user.role) || !req.user.tenantId) {
       throw new ForbiddenException('Download access unavailable');
     }
@@ -283,7 +313,7 @@ export class AnalyticsController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   async downloadAccess(@Request() req: any, @Query('invoiceNumber') invoiceNumber?: string) {
-    if (req.user.role === 'SUPER_ADMIN') return { scope: 'FULL', source: 'OWNER' };
+    if (await this.canManageOwnerConsole(req)) return { scope: 'FULL', source: 'OWNER' };
     if (!['ADMIN', 'AUDITOR'].includes(req.user.role) || !req.user.tenantId) {
       return { scope: null, source: null };
     }
@@ -300,7 +330,7 @@ export class AnalyticsController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   async ownerApprovals(@Request() req: any) {
-    this.requireOwner(req);
+    await this.requireOwner(req);
     return prisma.auditLog.findMany({
       where: {
         entityType: 'ACTIVITY_REPORT_ACCESS',
@@ -319,7 +349,7 @@ export class AnalyticsController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   async approveExport(@Request() req: any, @Body() body: { email?: string; scope?: string; revoke?: boolean }) {
-    this.requireOwner(req);
+    await this.requireOwner(req);
     if (typeof body?.email !== 'string' || body.email.length > 254 || !body.email.includes('@') ||
         !['FULL', 'PARTIAL'].includes(body?.scope || '')) {
       throw new BadRequestException('Email and valid scope are required');

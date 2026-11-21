@@ -28,12 +28,12 @@ type Feed = {
 };
 
 const readable = (value: string) => new Date(value).toLocaleString('ar-SA');
-const allowed = new Set(['SUPER_ADMIN']);
 
 export default function SiteActivityDashboard() {
   const [role, setRole] = useState<string | null>(null);
   const [identityEmail, setIdentityEmail] = useState<string>('');
   const [authUnavailable, setAuthUnavailable] = useState(false);
+  const [ownerAuthorized, setOwnerAuthorized] = useState(false);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [data, setData] = useState<Feed | null>(null);
@@ -49,10 +49,11 @@ export default function SiteActivityDashboard() {
   const [error, setError] = useState('');
   useEffect(() => {
     let active = true;
-    api.get('/auth/me').then(result => {
+    api.get<{ authorized: boolean; accountRole: string; email: string }>('/analytics/activity/owner/status').then(result => {
       if (!active) return;
       setIdentityEmail(typeof result.data?.email === 'string' ? result.data.email : '');
-      setRole(typeof result.data?.role === 'string' ? result.data.role : 'UNAUTHORIZED');
+      setRole(typeof result.data?.accountRole === 'string' ? result.data.accountRole : 'UNAUTHORIZED');
+      setOwnerAuthorized(result.data?.authorized === true);
     }).catch(() => {
       if (!active) return;
       setAuthUnavailable(true);
@@ -94,11 +95,11 @@ export default function SiteActivityDashboard() {
     }
   };
   useEffect(() => {
-    if (!role || !allowed.has(role)) return;
+    if (!role || !ownerAuthorized) return;
     void refresh();
     // Filters are applied by the explicit "عرض" action.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [role]);
+  }, [role, ownerAuthorized]);
 
   const approve = async (revoke: boolean) => {
     if (!approvalEmail.trim()) { setError('أدخل البريد الإلكتروني للمستخدم.'); return; }
@@ -146,7 +147,7 @@ export default function SiteActivityDashboard() {
   };
 
   if (!role) return <div className="p-6 text-slate-200" dir="rtl">التحقق من الصلاحيات...</div>;
-  if (!allowed.has(role)) return (
+  if (!ownerAuthorized) return (
     <main dir="rtl" className="mx-auto mt-12 max-w-xl rounded-xl border border-slate-700 bg-slate-900 p-6 text-white">
       <h1 className="mb-3 text-xl font-bold">التحقق من صلاحية لوحة المالك</h1>
       {authUnavailable ? (
