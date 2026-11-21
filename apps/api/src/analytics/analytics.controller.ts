@@ -178,12 +178,161 @@ export class AnalyticsController {
     };
   }
 
+  // Download entitlements live in append-only audit events, preserving owner decisions.
+  // A paid invoice is never accepted unless both the customer and an exact product SKU match.
+  private readonly reportPartialSku = 'SCC380-ACTIVITY-REPORT-PARTIAL';
+  private readonly reportFullSku = 'SCC380-ACTIVITY-REPORT-FULL';
+
+  private requireOwner(req: any) {
+    if (req.user?.role !== 'SUPER_ADMIN') {
+      throw new ForbiddenException('Owner authorization required');
+    }
+  }
+
+  private async latestOwnerDecision(userId: string, tenantId: string | null) {
+    const row = await prisma.auditLog.findFirst({
+      where: {
+        entityType: 'ACTIVITY_REPORT_ACCESS',
+        entityId: userId,
+        action: { in: ['DOWNLOAD_ACCESS_APPROVED', 'DOWNLOAD_ACCESS_REVOKED'] },
+        tenantId,
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      select: { action: true, newValues: true },
+    });
+    const values = row?.newValues as { scope?: string } | null;
+    return row?.action === 'DOWNLOAD_ACCESS_APPROVED'
+      ? values?.scope === 'FULL' ? 'FULL' : 'PARTIAL'
+      : null;
+  }
+
+  private async verifiedPaidScope(req: any, invoiceNumber?: string) {
+    if (!invoiceNumber) return null;
+    if (typeof invoiceNumber !== 'string' || invoiceNumber.length > 80) {
+      throw new BadRequestException('Invalid invoice reference');
+    }
+    if (!req.user.tenantId || !req.user.email) return null;
+    const contactIds = (await prisma.contact.findMany({
+      where: { tenantId: req.user.tenantId, email: { equals: req.user.email, mode: 'insensitive' } },
+      select: { id: true },
+    })).map(c => c.id);
+    if (!contactIds.length) return null;
+    const invoice = await prisma.invoice.findFirst({
+      where: {
+        tenantId: req.user.tenantId,
+        invoiceNumber,
+        contactId: { in: contactIds },
+        status: 'PAID',
+        // The paid product must be the specific downloadable report.
+        items: {
+          some: { product: { sku: { in: [this.reportPartialSku, this.reportFullSku] } } },
+        },
+      },
+      select: { items: { select: { product: { select: { sku: true } } } } },
+    });
+    if (!invoice) return null;
+    return invoice.items.some(i => i.product?.sku === this.reportFullSku) ? 'FULL' : 'PARTIAL';
+  }
+
+  private async requireExportAccess(req: any, requested: string, invoiceNumber?: string) {
+    if (!['FULL', 'PARTIAL'].includes(requested)) {
+      throw new BadRequestException('scope must be FULL or PARTIAL');
+    }
+    if (req.user.role === 'SUPER_ADMIN') return 'OWNER';
+    if (!['ADMIN', 'AUDITOR'].includes(req.user.role) || !req.user.tenantId) {
+      throw new ForbiddenException('Download access unavailable');
+    }
+    const [ownerDecision, paid] = await Promise.all([
+      this.latestOwnerDecision(req.user.userId, req.user.tenantId),
+      this.verifiedPaidScope(req, invoiceNumber),
+    ]);
+    if (ownerDecision === 'FULL' || paid === 'FULL') return ownerDecision === 'FULL' ? 'OWNER_APPROVED' : 'PAID';
+    if (requested === 'PARTIAL' && (ownerDecision === 'PARTIAL' || paid === 'PARTIAL')) {
+      return ownerDecision === 'PARTIAL' ? 'OWNER_APPROVED' : 'PAID';
+    }
+    throw new ForbiddenException('Payment verification or owner approval required for this download scope');
+  }
+
+  @Get('activity/download-access')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  async downloadAccess(@Request() req: any, @Query('invoiceNumber') invoiceNumber?: string) {
+    if (req.user.role === 'SUPER_ADMIN') return { scope: 'FULL', source: 'OWNER' };
+    if (!['ADMIN', 'AUDITOR'].includes(req.user.role) || !req.user.tenantId) {
+      return { scope: null, source: null };
+    }
+    const [approved, paid] = await Promise.all([
+      this.latestOwnerDecision(req.user.userId, req.user.tenantId),
+      this.verifiedPaidScope(req, invoiceNumber),
+    ]);
+    const scope = approved === 'FULL' || paid === 'FULL'
+      ? 'FULL' : approved === 'PARTIAL' || paid === 'PARTIAL' ? 'PARTIAL' : null;
+    return { scope, source: approved === scope ? 'OWNER_APPROVED' : paid === scope ? 'PAID' : null };
+  }
+
+  @Get('activity/owner/approvals')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  async ownerApprovals(@Request() req: any) {
+    this.requireOwner(req);
+    return prisma.auditLog.findMany({
+      where: {
+        entityType: 'ACTIVITY_REPORT_ACCESS',
+        action: { in: ['DOWNLOAD_ACCESS_APPROVED', 'DOWNLOAD_ACCESS_REVOKED'] },
+      },
+      select: {
+        id: true, entityId: true, tenantId: true, action: true, newValues: true, createdAt: true,
+        user: { select: { email: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    });
+  }
+
+  @Post('activity/owner/approve')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  async approveExport(@Request() req: any, @Body() body: { email?: string; scope?: string; revoke?: boolean }) {
+    this.requireOwner(req);
+    if (typeof body?.email !== 'string' || body.email.length > 254 || !body.email.includes('@') ||
+        !['FULL', 'PARTIAL'].includes(body?.scope || '')) {
+      throw new BadRequestException('Email and valid scope are required');
+    }
+    const user = await prisma.user.findUnique({
+      where: { email: body.email.trim().toLowerCase() },
+      select: { id: true, email: true, tenantId: true },
+    });
+    if (!user || !user.tenantId) throw new BadRequestException('Eligible account not found');
+    const action = body.revoke === true ? 'DOWNLOAD_ACCESS_REVOKED' : 'DOWNLOAD_ACCESS_APPROVED';
+    await prisma.auditLog.create({
+      data: {
+        tenantId: user.tenantId,
+        userId: req.user.userId,
+        entityType: 'ACTIVITY_REPORT_ACCESS',
+        entityId: user.id,
+        action,
+        newValues: { scope: body.scope, subjectEmail: user.email },
+      },
+    });
+    return { recorded: true, action, scope: body.scope, email: user.email };
+  }
+
   @Get('activity/export')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   async exportActivity(@Request() req: any, @Res() res: any,
-    @Query('from') from?: string, @Query('to') to?: string) {
-    const { events } = await this.activityRows(req, from, to);
+    @Query('from') from?: string, @Query('to') to?: string,
+    @Query('scope') requestedScope?: string, @Query('invoiceNumber') invoiceNumber?: string) {
+    const scope = requestedScope || 'PARTIAL';
+    const grantedBy = await this.requireExportAccess(req, scope, invoiceNumber);
+    if (scope === 'PARTIAL' && (!from || !to)) {
+      throw new BadRequestException('Partial download requires from and to dates');
+    }
+    if (scope === 'PARTIAL' && from && to) {
+      const days = (Date.parse(to + 'T00:00:00Z') - Date.parse(from + 'T00:00:00Z')) / 86400000;
+      if (!Number.isFinite(days) || days < 0 || days > 31) throw new BadRequestException('Partial date range must be at most 31 days');
+    }
+    const { events } = await this.activityRows(req, scope === 'FULL' ? undefined : from, scope === 'FULL' ? undefined : to);
     const safe = (value: unknown): string => {
       let str = String(value ?? '').replace(/[\r\n]+/g, ' ').slice(0, 500);
       if (/^[\s]*[=+@-]/.test(str)) str = "'" + str;
@@ -204,10 +353,11 @@ export class AnalyticsController {
         entityType: 'SITE_ACTIVITY',
         httpMethod: 'GET',
         httpPath: '/analytics/activity/export',
+        newValues: { scope, grantedBy, records: events.length },
       },
     });
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', 'attachment; filename="scc380-activity.csv"');
+    res.setHeader('Content-Disposition', 'attachment; filename="scc380-activity-' + scope.toLowerCase() + '.csv"');
     res.setHeader('Cache-Control', 'no-store');
     res.send(csv);
   }
