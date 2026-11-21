@@ -370,6 +370,41 @@ test('POS: open-session ownership, atomic stock, idempotency, tenant isolation a
       postedSale.lines.reduce((n, line) => n + Number(line.creditAmount), 0));
     console.log('POS_RELEASE_DRILL_PASS final_inventory_and_balanced_posted_journal');
 
+    // Verify tax-rate accuracy for a mixed 15%/0% cart in this disposable DB.
+    await pos.openSession({ openingCash: '0.00' } as any, userA.id, tenantA.id, 'ADMIN');
+    const [standardVat, zeroVat] = await Promise.all([
+      prisma.product.create({ data: {
+        tenantId: tenantA.id, name: 'Standard VAT', sku: 'POS-VAT15-'+unique,
+        salePrice: 10, taxRate: 15, costPrice: 0, currentStock: 1,
+      } }),
+      prisma.product.create({ data: {
+        tenantId: tenantA.id, name: 'Zero VAT', sku: 'POS-VAT0-'+unique,
+        salePrice: 10, taxRate: 0, costPrice: 0, currentStock: 2,
+      } }),
+    ]);
+    const mixedOrder = await pos.createOrder(dto(randomUUID(), [
+      { productId: standardVat.id, quantity: 1 },
+      { productId: zeroVat.id, quantity: 1 },
+    ], '21.50') as any, userA.id, tenantA.id, 'ADMIN');
+    assert.equal(Number(mixedOrder.subtotal), 20);
+    assert.equal(Number(mixedOrder.taxAmount), 1.5);
+    assert.equal(Number(mixedOrder.taxRate), 7.5, 'header must show effective mixed VAT');
+    assert.equal(Number(mixedOrder.items.find(i => i.productId === standardVat.id)?.taxRate), 15);
+    assert.equal(Number(mixedOrder.items.find(i => i.productId === zeroVat.id)?.taxRate), 0);
+    const mixedJournal = await prisma.journalEntryHeader.findFirstOrThrow({
+      where: { tenantId: tenantA.id, sourceType: 'POS_ORDER', sourceId: mixedOrder.id },
+      include: { lines: true },
+    });
+    assert.equal(mixedJournal.lines.reduce((v, line) => v + Number(line.debitAmount), 0),
+      mixedJournal.lines.reduce((v, line) => v + Number(line.creditAmount), 0));
+
+    const zeroOrder = await pos.createOrder(dto(randomUUID(), [
+      { productId: zeroVat.id, quantity: 1 },
+    ], '10.00') as any, userA.id, tenantA.id, 'ADMIN');
+    assert.equal(Number(zeroOrder.taxRate), 0);
+    assert.equal(Number(zeroOrder.taxAmount), 0);
+    console.log('POS_RELEASE_DRILL_PASS mixed_and_zero_rate_vat_header');
+
     const actorA = { user: { userId: userA.id, tenantId: tenantA.id, role: 'ADMIN' } };
     const actorB = { user: { userId: userB.id, tenantId: tenantB.id, role: 'ADMIN' } };
     assert.equal((await users.getPreferences(actorA)).language, 'ar');
