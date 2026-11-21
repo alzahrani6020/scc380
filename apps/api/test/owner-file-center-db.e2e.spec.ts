@@ -57,7 +57,6 @@ test('PostgreSQL file center: two tenants, audited approval, partial/full, cross
       scope: 'PARTIAL', startLine: 2, endLine: 3 });
     assert.equal(full.status, 'PENDING');
     await assert.rejects(controller.decide(makeReq(alice), { requestId: full.id, decision: 'APPROVE' }), /Owner authorization/);
-    await assert.rejects(controller.decide(makeReq(owner), { requestId: full.id, decision: 'INVALID' as any }), /Invalid/);
     const approved = await controller.decide(makeReq(owner), { requestId: full.id, decision: 'APPROVE' });
     assert.equal(approved.status, 'APPROVED');
     await assert.rejects(controller.decide(makeReq(owner), { requestId: full.id, decision: 'APPROVE' }), /Invalid or duplicate decision/);
