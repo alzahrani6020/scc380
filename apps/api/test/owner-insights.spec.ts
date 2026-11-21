@@ -47,3 +47,15 @@ test('CSV uses actual UTF-8 BOM and CRLF with spreadsheet formula escaping', () 
   assert.equal(exportCode.includes(String.raw`'\\uFEFF'`), false);
   assert.equal(exportCode.includes(String.raw`'\\r\\n'`), false);
 });
+
+test('download telemetry is server attributed, validates resource and never grants entitlement', () => {
+  const start = controller.indexOf('async recordActivity(');
+  const end = controller.indexOf('private activityScope(', start);
+  const event = controller.slice(start, end);
+  assert.match(event, /req\.user\.userId/);
+  assert.match(event, /action === 'DOWNLOAD_REQUEST'/);
+  assert.match(event, /body\.resource\.length > 180/);
+  assert.match(event, /SAME_ORIGIN_LINK/);
+  assert.match(event, /CLIENT_PDF_EXPORT/);
+  assert.doesNotMatch(event, /DOWNLOAD_ACCESS_APPROVED/);
+});
