@@ -145,6 +145,7 @@ export class AnalyticsController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   async getActivity(@Request() req: any, @Query('from') from?: string, @Query('to') to?: string) {
+    this.requireOwner(req);
     const { events, scope, tenantWhere } = await this.activityRows(req, from, to);
     const [sessions, logins] = await Promise.all([
       prisma.session.findMany({
@@ -330,36 +331,79 @@ export class AnalyticsController {
     }
     if (scope === 'PARTIAL' && from && to) {
       const days = (Date.parse(to + 'T00:00:00Z') - Date.parse(from + 'T00:00:00Z')) / 86400000;
-      if (!Number.isFinite(days) || days < 0 || days > 31) throw new BadRequestException('Partial date range must be at most 31 days');
+      if (!Number.isFinite(days) || days < 0 || days > 31)
+        throw new BadRequestException('Partial date range must be at most 31 days');
     }
-    const { events } = await this.activityRows(req, scope === 'FULL' ? undefined : from, scope === 'FULL' ? undefined : to);
+    const selected = this.activityScope(req, scope === 'FULL' ? undefined : from, scope === 'FULL' ? undefined : to);
+    const where = {
+      ...(selected.tenantId ? { tenantId: selected.tenantId } : {}),
+      createdAt: selected.createdAt,
+    };
     const safe = (value: unknown): string => {
-      let str = String(value ?? '').replace(/[\r\n]+/g, ' ').slice(0, 500);
-      if (/^[\s]*[=+@-]/.test(str)) str = "'" + str;
+      let str = String(value ?? '').replace(/[\\r\\n]+/g, ' ').slice(0, 500);
+      if (/^[\\s]*[=+@-]/.test(str)) str = "'" + str;
       return '"' + str.replace(/"/g, '""') + '"';
     };
-    const columns = ['UTC time', 'User', 'Email', 'Action', 'Path', 'HTTP status', 'IP'];
-    const rows = events.map(e => [
-      e.createdAt.toISOString(),
-      [e.user?.firstName, e.user?.lastName].filter(Boolean).join(' '),
-      e.user?.email ?? '', e.action, e.httpPath ?? '', e.responseStatus ?? '', e.ipAddress ?? '',
-    ]);
-    const csv = '\uFEFF' + [columns, ...rows].map(row => row.map(safe).join(',')).join('\r\n');
     await prisma.auditLog.create({
       data: {
         tenantId: req.user.tenantId ?? null,
         userId: req.user.userId,
-        action: 'REPORT_EXPORTED',
+        action: 'REPORT_EXPORT_STARTED',
         entityType: 'SITE_ACTIVITY',
         httpMethod: 'GET',
         httpPath: '/analytics/activity/export',
-        newValues: { scope, grantedBy, records: events.length },
+        newValues: { scope, grantedBy },
       },
     });
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename="scc380-activity-' + scope.toLowerCase() + '.csv"');
     res.setHeader('Cache-Control', 'no-store');
-    res.send(csv);
+    res.write('\\uFEFF' + ['UTC time', 'User', 'Email', 'Action', 'Path', 'HTTP status', 'IP'].map(safe).join(',') + '\\r\\n');
+    let count = 0;
+    let cursor: string | undefined;
+    try {
+      while (!res.destroyed) {
+        const rows = await prisma.auditLog.findMany({
+          where,
+          select: {
+            id: true, action: true, httpPath: true, responseStatus: true,
+            createdAt: true, ipAddress: true,
+            user: { select: { email: true, firstName: true, lastName: true } },
+          },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          take: 500,
+          ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+        });
+        if (!rows.length) break;
+        const csv = rows.map(e => [
+          e.createdAt.toISOString(),
+          [e.user?.firstName, e.user?.lastName].filter(Boolean).join(' '),
+          e.user?.email ?? '', e.action, e.httpPath ?? '', e.responseStatus ?? '', e.ipAddress ?? '',
+        ].map(safe).join(',')).join('\\r\\n') + '\\r\\n';
+        if (!res.write(csv)) {
+          await new Promise<void>((resolve) => res.once('drain', resolve));
+        }
+        count += rows.length;
+        cursor = rows[rows.length - 1].id;
+        if (rows.length < 500) break;
+      }
+      if (!res.destroyed) {
+        res.end();
+        await prisma.auditLog.create({
+          data: {
+            tenantId: req.user.tenantId ?? null,
+            userId: req.user.userId,
+            action: 'REPORT_EXPORT_STREAMED',
+            entityType: 'SITE_ACTIVITY',
+            httpMethod: 'GET',
+            httpPath: '/analytics/activity/export',
+            newValues: { scope, grantedBy, records: count },
+          },
+        });
+      }
+    } catch (error) {
+      res.destroy(error instanceof Error ? error : new Error('Export failed'));
+    }
   }
 
   @Get('alerts')
