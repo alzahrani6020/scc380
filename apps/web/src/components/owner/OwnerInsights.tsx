@@ -10,8 +10,9 @@ type Insights = {
     recordedEvents: number; pageViews: number; downloadRequests: number;
     streamedExports: number; downloadApprovalRequests: number; grantedApprovals: number;
     rejectedRequests: number; auditedHttpErrors: number; activeSessions: number;
-    loginFailures: number; successfulLogins: number; identifiedActiveUsers: number;
+    loginFailures: number; successfulLogins: number; identifiedActiveUsers: number; hrDocumentDeliveryStarts: number; storedHrDocuments: number;
   };
+  resourceInventory: Array<{ type: string; route?: string; availability: string; downloadPolicy: string; supportedScopes: string[]; documentCount?: number; deliveriesLoggedInPeriod?: number }>;
   pages: Array<{ path: string; visits: number }>;
   actors: Array<{ userId: string | null; email: string; tenantId: string | null; events: number }>;
   recentErrors: Array<{
@@ -59,6 +60,8 @@ export default function OwnerInsights() {
     { label: 'مستخدمون معروفون نشطون', value: data.summary.identifiedActiveUsers, icon: Users },
     { label: 'جلسات نشطة الآن', value: data.summary.activeSessions, icon: ShieldCheck },
     { label: 'طلبات تنزيل التقارير', value: data.summary.downloadRequests, icon: ArrowDownToLine },
+    { label: 'محاولات تسليم مستندات HR', value: data.summary.hrDocumentDeliveryStarts, icon: FileCheck2 },
+    { label: 'مستندات HR المحفوظة', value: data.summary.storedHrDocuments, icon: FileCheck2 },
     { label: 'تصديرات أُرسلت من الخادم', value: data.summary.streamedExports, icon: FileCheck2 },
     { label: 'طلبات موافقة تنزيل', value: data.summary.downloadApprovalRequests, icon: FileCheck2 },
     { label: 'موافقات المالك المسجلة', value: data.summary.grantedApprovals, icon: ShieldCheck },
@@ -123,6 +126,21 @@ export default function OwnerInsights() {
             </table>
             {!data.actors.length && <p className="py-3 text-sm text-slate-400">لا توجد حسابات معروفة نشطة لهذه الفترة.</p>}
           </div>
+        </div>
+      </div>
+      <div className="rounded-xl border border-slate-700 bg-slate-900 p-4">
+        <h3 className="mb-2 font-bold">خريطة موارد الملفات والتنزيل</h3>
+        <p className="mb-3 text-sm text-slate-400">تُظهر نوع المورد وسياسة الوصول الموجودة فعليًا. لا يعني وجود الملف أن تنزيله متاح للبيع.</p>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[700px] text-right text-sm">
+            <thead><tr className="border-b border-slate-700 text-slate-400"><th className="py-2">نوع المورد</th><th>مسار API</th><th>سياسة الحماية</th><th>التغطية</th></tr></thead>
+            <tbody>{data.resourceInventory.map(item => <tr key={item.type} className="border-b border-slate-800">
+              <td className="py-3">{item.type === 'ACTIVITY_REPORT' ? 'تقرير نشاط الموقع' : item.type === 'HR_EMPLOYEE_DOCUMENT' ? 'مستندات موظفي الموارد البشرية' : 'ملفات الموقع العامة'}</td>
+              <td dir="ltr" className="break-all text-left font-mono text-xs">{item.route || '—'}</td>
+              <td className="pr-2">{item.downloadPolicy === 'OWNER_APPROVAL_OR_VERIFIED_PAYMENT' ? 'موافقة المالك أو دفع موثّق' : item.downloadPolicy === 'HR_DOCUMENT_READ_PERMISSION' ? 'صلاحية قراءة مستندات HR' : 'غير مشمول برقابة تنزيل المالك'}</td>
+              <td className={item.availability === 'AVAILABLE' ? 'text-green-300' : 'text-amber-300'}>{item.availability === 'AVAILABLE' ? 'مدعوم' : 'غير مشمول'}</td>
+            </tr>)}</tbody>
+          </table>
         </div>
       </div>
       <div className="rounded-xl border border-slate-700 bg-slate-900 p-4">
