@@ -24,7 +24,7 @@ export default function ActivityTracker() {
       const hasDownload = link.hasAttribute('download');
       let resource: URL;
       try { resource = new URL(link.href, window.location.href); } catch { return; }
-      const fileLink = /\\.(pdf|csv|xlsx?|docx?|zip|png|jpe?g)$/i.test(resource.pathname);
+      const fileLink = /\.(pdf|csv|xlsx?|docx?|zip|png|jpe?g)$/i.test(resource.pathname);
       if (!hasDownload && !fileLink) return;
       if (resource.origin !== window.location.origin) return;
       const path = window.location.pathname;
