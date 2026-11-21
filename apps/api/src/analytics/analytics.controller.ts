@@ -252,6 +252,18 @@ export class AnalyticsController {
     if (!['FULL', 'PARTIAL'].includes(requested)) {
       throw new BadRequestException('scope must be FULL or PARTIAL');
     }
+    // Log all authenticated attempts before an entitlement check, including denials.
+    await prisma.auditLog.create({
+      data: {
+        tenantId: req.user.tenantId ?? null,
+        userId: req.user.userId,
+        action: 'DOWNLOAD_REQUEST',
+        entityType: 'SITE_ACTIVITY',
+        httpMethod: 'GET',
+        httpPath: '/analytics/activity/export',
+        newValues: { scope: requested },
+      },
+    });
     if (req.user.role === 'SUPER_ADMIN') return 'OWNER';
     if (!['ADMIN', 'AUDITOR'].includes(req.user.role) || !req.user.tenantId) {
       throw new ForbiddenException('Download access unavailable');
