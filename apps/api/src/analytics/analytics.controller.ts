@@ -796,6 +796,12 @@ export class AnalyticsController {
         newValues: { scope, grantedBy },
       },
     });
+    // A streamed response is not proof that the browser saved the file.
+    // Record actual HTTP response completion or interruption, not merely res.end().
+    const transferOutcome = new Promise<'FINISHED' | 'INTERRUPTED'>(resolve => {
+      res.once('finish', () => resolve('FINISHED'));
+      res.once('close', () => resolve(res.writableFinished ? 'FINISHED' : 'INTERRUPTED'));
+    });
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename="scc380-activity-' + scope.toLowerCase() + '.csv"');
     res.setHeader('Cache-Control', 'no-store');
@@ -828,20 +834,19 @@ export class AnalyticsController {
         cursor = rows[rows.length - 1].id;
         if (rows.length < 500) break;
       }
-      if (!res.destroyed) {
-        res.end();
-        await prisma.auditLog.create({
-          data: {
-            tenantId: req.user.tenantId ?? null,
-            userId: req.user.userId,
-            action: 'REPORT_EXPORT_STREAMED',
-            entityType: 'SITE_ACTIVITY',
-            httpMethod: 'GET',
-            httpPath: '/analytics/activity/export',
-            newValues: { scope, grantedBy, records: count },
-          },
-        });
-      }
+      if (!res.destroyed) res.end();
+      const outcome = await transferOutcome;
+      await prisma.auditLog.create({
+        data: {
+          tenantId: req.user.tenantId ?? null,
+          userId: req.user.userId,
+          action: outcome === 'FINISHED' ? 'REPORT_HTTP_RESPONSE_FINISHED' : 'REPORT_HTTP_RESPONSE_INTERRUPTED',
+          entityType: 'SITE_ACTIVITY',
+          httpMethod: 'GET',
+          httpPath: '/analytics/activity/export',
+          newValues: { scope, grantedBy, records: count, deliveryProof: 'HTTP_RESPONSE_ONLY' },
+        },
+      });
     } catch (error) {
       res.destroy(error instanceof Error ? error : new Error('Export failed'));
     }
