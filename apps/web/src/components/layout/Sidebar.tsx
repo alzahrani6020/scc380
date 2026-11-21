@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import api from '@/lib/api';
-import { clearAuth, getRefreshToken } from '@/lib/auth';
+import { clearAuth, getRefreshToken, getRole } from '@/lib/auth';
 import { sessionAuth } from '@/lib/session-auth';
 import { cn } from '@scc/utils';
 import {
@@ -17,7 +17,7 @@ import {
   ReceiptText, ListTree, PiggyBank, NotebookText, GitBranch,
   PackagePlus, Gauge, Globe, ListChecks, Lock, Coins, CarFront,
   Network, UserCog, FileInput, Building, Clock3, CalendarRange, Target, GraduationCap,
-  Search, X, ChevronDown,
+  Search, X, ChevronDown, Download,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -34,6 +34,7 @@ export const navigation: NavEntry[] = [
   { header: 'الرئيسية' },
   { name: 'لوحة التحكم', href: '/dashboard', icon: LayoutDashboard },
   { name: 'التحليلات', href: '/dashboard/analytics', icon: BarChart3 },
+  { name: 'مراقبة نشاط الموقع والتنزيلات', href: '/dashboard/site-activity', icon: Download },
   { name: 'التنبيهات والإشعارات', href: '/dashboard/notifications', icon: Bell, badge: 'alerts' },
 
   { header: 'العملاء (CRM)' },
@@ -138,6 +139,8 @@ export default function Sidebar({
   onClose?: () => void;
 }) {
   const pathname = usePathname();
+  const [activityRole, setActivityRole] = useState<string | null>(null);
+  useEffect(() => { setActivityRole(getRole()); }, []);
   const [alertCount, setAlertCount] = useState(0);
   const [query, setQuery] = useState('');
   const initialSection = navigation.reduce((current, entry) => {
@@ -235,7 +238,7 @@ export default function Sidebar({
           if ('header' in entry) {
             const group = navigation.slice(index + 1, navigation.findIndex((next, at) => at > index && 'header' in next) === -1
               ? undefined : navigation.findIndex((next, at) => at > index && 'header' in next));
-            const matching = group.filter((item): item is NavItem => 'href' in item && (!filter || item.name.toLocaleLowerCase('ar').includes(filter) || entry.header.toLocaleLowerCase('ar').includes(filter)));
+            const matching = group.filter((item): item is NavItem => 'href' in item && (item.href !== '/dashboard/site-activity' || ['SUPER_ADMIN', 'ADMIN', 'AUDITOR'].includes(activityRole || '')) && (!filter || item.name.toLocaleLowerCase('ar').includes(filter) || entry.header.toLocaleLowerCase('ar').includes(filter)));
             if (!matching.length) return null;
             const open = !!filter || expanded.includes(entry.header);
             return (
