@@ -187,9 +187,11 @@ export class AnalyticsController {
   // Delegation is intentionally limited to this console, not a general SUPER_ADMIN elevation.
   // Fail closed when no explicit owner identity is configured on the service.
   private async canManageOwnerConsole(req: any): Promise<boolean> {
-    if (req.user?.role === 'SUPER_ADMIN') return true;
     const configured = (process.env.SCC380_ACTIVITY_OWNER_EMAIL || '').trim().toLowerCase();
-    if (!configured || req.user?.role !== 'ADMIN' || !req.user?.userId) return false;
+    // This console has exactly one configured owner identity: not every SUPER_ADMIN.
+    if (!configured || !['ADMIN', 'SUPER_ADMIN'].includes(req.user?.role) ||
+        !req.user?.userId || req.user?.email?.toLowerCase() !== configured ||
+        !req.user?.sessionId) return false;
     const account = await prisma.user.findUnique({
       where: { id: req.user.userId },
       select: { email: true, status: true, role: true },
@@ -199,8 +201,7 @@ export class AnalyticsController {
     // not a global role elevation. Email verification is not independently usable for
     // the existing password-login accounts, so do not silently lock the approved owner out.
     return !!account && account.status === 'ACTIVE' &&
-      account.role === 'ADMIN' && account.email.toLowerCase() === configured &&
-      req.user.email?.toLowerCase() === configured && !!req.user.sessionId;
+      account.role === req.user.role && account.email.toLowerCase() === configured;
   }
 
   private async requireOwner(req: any) {
