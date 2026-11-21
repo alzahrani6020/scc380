@@ -139,13 +139,13 @@ export default function SiteActivityDashboard() {
       {authUnavailable ? (
         <>
           <p className="mb-4 text-slate-300">تعذر إثبات الجلسة الحالية من خادم المصادقة. لم يتم إثبات رفض صلاحية المالك.</p>
-          <Link href="/auth/login?redirect=%2Fowner%2Factivity" className="inline-flex rounded-lg bg-blue-600 px-4 py-2">تسجيل الدخول إلى حساب المالك</Link>
+          <Link href="/auth/login" className="inline-flex rounded-lg bg-blue-600 px-4 py-2">تسجيل الدخول ثم العودة إلى رابط لوحة المالك</Link>
         </>
       ) : (
         <>
           <p className="mb-2 text-slate-300">الحساب الموثق حاليًا لا يحمل صلاحية مالك النظام المطلوبة لعرض السجلات أو إصدار الموافقات.</p>
           <p className="mb-4 break-all text-sm text-slate-400">الحساب: {identityEmail || 'غير متاح'} — الدور الحالي: {role}</p>
-          <Link href="/auth/login?redirect=%2Fowner%2Factivity" className="inline-flex rounded-lg bg-blue-600 px-4 py-2">الدخول بحساب المالك المخوّل</Link>
+          <Link href="/auth/login" className="inline-flex rounded-lg bg-blue-600 px-4 py-2">الدخول بحساب المالك المخوّل ثم العودة للوحة</Link>
         </>
       )}
       <p className="mt-4 text-xs text-slate-400">لا تُمنح صلاحيات المالك تلقائيًا بالوصول إلى الرابط؛ يجب أن تكون مرتبطة بحساب موثّق ومخوّل على الخادم.</p>
