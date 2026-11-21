@@ -173,6 +173,7 @@ export class AnalyticsController {
         reportExports: events.filter(e => e.action === 'REPORT_EXPORTED').length,
         sessions: sessions.length,
         failedLogins: logins.filter(l => !l.success).length,
+        auditedHttpErrors: events.filter(e => typeof e.responseStatus === 'number' && e.responseStatus >= 400).length,
       },
       events, sessions, logins,
       limited: events.length === 1000 || sessions.length === 100 || logins.length === 100,
