@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import api from '@/lib/api';
 import { Download, RefreshCw, Shield, Eye, LogIn, FileDown, Search } from 'lucide-react';
 import Link from 'next/link';
+import { GoogleLogin } from '@react-oauth/google';
 import { clearAuth, getRefreshToken } from '@/lib/auth';
 import { sessionAuth } from '@/lib/session-auth';
 
@@ -34,6 +35,8 @@ export default function SiteActivityDashboard() {
   const [identityEmail, setIdentityEmail] = useState<string>('');
   const [authUnavailable, setAuthUnavailable] = useState(false);
   const [ownerAuthorized, setOwnerAuthorized] = useState(false);
+  const [verifyingEmail, setVerifyingEmail] = useState(false);
+  const [verificationError, setVerificationError] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [data, setData] = useState<Feed | null>(null);
@@ -61,6 +64,30 @@ export default function SiteActivityDashboard() {
     });
     return () => { active = false; };
   }, []);
+
+  const verifyGoogleOwner = async (credential?: string) => {
+    if (!credential || verifyingEmail) {
+      setVerificationError('تعذر الحصول على إثبات Google صالح.');
+      return;
+    }
+    setVerifyingEmail(true);
+    setVerificationError('');
+    try {
+      await api.post('/auth/owner/verify-google-email', { credential });
+      const verified = await api.get<{ authorized: boolean; accountRole: string; email: string }>(
+        '/analytics/activity/owner/status'
+      );
+      setOwnerAuthorized(verified.data?.authorized === true);
+      setRole(verified.data?.accountRole || 'UNAUTHORIZED');
+      if (!verified.data?.authorized) {
+        setVerificationError('تم التحقق من البريد، لكن صلاحية المالك لم تُثبت؛ لا يمكن فتح السجلات.');
+      }
+    } catch {
+      setVerificationError('لم ينجح إثبات ملكية بريد الحساب باستخدام Google. لم تتغير الصلاحيات.');
+    } finally {
+      setVerifyingEmail(false);
+    }
+  };
 
   const switchAccount = async () => {
     try {
@@ -159,6 +186,21 @@ export default function SiteActivityDashboard() {
         <>
           <p className="mb-2 text-slate-300">الحساب الموثق حاليًا لا يحمل صلاحية مالك النظام المطلوبة لعرض السجلات أو إصدار الموافقات.</p>
           <p className="mb-4 break-all text-sm text-slate-400">الحساب: {identityEmail || 'غير متاح'} — الدور الحالي: {role}</p>
+          {role === 'ADMIN' && process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ? (
+            <div className="mb-4 rounded-lg border border-slate-700 bg-slate-950 p-4">
+              <p className="mb-3 text-sm text-slate-300">لإثبات ملكية البريد، اختر حساب Google المطابق لبريدك المسجل. لا يؤدي هذا إلى منح صلاحيات إدارية عامة.</p>
+              <div className="flex justify-center">
+                <GoogleLogin
+                  onSuccess={response => void verifyGoogleOwner(response.credential)}
+                  onError={() => setVerificationError('فشل التحقق من حساب Google')}
+                  text="continue_with"
+                  shape="pill"
+                />
+              </div>
+              {verifyingEmail && <p role="status" className="mt-3 text-sm text-slate-300">جارٍ التحقق من ملكية البريد...</p>}
+              {verificationError && <p role="alert" className="mt-3 text-sm text-red-300">{verificationError}</p>}
+            </div>
+          ) : null}
           <button type="button" onClick={switchAccount} className="inline-flex rounded-lg bg-blue-600 px-4 py-2">تبديل الحساب وتسجيل الدخول كمالك</button>
         </>
       )}
