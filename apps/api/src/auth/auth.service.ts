@@ -622,6 +622,65 @@ export class AuthService {
     return { message: 'Password reset successfully' };
   }
 
+  /**
+   * Prove control of the exact owner-configured mailbox using a Google-issued
+   * ID token before marking an existing ACTIVE ADMIN account verified.
+   * This endpoint NEVER changes role or grants owner permissions by itself.
+   */
+  async verifyOwnerEmailWithGoogle(userId: string, credential: string) {
+    const configured = (this.config.get<string>('SCC380_ACTIVITY_OWNER_EMAIL') || '').trim().toLowerCase();
+    if (!configured || !this.googleClient || !credential || credential.length > 16000) {
+      throw new UnauthorizedException('Owner email verification unavailable');
+    }
+    const account = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, role: true, status: true, emailVerified: true },
+    });
+    if (!account || account.role !== 'ADMIN' || account.status !== 'ACTIVE' ||
+        account.email.toLowerCase() !== configured) {
+      throw new UnauthorizedException('Owner account does not match');
+    }
+
+    let payload: { email_verified?: boolean; email?: string; sub?: string } | undefined;
+    try {
+      const ticket = await this.googleClient.verifyIdToken({
+        idToken: credential,
+        audience: this.config.get('GOOGLE_CLIENT_ID'),
+      });
+      payload = ticket.getPayload();
+    } catch {
+      throw new UnauthorizedException('Invalid Google verification token');
+    }
+    if (payload?.email_verified !== true ||
+        typeof payload?.email !== 'string' ||
+        payload.email.toLowerCase() !== configured ||
+        typeof payload?.sub !== 'string' || !payload.sub) {
+      throw new UnauthorizedException('Google verified email does not match owner account');
+    }
+
+    if (!account.emailVerified) {
+      const changed = await prisma.user.updateMany({
+        where: { id: userId, role: 'ADMIN', status: 'ACTIVE', email: account.email, emailVerified: false },
+        data: { emailVerified: true },
+      });
+      if (changed.count !== 1) {
+        const current = await prisma.user.findUnique({ where: { id: userId }, select: { emailVerified: true } });
+        if (!current?.emailVerified) throw new UnauthorizedException('Could not complete verified email update');
+      }
+    }
+    await prisma.auditLog.create({
+      data: {
+        tenantId: null,
+        userId,
+        action: 'OWNER_EMAIL_GOOGLE_VERIFIED',
+        entityType: 'SITE_ACTIVITY',
+        entityId: userId,
+        newValues: { provider: 'google' },
+      },
+    });
+    return { verified: true };
+  }
+
   // ─── Google OAuth ──────────────────────────────────────────────────
   async googleAuth(credential: string, req?: any) {
     if (!this.googleClient) {
