@@ -23,7 +23,7 @@ type Session = {
 };
 type Login = { id: string; email: string | null; success: boolean; createdAt: string; failureReason: string | null };
 type Feed = {
-  summary: { recordedEvents: number; pageViews: number; downloadRequests: number; reportExports: number; sessions: number; failedLogins: number };
+  summary: { recordedEvents: number; pageViews: number; downloadRequests: number; reportExports: number; sessions: number; failedLogins: number; auditedHttpErrors: number };
   events: Activity[]; sessions: Session[]; logins: Login[]; limited: boolean;
 };
 
@@ -175,18 +175,18 @@ export default function SiteActivityDashboard() {
     { label: 'زيارات الصفحات المسجلة', value: data?.summary.pageViews, icon: Eye },
     { label: 'طلبات تنزيل مسجلة', value: data?.summary.downloadRequests, icon: FileDown },
     { label: 'جلسات في الفترة', value: data?.summary.sessions, icon: LogIn },
-    { label: 'محاولات دخول فاشلة', value: data?.summary.failedLogins, icon: Shield },
+    { label: 'أخطاء طلبات HTTP المسجلة', value: data?.summary.auditedHttpErrors, icon: Shield },
   ];
 
   return (
-    <div dir="rtl" className="space-y-6 text-white">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">لوحة المالك المستقلة — مراقبة نشاط الموقع</h1>
+    <main dir="rtl" className="mx-auto min-w-0 w-full max-w-screen-2xl space-y-6 overflow-x-hidden px-4 py-6 text-white sm:px-6 lg:px-8">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <h1 className="break-words text-xl font-bold sm:text-2xl">لوحة المالك المستقلة — مراقبة نشاط الموقع</h1>
           <p className="mt-1 text-sm text-slate-400">المستخدمون المصرح لهم، زيارات لوحة النظام، الجلسات وسجلات التنزيل. لا تشمل الزيارات المجهولة.</p>
         </div>
         <button type="button" onClick={download} disabled={loading || exporting || !data}
-          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-500 disabled:opacity-50">
+          className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-500 disabled:opacity-50">
           <Download className="h-4 w-4" />{exporting ? 'جارٍ التحميل...' : 'تحميل التقرير CSV'}
         </button>
       </div>
@@ -232,7 +232,8 @@ export default function SiteActivityDashboard() {
       </div>
       {error && <div role="alert" className="rounded-md border border-red-700 bg-red-950 p-3 text-red-200">{error}</div>}
       {data?.limited && <div role="status" className="rounded-md border border-amber-700 bg-amber-950/40 p-3 text-amber-200">المعاينة محدودة بأحدث 1000 حدث و100 جلسة و100 محاولة دخول. التنزيل الكامل يعالج جميع السجلات المصرح بها.</div>}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <p className="text-sm text-slate-400">أخطاء HTTP مستخرجة من سجل التدقيق، بينما محاولات الدخول الفاشلة تُحسب من سجل تسجيل الدخول المستقل؛ لا يعني رمز 201 نجاح المصادقة.</p>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {stats.map(({ label, value, icon: Icon }) => (
           <div key={label} className="rounded-xl border border-slate-700 bg-slate-900 p-4">
             <Icon className="mb-3 h-5 w-5 text-blue-400" />
@@ -241,7 +242,7 @@ export default function SiteActivityDashboard() {
           </div>
         ))}
       </div>
-      <section className="rounded-xl border border-slate-700 bg-slate-900 p-4">
+      <section className="min-w-0 rounded-xl border border-slate-700 bg-slate-900 p-4">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="font-bold">سجل النشاط والزيارات</h2>
           <label className="relative"><Search className="absolute right-3 top-2.5 h-4 w-4 text-slate-400" /><input
@@ -249,8 +250,8 @@ export default function SiteActivityDashboard() {
             className="rounded-md border border-slate-700 bg-slate-950 py-2 pr-9 pl-3 text-sm" /></label>
         </div>
         <div className="overflow-x-auto"><table className="w-full min-w-[640px] text-right text-sm">
-          <thead className="text-slate-400"><tr><th className="p-2">التاريخ</th><th className="p-2">المستخدم</th><th className="p-2">الحدث</th><th className="p-2">الصفحة أو المورد</th><th className="p-2">الحالة</th></tr></thead>
-          <tbody>{rows.map(e => <tr key={e.id} className="border-t border-slate-800"><td className="p-2">{readable(e.createdAt)}</td><td className="p-2">{e.user?.email || 'غير محدد'}</td><td className="p-2">{e.action}</td><td className="p-2 font-mono text-xs" dir="ltr">{e.httpPath || '—'}</td><td className="p-2">{e.responseStatus ?? '—'}</td></tr>)}</tbody>
+          <thead className="text-slate-400"><tr><th className="p-2">التاريخ</th><th className="p-2">المستخدم</th><th className="p-2">الحدث</th><th className="p-2">الصفحة أو المورد</th><th className="p-2">حالة HTTP</th></tr></thead>
+          <tbody>{rows.map(e => <tr key={e.id} className="border-t border-slate-800"><td className="p-2">{readable(e.createdAt)}</td><td className="p-2">{e.user?.email || 'غير محدد'}</td><td className="p-2">{e.action === "PAGE_VIEW" ? "زيارة صفحة" : e.action === "POST_ERROR" ? "فشل طلب" : e.action}</td><td className="p-2 font-mono text-xs" dir="ltr">{e.httpPath || '—'}</td><td className="p-2">{e.responseStatus === null ? "غير منطبق" : e.responseStatus}</td></tr>)}</tbody>
         </table>{!rows.length && <p className="p-4 text-center text-sm text-slate-400">لا توجد أحداث مطابقة محفوظة في هذه الفترة.</p>}</div>
       </section>
       <div className="grid gap-4 lg:grid-cols-2">
@@ -271,6 +272,6 @@ export default function SiteActivityDashboard() {
         </section>
       </div>
       <p className="text-xs text-slate-400">تنزيل CSV يسجل إنشاء التقرير واستجابة الخادم؛ لا يثبت حفظ الملف على جهاز المستخدم. الزيارات لا تشمل صفحات الموقع العامة أو الزوار المجهولين.</p>
-    </div>
+    </main>
   );
 }
