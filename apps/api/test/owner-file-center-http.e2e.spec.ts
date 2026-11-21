@@ -16,6 +16,8 @@ if (process.env.SCC380_TEST_DATABASE_ISOLATED !== 'YES' ||
   throw new Error('HTTP JWT integration requires isolated localhost ownerfiles_ci');
 }
 const secret = 'isolated-scc380-ci-signing-key-not-production';
+// tsx runtime does not emit Nest constructor design metadata automatically.
+Reflect.defineMetadata('design:paramtypes', [ConfigService], JwtStrategy);
 test('HTTP JWT+database sessions deny forged/foreign tenant, allow owner and audited file delivery', async () => {
   const uid = 'httpci_' + randomBytes(6).toString('hex');
   const tenants: string[] = [];
