@@ -521,7 +521,7 @@ export class AnalyticsController {
     // One writer per request ID; use an advisory PostgreSQL transaction lock so
     // two concurrent owner actions cannot approve and reject the same request.
     return prisma.$transaction(async tx => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${row.id}))`;
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${row.id}))`;
       const prior = await tx.auditLog.findFirst({
         where: {
           entityType: 'ACTIVITY_REPORT_ACCESS',
