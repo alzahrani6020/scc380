@@ -34,3 +34,13 @@ test('user and owner interfaces expose real submit, refresh and resolve actions'
   assert.match(owner, /api\.get\('\/analytics\/activity\/owner\/requests'/);
   assert.match(owner, /api\.post\('\/analytics\/activity\/owner\/resolve-request'/);
 });
+
+test('HTTP export audit distinguishes response finish, interruption, and client device storage', () => {
+  assert.match(api, /res\.once\('finish', \(\) => resolve\('FINISHED'\)\)/);
+  assert.match(api, /res\.once\('close', \(\) => resolve\(res\.writableFinished \? 'FINISHED' : 'INTERRUPTED'\)\)/);
+  assert.match(api, /await transferOutcome/);
+  assert.match(api, /REPORT_HTTP_RESPONSE_FINISHED/);
+  assert.match(api, /REPORT_HTTP_RESPONSE_INTERRUPTED/);
+  assert.match(api, /deliveryProof: 'HTTP_RESPONSE_ONLY'/);
+  assert.doesNotMatch(api, /REPORT_EXPORT_STREAMED/);
+});
