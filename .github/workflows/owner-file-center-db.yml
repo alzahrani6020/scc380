@@ -48,16 +48,10 @@ jobs:
         run: pnpm --filter @scc/database build
       - name: Apply migration history to isolated PostgreSQL
         run: pnpm --filter @scc/database exec prisma migrate deploy --schema prisma/schema.prisma
-      - name: Confirm exact tenant-constrained schema
+      - name: Confirm real PostgreSQL tenant-constrained schema
         run: |
-          python3 - <<'PY'
-          import os,subprocess
-          query = """
-          SELECT count(*) FROM information_schema.tables
-          WHERE table_schema='public' AND table_name IN ('owner_files','owner_file_requests');
-          """
-          result=subprocess.check_output(['docker','--version'],text=True)
-          print('Local PostgreSQL 17 isolated acceptance, no production database configured')
-          PY
+          test "$(PGPASSWORD=test psql -h 127.0.0.1 -U test -d ownerfiles_ci -Atqc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('owner_files','owner_file_requests')")" = "2"
+          test "$(PGPASSWORD=test psql -h 127.0.0.1 -U test -d ownerfiles_ci -Atqc "SELECT count(*) FROM pg_constraint WHERE conname='owner_file_requests_fileId_tenantId_fkey' AND contype='f'")" = "1"
+          echo "PASS: isolated PostgreSQL 17 tables and tenant composite foreign key"
       - name: Test real Prisma transactions across two tenants
         run: pnpm --filter @scc/api exec tsx --test test/owner-file-center-db.e2e.spec.ts
