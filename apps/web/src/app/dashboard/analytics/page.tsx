@@ -6,6 +6,8 @@ import {
   PieChart, Pie, Cell, AreaChart, Area
 } from 'recharts';
 import api from '@/lib/api';
+import Link from 'next/link';
+import { Download } from 'lucide-react';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D'];
 
@@ -96,7 +98,12 @@ export default function AnalyticsDashboard() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white p-4" dir="rtl">
-      <h1 className="text-2xl font-bold mb-6">لوحة التحليلات</h1>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-bold">لوحة التحليلات</h1>
+        <Link href="/downloads/activity" className="inline-flex items-center gap-2 rounded-lg border border-blue-500 bg-blue-600/20 px-4 py-2 text-sm font-semibold text-blue-200 hover:bg-blue-600/30">
+          <Download className="h-4 w-4" /> تحميل تقرير النشاط (جزئي / كامل)
+        </Link>
+      </div>
 
       {loading && <div className="text-center py-12 text-slate-500">جاري التحميل...</div>}
 
