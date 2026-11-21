@@ -1,6 +1,8 @@
 import 'reflect-metadata';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { PassThrough } from 'node:stream';
+import { once } from 'node:events';
 import { prisma } from '@scc/database';
 import { OwnerFilesController } from '../src/owner-files/owner-files.controller';
 
@@ -20,6 +22,10 @@ test('PostgreSQL file center: two tenants, audited approval, partial/full, cross
   const controller = new OwnerFilesController();
   const tenants: string[] = [];
   const users: string[] = [];
+  const invoices: string[] = [];
+  const contacts: string[] = [];
+  const products: string[] = [];
+  const response = () => { const s = new PassThrough() as any; s.setHeader = (_:string, __:string) => {}; return s; };
   const makeReq = (user: any) => ({ user });
   const tenant = async (suffix: string) => {
     const t = await prisma.tenant.create({ data: { name: id + suffix, slug: id + suffix } });
@@ -59,6 +65,13 @@ test('PostgreSQL file center: two tenants, audited approval, partial/full, cross
     await assert.rejects(controller.decide(makeReq(alice), { requestId: full.id, decision: 'APPROVE' }), /Owner authorization/);
     const approved = await controller.decide(makeReq(owner), { requestId: full.id, decision: 'APPROVE' });
     assert.equal(approved.status, 'APPROVED');
+    const fullResponse = response();
+    const fullStream = once(fullResponse, 'finish');
+    const fullChunks: Buffer[] = [];
+    fullResponse.on('data', (data: Buffer) => fullChunks.push(data));
+    await controller.download(makeReq(alice), full.id, undefined, fullResponse);
+    await fullStream;
+    assert.equal(Buffer.concat(fullChunks).toString('utf8'), 'one\\ntwo\\nthree\\nfour'.replace(/\\n/g, '\n'));
     await assert.rejects(controller.decide(makeReq(owner), { requestId: full.id, decision: 'APPROVE' }), /Invalid or duplicate decision/);
     const rejected = await controller.decide(makeReq(owner), { requestId: partial.id, decision: 'REJECT' });
     assert.equal(rejected.status, 'REJECTED');
@@ -67,6 +80,39 @@ test('PostgreSQL file center: two tenants, audited approval, partial/full, cross
     const queue = await controller.queue(makeReq(owner));
     assert.equal(queue.some(x => x.id === partial.id), true);
     await assert.rejects(controller.queue(makeReq(bob)), /Owner authorization/);
+    // Separate successful paid request: real invoice, exact product SKU and completed payment.
+    const payRequest = await controller.request(makeReq(alice), {
+      fileId: file.id, scope: 'PARTIAL', startLine: 2, endLine: 3,
+    });
+    const contact = await prisma.contact.create({ data: {
+      tenantId: a.id, firstName: 'CI', lastName: 'Buyer', email: adminAEmail,
+    } });
+    contacts.push(contact.id);
+    const product = await prisma.product.create({ data: {
+      tenantId: a.id, name: 'Download', sku: 'SCC380-FILE-' + file.id,
+    } });
+    products.push(product.id);
+    const invoice = await prisma.invoice.create({ data: {
+      tenantId: a.id, invoiceNumber: id + '-invoice', contactId: contact.id,
+      subtotal: 10, taxAmount: 0, total: 10, dueDate: new Date(Date.now() + 86400000),
+      status: 'PAID', items: { create: { tenantId: a.id, productId: product.id,
+        description: 'CI file', quantity: 1, unitPrice: 10, total: 10 } },
+    } });
+    invoices.push(invoice.id);
+    const pendingResponse = response();
+    await assert.rejects(controller.download(makeReq(alice), payRequest.id, invoice.invoiceNumber, pendingResponse),
+      /Verified payment or owner approval/);
+    const payment = await prisma.payment.create({ data: {
+      tenantId: a.id, invoiceId: invoice.id, amount: 10, status: 'COMPLETED',
+    } });
+    const partialResponse = response();
+    const partialStream = once(partialResponse, 'finish');
+    const partialChunks: Buffer[] = [];
+    partialResponse.on('data', (data: Buffer) => partialChunks.push(data));
+    await controller.download(makeReq(alice), payRequest.id, invoice.invoiceNumber, partialResponse);
+    await partialStream;
+    assert.equal(Buffer.concat(partialChunks).toString('utf8'), 'two\nthree');
+    assert.equal(payment.amount.toString(), '10');
     const revoked = await controller.decide(makeReq(owner), { requestId: full.id, decision: 'REVOKE' });
     assert.equal(revoked.status, 'REVOKED');
     const audited = await prisma.auditLog.findMany({ where: { entityType: 'OWNER_FILE_REQUEST', entityId: full.id } });
@@ -81,6 +127,12 @@ test('PostgreSQL file center: two tenants, audited approval, partial/full, cross
     process.env.SCC380_ACTIVITY_OWNER_EMAIL = previous;
     if (tenants.length) {
       await prisma.auditLog.deleteMany({ where: { tenantId: { in: tenants }, entityType: 'OWNER_FILE_REQUEST' } });
+      if (invoices.length) {
+        await prisma.payment.deleteMany({ where: { invoiceId: { in: invoices } } });
+        await prisma.invoice.deleteMany({ where: { id: { in: invoices } } });
+      }
+      if (products.length) await prisma.product.deleteMany({ where: { id: { in: products } } });
+      if (contacts.length) await prisma.contact.deleteMany({ where: { id: { in: contacts } } });
       await prisma.ownerFileRequest.deleteMany({ where: { tenantId: { in: tenants } } });
       await prisma.ownerFile.deleteMany({ where: { tenantId: { in: tenants } } });
     }
