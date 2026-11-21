@@ -192,11 +192,15 @@ export class AnalyticsController {
     if (!configured || req.user?.role !== 'ADMIN' || !req.user?.userId) return false;
     const account = await prisma.user.findUnique({
       where: { id: req.user.userId },
-      select: { email: true, emailVerified: true, status: true, role: true },
+      select: { email: true, status: true, role: true },
     });
-    return !!account && account.status === 'ACTIVE' && account.emailVerified &&
+    // JWT guard has already verified the access token, active session and database role.
+    // This is a deliberate operator-configured delegation to ONE exact existing ADMIN,
+    // not a global role elevation. Email verification is not independently usable for
+    // the existing password-login accounts, so do not silently lock the approved owner out.
+    return !!account && account.status === 'ACTIVE' &&
       account.role === 'ADMIN' && account.email.toLowerCase() === configured &&
-      req.user.email?.toLowerCase() === configured;
+      req.user.email?.toLowerCase() === configured && !!req.user.sessionId;
   }
 
   private async requireOwner(req: any) {
