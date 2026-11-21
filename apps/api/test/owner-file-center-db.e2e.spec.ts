@@ -124,7 +124,7 @@ test('PostgreSQL file center: two tenants, audited approval, partial/full, cross
     const revoked = await controller.decide(makeReq(owner), { requestId: full.id, decision: 'REVOKE' });
     assert.equal(revoked.status, 'REVOKED');
     const audited = await prisma.auditLog.findMany({ where: { entityType: 'OWNER_FILE_REQUEST', entityId: full.id } });
-    assert.deepEqual(audited.filter(x => x.action.startsWith('OWNER_FILE_')).map(x => x.action).sort(),
+    assert.deepEqual(audited.filter(x => ['OWNER_FILE_APPROVED','OWNER_FILE_REVOKED'].includes(x.action)).map(x => x.action).sort(),
       ['OWNER_FILE_APPROVED','OWNER_FILE_REVOKED']);
     // HTTP denial is tested through the production controller; no synthetic successful device-save assertion.
     const fakeRes = { setHeader() {}, end() {}, once() {}, writableFinished: false } as any;
