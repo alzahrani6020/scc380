@@ -36,6 +36,8 @@ model Tenant {
   updatedAt     DateTime  @updatedAt
   deletedAt     DateTime?
 
+  ownerFiles    OwnerFile[]
+  ownerFileRequests OwnerFileRequest[]
   users         User[]
   contacts      Contact[]
   companies     Company[]
@@ -3762,4 +3764,47 @@ model HrGovernanceEvidence {
 
   @@index([tenantId, caseId, createdAt])
   @@map("hr_governance_evidence")
+}
+
+ 
+// Owner file center: isolated tenant data, immutable contents and explicit requests.
+// This does not change HR/ERP document access or permit bypassing their existing guards.
+model OwnerFile {
+  id             String   @id @default(cuid())
+  tenantId       String
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  title          String
+  fileName       String
+  mimeType       String
+  checksumSha256 String
+  sizeBytes      Int
+  content        Bytes
+  createdById    String
+  createdAt      DateTime @default(now())
+  requests       OwnerFileRequest[]
+
+  @@unique([id, tenantId])
+  @@index([tenantId, createdAt])
+  @@map("owner_files")
+}
+
+model OwnerFileRequest {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  fileId      String
+  file        OwnerFile @relation(fields: [fileId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  requesterId String
+  scope       String
+  startLine   Int?
+  endLine     Int?
+  status      String   @default("PENDING")
+  decidedById String?
+  decidedAt   DateTime?
+  reason      String?
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, requesterId, createdAt])
+  @@index([status, createdAt])
+  @@map("owner_file_requests")
 }
