@@ -575,6 +575,7 @@ export class AnalyticsController {
       downloadApprovalRequests, grantedApprovals, rejectedRequests,
       auditedHttpErrors, recentErrors, activeSessions, loginFailures,
       successfulLogins, authenticatedUsers, topPages, topActors,
+      hrDocumentDeliveryStarts, storedHrDocuments,
     ] = await Promise.all([
       prisma.auditLog.count({ where: period }),
       prisma.auditLog.count({ where: views }),
@@ -627,6 +628,10 @@ export class AnalyticsController {
         where: { ...period, userId: { not: null } },
         _count: { _all: true },
       }),
+      prisma.auditLog.count({
+        where: { ...period, entityType: 'HR_EMPLOYEE_DOCUMENT', action: 'FILE_DELIVERY_STARTED' },
+      }),
+      prisma.employeeDocument.count(),
     ]);
 
     const actorRows = topActors
@@ -645,6 +650,7 @@ export class AnalyticsController {
         downloadApprovalRequests, grantedApprovals, rejectedRequests,
         auditedHttpErrors, activeSessions, loginFailures, successfulLogins,
         identifiedActiveUsers: authenticatedUsers.length,
+        hrDocumentDeliveryStarts, storedHrDocuments,
       },
       pages: topPages
         .filter(item => item.httpPath)
@@ -658,10 +664,34 @@ export class AnalyticsController {
         events: item._count._all,
       })),
       recentErrors,
+      resourceInventory: [
+        {
+          type: 'ACTIVITY_REPORT',
+          route: '/analytics/activity/export',
+          availability: 'AVAILABLE',
+          downloadPolicy: 'OWNER_APPROVAL_OR_VERIFIED_PAYMENT',
+          supportedScopes: ['PARTIAL', 'FULL'],
+        },
+        {
+          type: 'HR_EMPLOYEE_DOCUMENT',
+          route: '/hr/employee-documents/:id/download',
+          availability: 'AVAILABLE',
+          downloadPolicy: 'HR_DOCUMENT_READ_PERMISSION',
+          supportedScopes: ['FULL'],
+          documentCount: storedHrDocuments,
+          deliveriesLoggedInPeriod: hrDocumentDeliveryStarts,
+        },
+        {
+          type: 'ANONYMOUS_SITE_FILES',
+          availability: 'NOT_INSTRUMENTED',
+          downloadPolicy: 'NOT_AUDITED_BY_OWNER_CENTER',
+          supportedScopes: [],
+        },
+      ],
       coverage: {
         pageViews: 'Authenticated dashboard navigation events only',
         anonymousVisitors: 'NOT_COLLECTED',
-        fileDownloads: 'Activity report export and instrumented same-origin link clicks only',
+        fileDownloads: 'Activity report exports, server-side HR document delivery attempts, and instrumented same-origin file links',
         deviceDownloadCompletion: 'NOT_VERIFIABLE',
         periodCounts: 'Complete database counts; the event preview remains capped',
       },
