@@ -148,6 +148,11 @@ export class PosService {
       subtotal = Math.round(subtotal * 100) / 100;
       totalTax = Math.round(totalTax * 100) / 100;
       const total = Math.round((subtotal + totalTax) * 100) / 100;
+      // The order header stores the effective rate for mixed-rate baskets.
+      // Item tax rates and the actual tax amount remain authoritative.
+      const effectiveTaxRate = subtotal > 0
+        ? Math.round((totalTax / subtotal) * 10000) / 100
+        : 0;
       const payments = dto.payments.map(payment => {
         const amount = Number(payment.amount);
         if (!Number.isFinite(amount) || amount <= 0 ||
@@ -195,7 +200,7 @@ export class PosService {
         data: {
           orderNumber, sessionId: session.id, tenantId,
           customerName: dto.customerName, customerPhone: dto.customerPhone,
-          subtotal, discount: 0, taxRate: 15, taxAmount: totalTax, total,
+          subtotal, discount: 0, taxRate: effectiveTaxRate, taxAmount: totalTax, total,
           items: { createMany: { data: lines.map(line => ({
             productId: line.product.id, productName: line.product.name,
             quantity: line.item.quantity, unitPrice: line.price,
