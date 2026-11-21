@@ -89,7 +89,7 @@ test('PostgreSQL file center: two tenants, audited approval, partial/full, cross
     } });
     contacts.push(contact.id);
     const product = await prisma.product.create({ data: {
-      tenantId: a.id, name: 'Download', sku: 'SCC380-FILE-' + file.id,
+      tenantId: a.id, name: 'Download', sku: 'SCC380-FILE-' + file.id + '-PARTIAL',
     } });
     products.push(product.id);
     const invoice = await prisma.invoice.create({ data: {
