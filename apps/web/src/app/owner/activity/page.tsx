@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import api from '@/lib/api';
 import { Download, RefreshCw, Shield, Eye, LogIn, FileDown, Search } from 'lucide-react';
+import Link from 'next/link';
 
 type Activity = {
   id: string;
@@ -29,6 +30,8 @@ const allowed = new Set(['SUPER_ADMIN']);
 
 export default function SiteActivityDashboard() {
   const [role, setRole] = useState<string | null>(null);
+  const [identityEmail, setIdentityEmail] = useState<string>('');
+  const [authUnavailable, setAuthUnavailable] = useState(false);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [data, setData] = useState<Feed | null>(null);
@@ -45,9 +48,13 @@ export default function SiteActivityDashboard() {
   useEffect(() => {
     let active = true;
     api.get('/auth/me').then(result => {
-      if (active) setRole(result.data?.role || 'UNAUTHORIZED');
+      if (!active) return;
+      setIdentityEmail(typeof result.data?.email === 'string' ? result.data.email : '');
+      setRole(typeof result.data?.role === 'string' ? result.data.role : 'UNAUTHORIZED');
     }).catch(() => {
-      if (active) setRole('UNAUTHORIZED');
+      if (!active) return;
+      setAuthUnavailable(true);
+      setRole('UNAUTHORIZED');
     });
     return () => { active = false; };
   }, []);
@@ -126,7 +133,24 @@ export default function SiteActivityDashboard() {
   };
 
   if (!role) return <div className="p-6 text-slate-200" dir="rtl">التحقق من الصلاحيات...</div>;
-  if (!allowed.has(role)) return <div className="p-6 text-red-300" dir="rtl">هذه الصفحة مخصصة لمالك النظام فقط.</div>;
+  if (!allowed.has(role)) return (
+    <main dir="rtl" className="mx-auto mt-12 max-w-xl rounded-xl border border-slate-700 bg-slate-900 p-6 text-white">
+      <h1 className="mb-3 text-xl font-bold">التحقق من صلاحية لوحة المالك</h1>
+      {authUnavailable ? (
+        <>
+          <p className="mb-4 text-slate-300">تعذر إثبات الجلسة الحالية من خادم المصادقة. لم يتم إثبات رفض صلاحية المالك.</p>
+          <Link href="/auth/login?redirect=%2Fowner%2Factivity" className="inline-flex rounded-lg bg-blue-600 px-4 py-2">تسجيل الدخول إلى حساب المالك</Link>
+        </>
+      ) : (
+        <>
+          <p className="mb-2 text-slate-300">الحساب الموثق حاليًا لا يحمل صلاحية مالك النظام المطلوبة لعرض السجلات أو إصدار الموافقات.</p>
+          <p className="mb-4 break-all text-sm text-slate-400">الحساب: {identityEmail || 'غير متاح'} — الدور الحالي: {role}</p>
+          <Link href="/auth/login?redirect=%2Fowner%2Factivity" className="inline-flex rounded-lg bg-blue-600 px-4 py-2">الدخول بحساب المالك المخوّل</Link>
+        </>
+      )}
+      <p className="mt-4 text-xs text-slate-400">لا تُمنح صلاحيات المالك تلقائيًا بالوصول إلى الرابط؛ يجب أن تكون مرتبطة بحساب موثّق ومخوّل على الخادم.</p>
+    </main>
+  );
 
   const rows = (data?.events || []).filter(event =>
     [event.user?.email, event.action, event.httpPath, event.ipAddress]
@@ -193,7 +217,7 @@ export default function SiteActivityDashboard() {
           className="inline-flex items-center gap-2 rounded-lg border border-slate-600 px-4 py-2 text-sm hover:bg-slate-800 disabled:opacity-50"><RefreshCw className="h-4 w-4" />{loading ? 'جارٍ القراءة...' : 'عرض وتحديث'}</button>
       </div>
       {error && <div role="alert" className="rounded-md border border-red-700 bg-red-950 p-3 text-red-200">{error}</div>}
-      {data?.limited && <div role="status" className="rounded-md border border-amber-700 bg-amber-950/40 p-3 text-amber-200">النتائج محدودة بأحدث 1000 حدث و100 جلسة و100 محاولة دخول. التقرير CSV يصدر حتى 1000 حدث.</div>}
+      {data?.limited && <div role="status" className="rounded-md border border-amber-700 bg-amber-950/40 p-3 text-amber-200">المعاينة محدودة بأحدث 1000 حدث و100 جلسة و100 محاولة دخول. التنزيل الكامل يعالج جميع السجلات المصرح بها.</div>}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         {stats.map(({ label, value, icon: Icon }) => (
           <div key={label} className="rounded-xl border border-slate-700 bg-slate-900 p-4">
