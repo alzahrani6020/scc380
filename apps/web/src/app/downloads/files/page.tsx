@@ -36,7 +36,7 @@ export default function TenantFileCenter() {
     try {
       const args = invoiceNumber.trim() ? '?invoiceNumber='+encodeURIComponent(invoiceNumber.trim()) : '';
       const response = await api.get('/owner-files/requests/'+encodeURIComponent(id)+'/download'+args,{responseType:'blob'});
-      const blob = new Blob([response.data],{type:response.headers['content-type'] || 'application/octet-stream'});
+      const blob = new Blob([response.data],{type: typeof response.headers['content-type'] === 'string' ? response.headers['content-type'] : 'application/octet-stream'});
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a'); a.href=url; a.download='scc380-file-'+id; document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url),1000);
