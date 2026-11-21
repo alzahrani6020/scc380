@@ -36,6 +36,12 @@ export default function SiteActivityDashboard() {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [scope, setScope] = useState<'PARTIAL' | 'FULL'>('PARTIAL');
+  const [approvalEmail, setApprovalEmail] = useState('');
+  const [approvalScope, setApprovalScope] = useState<'PARTIAL' | 'FULL'>('PARTIAL');
+  const [approvalBusy, setApprovalBusy] = useState(false);
+  const [approvals, setApprovals] = useState<any[]>([]);
+
   const [error, setError] = useState('');
   useEffect(() => { setRole(getRole()); }, []);
 
@@ -51,6 +57,8 @@ export default function SiteActivityDashboard() {
     try {
       const response = await api.get<Feed>('/analytics/activity?' + query());
       setData(response.data);
+      const approvalsResponse = await api.get('/analytics/activity/owner/approvals');
+      setApprovals(Array.isArray(approvalsResponse.data) ? approvalsResponse.data : []);
     } catch {
       setData(null);
       setError('تعذر قراءة سجل النشاط أو لا تملك صلاحية العرض.');
@@ -65,16 +73,39 @@ export default function SiteActivityDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role]);
 
+  const approve = async (revoke: boolean) => {
+    if (!approvalEmail.trim()) { setError('أدخل البريد الإلكتروني للمستخدم.'); return; }
+    setApprovalBusy(true);
+    setError('');
+    try {
+      await api.post('/analytics/activity/owner/approve', {
+        email: approvalEmail.trim(), scope: approvalScope, revoke,
+      });
+      setApprovalEmail('');
+      await refresh();
+    } catch {
+      setError('لم تُسجل الموافقة أو الإلغاء؛ تحقق من البريد والصلاحيات.');
+    } finally {
+      setApprovalBusy(false);
+    }
+  };
+
   const download = async () => {
+    if (scope === 'PARTIAL' && (!from || !to)) {
+      setError('اختر تاريخ البداية والنهاية للتنزيل الجزئي.');
+      return;
+    }
     setExporting(true);
     setError('');
     try {
-      const result = await api.get('/analytics/activity/export?' + query(), { responseType: 'blob' });
+      const params = new URLSearchParams(scope === 'PARTIAL' ? query() : '');
+      params.set('scope', scope);
+      const result = await api.get('/analytics/activity/export?' + params.toString(), { responseType: 'blob' });
       const blob = new Blob([result.data], { type: 'text/csv;charset=utf-8' });
       const url = window.URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
-      anchor.download = 'scc380-activity.csv';
+      anchor.download = 'scc380-activity-' + scope.toLowerCase() + '.csv';
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
@@ -106,7 +137,7 @@ export default function SiteActivityDashboard() {
     <div dir="rtl" className="space-y-6 text-white">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">مركز مراقبة نشاط الموقع</h1>
+          <h1 className="text-2xl font-bold">لوحة المالك المستقلة — مراقبة نشاط الموقع</h1>
           <p className="mt-1 text-sm text-slate-400">المستخدمون المصرح لهم، زيارات لوحة النظام، الجلسات وسجلات التنزيل. لا تشمل الزيارات المجهولة.</p>
         </div>
         <button type="button" onClick={download} disabled={loading || exporting || !data}
@@ -114,7 +145,41 @@ export default function SiteActivityDashboard() {
           <Download className="h-4 w-4" />{exporting ? 'جارٍ التحميل...' : 'تحميل التقرير CSV'}
         </button>
       </div>
+      <section className="rounded-xl border border-slate-700 bg-slate-900 p-4">
+        <h2 className="mb-3 font-bold">إدارة صلاحيات التنزيل</h2>
+        <p className="mb-3 text-sm text-slate-400">الموافقة تمنح المستخدم المخول تنزيل التقرير الجزئي أو الكامل. جميع القرارات تُحفظ في سجل التدقيق.</p>
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="text-sm">بريد المستخدم
+            <input type="email" value={approvalEmail} onChange={e => setApprovalEmail(e.target.value)}
+              placeholder="user@example.com" className="mt-1 block rounded-md border border-slate-700 bg-slate-950 p-2 text-white" />
+          </label>
+          <label className="text-sm">نطاق الإذن
+            <select value={approvalScope} onChange={e => setApprovalScope(e.target.value as 'PARTIAL' | 'FULL')}
+              className="mt-1 block rounded-md border border-slate-700 bg-slate-950 p-2 text-white">
+              <option value="PARTIAL">جزئي</option><option value="FULL">كامل</option>
+            </select>
+          </label>
+          <button type="button" disabled={approvalBusy} onClick={() => void approve(false)}
+            className="rounded-md bg-blue-600 px-4 py-2 text-sm disabled:opacity-50">الموافقة على التنزيل</button>
+          <button type="button" disabled={approvalBusy} onClick={() => void approve(true)}
+            className="rounded-md border border-red-700 px-4 py-2 text-sm text-red-300 disabled:opacity-50">إلغاء السماح</button>
+        </div>
+        <h3 className="mt-5 font-semibold">سجل قرارات المالك</h3>
+        <div className="mt-2 max-h-48 overflow-auto text-sm">
+          {approvals.map(a => <div key={a.id} className="border-b border-slate-800 py-2">
+            <span>{a.newValues?.subjectEmail || a.entityId}</span>
+            <span className="mr-3 text-slate-400">{a.action === 'DOWNLOAD_ACCESS_APPROVED' ? 'موافقة' : 'إلغاء'} — {a.newValues?.scope || '—'} — {readable(a.createdAt)}</span>
+          </div>)}
+          {!approvals.length && <p className="text-slate-400">لا توجد قرارات محفوظة بعد.</p>}
+        </div>
+      </section>
       <div className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-700 bg-slate-900 p-4">
+        <label className="text-sm">نوع تنزيل التقرير
+          <select value={scope} onChange={e => setScope(e.target.value as 'PARTIAL' | 'FULL')}
+            className="mt-1 block rounded-md border border-slate-700 bg-slate-950 p-2 text-white">
+            <option value="PARTIAL">جزئي — فترة محددة</option><option value="FULL">كامل — جميع السجلات</option>
+          </select>
+        </label>
         <label className="text-sm">من تاريخ<input aria-label="من تاريخ" type="date" value={from} onChange={e => setFrom(e.target.value)} className="mt-1 block rounded-md border border-slate-700 bg-slate-950 p-2 text-white" /></label>
         <label className="text-sm">إلى تاريخ<input aria-label="إلى تاريخ" type="date" value={to} onChange={e => setTo(e.target.value)} className="mt-1 block rounded-md border border-slate-700 bg-slate-950 p-2 text-white" /></label>
         <button type="button" onClick={refresh} disabled={loading}
