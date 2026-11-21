@@ -170,6 +170,20 @@ export class OwnerFilesController {
       select: { total: true, payments: { select: { tenantId: true, amount: true, status: true } } },
     });
     if (!invoice || Number(invoice.total) <= 0) return false;
+    // ERP operators can create bookkeeping payments. That alone is NOT gateway proof.
+    // A separate, server-origin verified settlement attestation must bind this exact
+    // invoice, customer, file, scope and tenant. No browser route creates attestations.
+    const evidence = await prisma.auditLog.findFirst({
+      where: { tenantId, entityType: 'OWNER_FILE_PAYMENT', entityId: invoiceNumber,
+        action: 'FILE_PROVIDER_SETTLEMENT_VERIFIED',
+        newValues: { path: ['fileId'], equals: fileId } },
+      orderBy: { createdAt: 'desc' }, select: { newValues: true },
+    });
+    const proof = evidence?.newValues as { userId?: string; scope?: string; receiptId?: string;
+      settlement?: string; source?: string } | null;
+    if (!proof || proof.userId !== req.user.userId || proof.scope !== scope ||
+        proof.settlement !== 'SETTLED' || proof.source !== 'TRUSTED_GATEWAY' ||
+        !proof.receiptId) return false;
     const settled = invoice.payments.filter(x => x.tenantId === tenantId && x.status === 'COMPLETED')
       .reduce((sum, x) => sum + Number(x.amount), 0);
     return settled + 0.009 >= Number(invoice.total);
