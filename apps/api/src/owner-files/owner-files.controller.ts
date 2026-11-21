@@ -166,7 +166,7 @@ export class OwnerFilesController {
     if (!contacts.length) return false;
     const invoice = await prisma.invoice.findFirst({
       where: { tenantId, invoiceNumber, status: 'PAID', contactId: { in: contacts.map(x => x.id) },
-        items: { some: { tenantId, product: { sku: 'SCC380-FILE-' + fileId } } } },
+        items: { some: { tenantId, product: { tenantId, sku: 'SCC380-FILE-' + fileId } } } },
       select: { total: true, payments: { select: { tenantId: true, amount: true, status: true } } },
     });
     if (!invoice || Number(invoice.total) <= 0) return false;
