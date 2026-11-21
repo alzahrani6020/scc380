@@ -110,6 +110,9 @@ export class AnalyticsController {
         throw new BadRequestException('Invalid date');
       return d;
     };
+    if (req.user.role !== 'SUPER_ADMIN' && !req.user.tenantId) {
+      throw new ForbiddenException('Tenant context is required');
+    }
     const start = parse(from);
     const end = parse(to);
     if (end) end.setUTCDate(end.getUTCDate() + 1);
