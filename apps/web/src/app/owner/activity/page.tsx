@@ -45,6 +45,11 @@ export default function SiteActivityDashboard() {
   const [approvalScope, setApprovalScope] = useState<'PARTIAL' | 'FULL'>('PARTIAL');
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [approvals, setApprovals] = useState<any[]>([]);
+  const [pendingRequests, setPendingRequests] = useState<Array<{
+    id: string; email: string; tenantId: string; status: string; createdAt: string;
+    details: { scope?: string; from?: string; to?: string; reason?: string } | null;
+  }>>([]);
+  const [decisionReason, setDecisionReason] = useState('');
 
   const [error, setError] = useState('');
   useEffect(() => {
@@ -87,6 +92,8 @@ export default function SiteActivityDashboard() {
       setData(response.data);
       const approvalsResponse = await api.get('/analytics/activity/owner/approvals');
       setApprovals(Array.isArray(approvalsResponse.data) ? approvalsResponse.data : []);
+      const requestsResponse = await api.get('/analytics/activity/owner/requests');
+      setPendingRequests(Array.isArray(requestsResponse.data) ? requestsResponse.data : []);
     } catch {
       setData(null);
       setError('تعذر قراءة سجل النشاط أو لا تملك صلاحية العرض.');
@@ -116,6 +123,23 @@ export default function SiteActivityDashboard() {
     } finally {
       setApprovalBusy(false);
     }
+  };
+
+  const resolveRequest = async (id: string, decision: 'APPROVE' | 'REJECT') => {
+    setApprovalBusy(true);
+    setError('');
+    try {
+      const response = await api.post('/analytics/activity/owner/resolve-request', {
+        requestId: id, decision, reason: decisionReason,
+      });
+      if (response.data?.status === 'ALREADY_RESOLVED') {
+        setError('تم البت في هذا الطلب من قبل. حدّث القائمة.');
+      }
+      setDecisionReason('');
+      await refresh();
+    } catch {
+      setError('تعذر توثيق قرار المالك؛ لم تتغير صلاحية الطلب.');
+    } finally { setApprovalBusy(false); }
   };
 
   const download = async () => {
@@ -190,6 +214,31 @@ export default function SiteActivityDashboard() {
           <Download className="h-4 w-4" />{exporting ? 'جارٍ التحميل...' : 'تحميل التقرير CSV'}
         </button>
       </div>
+      <section className="rounded-xl border border-slate-700 bg-slate-900 p-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-bold">طلبات التنزيل التي تحتاج قرار المالك</h2>
+          <span className="text-sm text-slate-300">بانتظار القرار: {pendingRequests.filter(x => x.status === 'PENDING').length}</span>
+        </div>
+        <label className="mb-3 block text-sm">سبب القرار (اختياري)
+          <input maxLength={300} value={decisionReason} onChange={e => setDecisionReason(e.target.value)}
+            className="mt-1 block w-full rounded border border-slate-600 bg-slate-950 px-3 py-2" />
+        </label>
+        <div className="max-h-96 space-y-3 overflow-y-auto">
+          {pendingRequests.map(item => <div key={item.id} className="rounded-lg border border-slate-700 p-3 text-sm">
+            <p className="break-all font-semibold">{item.email || 'حساب غير محدد'}</p>
+            <p className="mt-1 text-slate-300">النطاق: {item.details?.scope === 'FULL' ? 'كامل' : 'جزئي'} — الحالة: {item.status === 'PENDING' ? 'بانتظار القرار' : item.status === 'APPROVED' ? 'موافق عليه' : 'مرفوض'}</p>
+            <p className="mt-1 text-slate-400">{item.details?.from || '—'} إلى {item.details?.to || '—'} — {new Date(item.createdAt).toLocaleString('ar-SA')}</p>
+            {item.details?.reason && <p className="mt-1 break-words text-slate-300">السبب: {item.details.reason}</p>}
+            {item.status === 'PENDING' && <div className="mt-3 flex flex-wrap gap-2">
+              <button type="button" disabled={approvalBusy} onClick={() => void resolveRequest(item.id, 'APPROVE')}
+                className="rounded bg-blue-600 px-3 py-2 disabled:opacity-50">موافقة</button>
+              <button type="button" disabled={approvalBusy} onClick={() => void resolveRequest(item.id, 'REJECT')}
+                className="rounded border border-red-600 px-3 py-2 text-red-300 disabled:opacity-50">رفض</button>
+            </div>}
+          </div>)}
+          {!pendingRequests.length && <p className="text-sm text-slate-400">لا توجد طلبات تنزيل مسجلة.</p>}
+        </div>
+      </section>
       <section className="rounded-xl border border-slate-700 bg-slate-900 p-4">
         <h2 className="mb-3 font-bold">إدارة صلاحيات التنزيل</h2>
         <p className="mb-3 text-sm text-slate-400">الموافقة تمنح المستخدم المخول تنزيل التقرير الجزئي أو الكامل. جميع القرارات تُحفظ في سجل التدقيق.</p>
