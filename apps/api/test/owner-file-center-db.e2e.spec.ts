@@ -71,7 +71,7 @@ test('PostgreSQL file center: two tenants, audited approval, partial/full, cross
     fullResponse.on('data', (data: Buffer) => fullChunks.push(data));
     await controller.download(makeReq(alice), full.id, undefined, fullResponse);
     await fullStream;
-    assert.equal(Buffer.concat(fullChunks).toString('utf8'), 'one\\ntwo\\nthree\\nfour'.replace(/\\n/g, '\n'));
+    assert.equal(Buffer.concat(fullChunks).toString('utf8'), ['one','two','three','four'].join(String.fromCharCode(10)));
     await assert.rejects(controller.decide(makeReq(owner), { requestId: full.id, decision: 'APPROVE' }), /Invalid or duplicate decision/);
     const rejected = await controller.decide(makeReq(owner), { requestId: partial.id, decision: 'REJECT' });
     assert.equal(rejected.status, 'REJECTED');
@@ -111,7 +111,7 @@ test('PostgreSQL file center: two tenants, audited approval, partial/full, cross
     partialResponse.on('data', (data: Buffer) => partialChunks.push(data));
     await controller.download(makeReq(alice), payRequest.id, invoice.invoiceNumber, partialResponse);
     await partialStream;
-    assert.equal(Buffer.concat(partialChunks).toString('utf8'), 'two\nthree');
+    assert.equal(Buffer.concat(partialChunks).toString('utf8'), ['two','three'].join(String.fromCharCode(10)));
     assert.equal(payment.amount.toString(), '10');
     const revoked = await controller.decide(makeReq(owner), { requestId: full.id, decision: 'REVOKE' });
     assert.equal(revoked.status, 'REVOKED');
