@@ -223,8 +223,11 @@ export class AnalyticsController {
     };
   }
 
-  private async latestOwnerDecision(userId: string, tenantId: string | null) {
-    const row = await prisma.auditLog.findFirst({
+  private async latestOwnerDecision(userId: string, tenantId: string | null,
+    requestedScope?: string, from?: string, to?: string) {
+    // A request-specific partial approval never expands to a different date range.
+    // A later revocation supersedes all earlier approvals.
+    const rows = await prisma.auditLog.findMany({
       where: {
         entityType: 'ACTIVITY_REPORT_ACCESS',
         entityId: userId,
@@ -233,11 +236,20 @@ export class AnalyticsController {
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       select: { action: true, newValues: true },
+      take: 200,
     });
-    const values = row?.newValues as { scope?: string } | null;
-    return row?.action === 'DOWNLOAD_ACCESS_APPROVED'
-      ? values?.scope === 'FULL' ? 'FULL' : 'PARTIAL'
-      : null;
+    for (const row of rows) {
+      if (row.action === 'DOWNLOAD_ACCESS_REVOKED') return null;
+      const values = row.newValues as {
+        scope?: string; requestId?: string; from?: string | null; to?: string | null
+      } | null;
+      if (!values || !['FULL', 'PARTIAL'].includes(values.scope || '')) continue;
+      if (!values.requestId) return values.scope;
+      if (values.scope === 'FULL') return 'FULL';
+      if (requestedScope === 'PARTIAL' && from === values.from && to === values.to)
+        return 'PARTIAL';
+    }
+    return null;
   }
 
   private async verifiedPaidScope(req: any, invoiceNumber?: string) {
@@ -281,7 +293,7 @@ export class AnalyticsController {
     return invoice.items.some(i => i.product?.sku === this.reportFullSku) ? 'FULL' : 'PARTIAL';
   }
 
-  private async requireExportAccess(req: any, requested: string, invoiceNumber?: string) {
+  private async requireExportAccess(req: any, requested: string, invoiceNumber?: string, from?: string, to?: string) {
     if (!['FULL', 'PARTIAL'].includes(requested)) {
       throw new BadRequestException('scope must be FULL or PARTIAL');
     }
@@ -305,7 +317,7 @@ export class AnalyticsController {
       throw new ForbiddenException('Download access unavailable');
     }
     const [ownerDecision, paid] = await Promise.all([
-      this.latestOwnerDecision(req.user.userId, req.user.tenantId),
+      this.latestOwnerDecision(req.user.userId, req.user.tenantId, requested, from, to),
       this.verifiedPaidScope(req, invoiceNumber),
     ]);
     if (ownerDecision === 'FULL' || paid === 'FULL') return ownerDecision === 'FULL' ? 'OWNER_APPROVED' : 'PAID';
@@ -318,13 +330,14 @@ export class AnalyticsController {
   @Get('activity/download-access')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  async downloadAccess(@Request() req: any, @Query('invoiceNumber') invoiceNumber?: string) {
+  async downloadAccess(@Request() req: any, @Query('invoiceNumber') invoiceNumber?: string,
+    @Query('scope') requestedScope?: string, @Query('from') from?: string, @Query('to') to?: string) {
     if (await this.canManageOwnerConsole(req)) return { scope: 'FULL', source: 'OWNER' };
     if (!['ADMIN', 'AUDITOR'].includes(req.user.role) || !req.user.tenantId) {
       return { scope: null, source: null };
     }
     const [approved, paid] = await Promise.all([
-      this.latestOwnerDecision(req.user.userId, req.user.tenantId),
+      this.latestOwnerDecision(req.user.userId, req.user.tenantId, requestedScope, from, to),
       this.verifiedPaidScope(req, invoiceNumber),
     ]);
     const scope = approved === 'FULL' || paid === 'FULL'
@@ -594,7 +607,7 @@ export class AnalyticsController {
     @Query('from') from?: string, @Query('to') to?: string,
     @Query('scope') requestedScope?: string, @Query('invoiceNumber') invoiceNumber?: string) {
     const scope = requestedScope || 'PARTIAL';
-    const grantedBy = await this.requireExportAccess(req, scope, invoiceNumber);
+    const grantedBy = await this.requireExportAccess(req, scope, invoiceNumber, from, to);
     if (scope === 'PARTIAL' && (!from || !to)) {
       throw new BadRequestException('Partial download requires from and to dates');
     }
