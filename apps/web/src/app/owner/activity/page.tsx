@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import api from '@/lib/api';
 import { Download, RefreshCw, Shield, Eye, LogIn, FileDown, Search } from 'lucide-react';
 import Link from 'next/link';
+import OwnerInsights from '@/components/owner/OwnerInsights';
 import { clearAuth, getRefreshToken } from '@/lib/auth';
 import { sessionAuth } from '@/lib/session-auth';
 
@@ -214,6 +215,7 @@ export default function SiteActivityDashboard() {
           <Download className="h-4 w-4" />{exporting ? 'جارٍ التحميل...' : 'تحميل التقرير CSV'}
         </button>
       </div>
+      <OwnerInsights />
       <section className="rounded-xl border border-slate-700 bg-slate-900 p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="font-bold">طلبات التنزيل التي تحتاج قرار المالك</h2>
