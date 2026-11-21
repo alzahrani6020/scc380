@@ -91,6 +91,14 @@ export async function middleware(request: NextRequest) {
   // authenticated session during the subsequent refresh request.
   const refreshCookieName = process.env.NODE_ENV === 'production' ? '__Host-scc_refresh' : 'scc_refresh';
   const mayRefresh = !!request.cookies.get(refreshCookieName)?.value;
+  // Do not send a signed-in owner with a refresh session to a misleading 404.
+  // This route contains no owner data; it rotates the HttpOnly refresh session
+  // and obtains a new access token before the server-only owner layout runs.
+  if (path.startsWith('/owner/') && !sessionValid && mayRefresh) {
+    const resume = NextResponse.redirect(new URL('/auth/owner-resume', request.url));
+    resume.headers.set('Cache-Control', 'no-store');
+    return resume;
+  }
   if (!sessionValid && !mayRefresh) {
     const login = NextResponse.redirect(new URL('/auth/login', request.url));
     login.headers.set('Cache-Control', 'no-store');

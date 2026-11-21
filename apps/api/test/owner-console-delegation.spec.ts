@@ -6,6 +6,8 @@ import { join } from 'node:path';
 const controller = readFileSync(join(process.cwd(), 'src/analytics/analytics.controller.ts'), 'utf8');
 const ownerPage = readFileSync(join(process.cwd(), '../web/src/app/owner/activity/page.tsx'), 'utf8');
 const ownerLayout = readFileSync(join(process.cwd(), '../web/src/app/owner/layout.tsx'), 'utf8');
+const middleware = readFileSync(join(process.cwd(), '../web/src/middleware.ts'), 'utf8');
+const ownerRecovery = readFileSync(join(process.cwd(), '../web/src/app/auth/owner-resume/page.tsx'), 'utf8');
 
 test('owner delegation is off unless verified email is configured', () => {
   assert.match(controller, /const configured = \(process\.env\.SCC380_ACTIVITY_OWNER_EMAIL \|\| ''\)/);
@@ -36,7 +38,18 @@ test('owner layout must enforce authenticated API authorization on server before
   assert.match(ownerLayout, /fetch\(getOwnerApiOrigin\(\) \+ '\/analytics\/activity\/owner\/status'/);
   assert.match(ownerLayout, /Authorization: 'Bearer ' \+ token/);
   assert.match(ownerLayout, /cache: 'no-store'/);
-  assert.match(ownerLayout, /if \(!response\.ok\) notFound\(\)/);
-  assert.match(ownerLayout, /if \(result\.authorized !== true\) notFound\(\)/);
+  assert.match(ownerLayout, /if \(response\.status === 401\) redirect\('\/auth\/owner-resume'\)/);
+  assert.match(ownerLayout, /if \(response\.status === 403 \|\| response\.status === 404\) notFound\(\)/);
+  assert.match(ownerLayout, /if \(!authorized\) notFound\(\)/);
   assert.match(ownerLayout, /return <>\{children\}<\/>/);
+});
+
+test('owner recovery requires existing HttpOnly refresh session and rechecks private route', () => {
+  assert.match(middleware, /path\.startsWith\('\/owner\/'\) && !sessionValid && mayRefresh/);
+  assert.match(middleware, /new URL\('\/auth\/owner-resume', request\.url\)/);
+  assert.match(ownerRecovery, /sessionAuth\('refresh'/);
+  assert.match(ownerRecovery, /setAuth\(/);
+  assert.match(ownerRecovery, /window\.location\.replace\('\/owner\/activity'\)/);
+  assert.doesNotMatch(ownerRecovery, /SUPER_ADMIN/);
+  assert.doesNotMatch(ownerRecovery, /localStorage\.setItem\('role'/);
 });
