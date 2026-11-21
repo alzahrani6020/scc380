@@ -98,6 +98,16 @@ export class AuthController {
     return this.authService.resetPassword(token, newPassword);
   }
 
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @Post('owner/verify-google-email')
+  async verifyOwnerEmail(@Request() req: any, @Body('credential') credential: string) {
+    if (typeof credential !== 'string' || !credential || credential.length > 16000) {
+      throw new BadRequestException('Google verification credential required');
+    }
+    return this.authService.verifyOwnerEmailWithGoogle(req.user.userId, credential);
+  }
+
   // ─── Google OAuth ──────────────────────────────────────────────────
   @UseGuards(AuthRateLimitGuard)
   @Post('google')
