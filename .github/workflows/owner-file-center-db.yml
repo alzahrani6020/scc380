@@ -4,6 +4,7 @@ on:
     paths:
       - 'apps/api/src/owner-files/**'
       - 'apps/api/test/owner-file-center-db.e2e.spec.ts'
+      - 'apps/api/test/owner-file-center-http.e2e.spec.ts'
       - 'packages/database/prisma/schema.prisma'
       - 'packages/database/prisma/migrations/20261122010000_owner_file_center/**'
       - '.github/workflows/owner-file-center-db.yml'
@@ -55,3 +56,5 @@ jobs:
           echo "PASS: isolated PostgreSQL 17 tables and tenant composite foreign key"
       - name: Test real Prisma transactions across two tenants
         run: pnpm --filter @scc/api exec tsx --test test/owner-file-center-db.e2e.spec.ts
+      - name: Test real HTTP JWT and database-backed active sessions
+        run: pnpm --filter @scc/api exec tsx --test test/owner-file-center-http.e2e.spec.ts
