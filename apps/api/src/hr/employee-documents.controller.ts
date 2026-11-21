@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, Res, Str
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { IsIn, IsOptional, IsString } from 'class-validator';
 import type { Response } from 'express';
+import { prisma } from '@scc/database';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard, RequirePermissions } from '../auth/guards/permissions.guard';
 import { EmployeeDocumentsService } from './employee-documents.service';
@@ -58,6 +59,20 @@ export class EmployeeDocumentsController {
   @RequirePermissions('hr:documents:read')
   async download(@Req() req: any, @Param('id') id: string, @Res({ passthrough: true }) res: Response) {
     const doc = await this.service.getFile(req, id);
+    // Audit every authorized HR document delivery attempt before streaming.
+    // This does not assert that the user's browser saved the file.
+    await prisma.auditLog.create({
+      data: {
+        tenantId: doc.tenantId,
+        userId: req.user.userId,
+        action: 'FILE_DELIVERY_STARTED',
+        entityType: 'HR_EMPLOYEE_DOCUMENT',
+        entityId: doc.id,
+        httpMethod: 'GET',
+        httpPath: '/hr/employee-documents/:id/download',
+        newValues: { sizeBytes: doc.sizeBytes, mimeType: doc.mimeType },
+      },
+    });
     res.setHeader('Content-Type', doc.mimeType);
     res.setHeader('Content-Length', String(doc.sizeBytes));
     res.setHeader('X-Content-Type-Options', 'nosniff');
