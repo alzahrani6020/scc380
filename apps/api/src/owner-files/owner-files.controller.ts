@@ -2,6 +2,7 @@ import { BadRequestException, Body, Controller, ForbiddenException, Get, NotFoun
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { createHash } from 'node:crypto';
+import { PDFDocument } from 'pdf-lib';
 import { prisma } from '@scc/database';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -54,17 +55,24 @@ export class OwnerFilesController {
     if (!file) throw new NotFoundException('File not found');
     return file;
   }
-  private validateScope(file: { mimeType: string; content: Uint8Array }, scope: string,
+  private async validateScope(file: { mimeType: string; content: Uint8Array }, scope: string,
     startLine?: number, endLine?: number) {
     if (scope === 'FULL') {
       if (startLine !== undefined || endLine !== undefined) throw new BadRequestException('FULL cannot select lines');
       return;
     }
-    if (scope !== 'PARTIAL' || !['text/plain', 'text/csv'].includes(file.mimeType) ||
+    if (scope !== 'PARTIAL' || !MIME.includes(file.mimeType as any) ||
       !Number.isInteger(startLine) || !Number.isInteger(endLine) ||
       (startLine as number) < 1 || (endLine as number) < (startLine as number) ||
       (endLine as number) - (startLine as number) > 499) {
       throw new BadRequestException('Partial delivery supports text line ranges of up to 500 lines only');
+    }
+    if (file.mimeType === 'application/pdf') {
+      let pdf: PDFDocument;
+      try { pdf = await PDFDocument.load(Buffer.from(file.content)); }
+      catch { throw new BadRequestException('Invalid or encrypted PDF document'); }
+      if ((endLine as number) > pdf.getPageCount()) throw new BadRequestException('Page range exceeds PDF');
+      return;
     }
     const count = Buffer.from(file.content).toString('utf8').split(/\r?\n/).length;
     if ((endLine as number) > count) throw new BadRequestException('Line range exceeds document');
@@ -104,7 +112,7 @@ export class OwnerFilesController {
   @Post('requests')
   async request(@Req() req: any, @Body() body: RequestDto) {
     const file = await this.fileForTenant(req, body.fileId);
-    this.validateScope(file, body.scope, body.startLine, body.endLine);
+    await this.validateScope(file, body.scope, body.startLine, body.endLine);
     const tenantId = this.tenant(req);
     return prisma.ownerFileRequest.create({
       data: { fileId: file.id, tenantId, requesterId: req.user.userId,
@@ -206,11 +214,20 @@ export class OwnerFilesController {
         newValues: { fileId: request.fileId, scope: request.scope } },
     });
     if (!authorized) throw new ForbiddenException('Verified payment or owner approval required');
-    this.validateScope(request.file, request.scope, request.startLine ?? undefined, request.endLine ?? undefined);
+    await this.validateScope(request.file, request.scope, request.startLine ?? undefined, request.endLine ?? undefined);
     const content = Buffer.from(request.file.content);
-    const output = request.scope === 'FULL' ? content :
-      Buffer.from(content.toString('utf8').split(/\r?\n/)
-        .slice(request.startLine! - 1, request.endLine!).join('\n'), 'utf8');
+    let output: Buffer;
+    if (request.scope === 'FULL') output = content;
+    else if (request.file.mimeType === 'application/pdf') {
+      const source = await PDFDocument.load(content);
+      const target = await PDFDocument.create();
+      const indexes = Array.from({ length: request.endLine! - request.startLine! + 1 },
+        (_, index) => request.startLine! - 1 + index);
+      const pages = await target.copyPages(source, indexes);
+      for (const page of pages) target.addPage(page);
+      output = Buffer.from(await target.save());
+    } else output = Buffer.from(content.toString('utf8').split(/\r?\n/)
+      .slice(request.startLine! - 1, request.endLine!).join('\n'), 'utf8');
     const checksum = createHash('sha256').update(output).digest('hex');
     res.setHeader('Content-Type', request.file.mimeType);
     res.setHeader('Content-Length', output.length.toString());
