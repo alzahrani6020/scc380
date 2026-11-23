@@ -24,7 +24,7 @@ trap cleanup EXIT
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 key="scc380/postgres17/$stamp-${BACKUP_RUN_ID:-manual}.pgdump.gpg"
 # pipefail makes either PostgreSQL or encryption failure fatal.
-pg_dump --format=custom --no-owner --no-privileges --file=- |
+pg_dump --format=custom --no-owner --no-privileges |
   gpg --batch --yes --trust-model always --recipient "$BACKUP_GPG_RECIPIENT" --encrypt --output "$work/archive.pgdump.gpg"
 [[ -s "$work/archive.pgdump.gpg" ]] || die "Encrypted archive missing"
 local_sha="$(sha256sum "$work/archive.pgdump.gpg" | cut -d ' ' -f1)"
