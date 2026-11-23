@@ -95,9 +95,9 @@ export default function TenantFileCenter() {
     </div>
     <div className="rounded-xl border border-slate-700 bg-slate-900 p-4">
       <label className="block text-sm">رقم فاتورة مدفوعة (اختياري)
-        <input value={invoiceNumber} maxLength={80} onChange={e=>setInvoiceNumber(e.target.value)} className="mt-2 block w-full rounded bg-slate-950 p-2"/>
+        <input value={invoiceNumber} maxLength={80} onChange={e=>setInvoiceNumber(e.target.value)} disabled aria-disabled="true" placeholder="غير متاح حتى تفعيل مزود دفع موثق" className="mt-2 block w-full rounded bg-slate-950 p-2 disabled:opacity-50"/>
       </label>
-      <p className="mt-2 text-xs text-slate-400">لا تنشئ هذه الصفحة عملية دفع. يُتحقق من التسوية الفعلية في قاعدة الفواتير قبل التسليم.</p>
+      <p className="mt-2 text-xs text-amber-300">التنزيل المدفوع غير مفعل حتى ربط مزود دفع حقيقي والتحقق من إشعارات التسوية. اطلب موافقة المالك للتنزيل حاليًا.</p>
     </div>
     <button type="button" onClick={()=>void refresh()} className="rounded border px-4 py-2">تحديث الطلبات</button>
     {notice && <p role="status" className="text-amber-300">{notice}</p>}
