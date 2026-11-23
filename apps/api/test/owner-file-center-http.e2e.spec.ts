@@ -111,7 +111,7 @@ test('HTTP JWT+database sessions deny forged/foreign tenant, allow owner and aud
       requestId:pdfRequest.id,decision:'APPROVE'})).status,201);
     const pdfDelivered = await send('/owner-files/requests/'+pdfRequest.id+'/download',aToken);
     assert.equal(pdfDelivered.status,200);
-    assert.match(pdfDelivered.headers.get('content-type') || '', /application\\/pdf/);
+    assert.match(pdfDelivered.headers.get('content-type') || '', /application\/pdf/);
     const partial = await PDFDocument.load(await pdfDelivered.arrayBuffer());
     assert.equal(partial.getPageCount(),1);
     assert.equal(partial.getPage(0).getWidth(),310);
