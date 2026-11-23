@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { PDFDocument } from 'pdf-lib';
+import { json } from 'express';
 import { Test } from '@nestjs/testing';
 import { PassportModule } from '@nestjs/passport';
 import { JwtService } from '@nestjs/jwt';
@@ -51,6 +52,8 @@ test('HTTP JWT+database sessions deny forged/foreign tenant, allow owner and aud
       providers: [JwtStrategy,{ provide: ConfigService, useValue:config }],
     }).compile();
     app = moduleRef.createNestApplication();
+    // Mirror the dedicated upload parser installed by src/main.ts.
+    app.use('/owner-files', json({ limit: '1500kb' }));
     await app.listen(0,'127.0.0.1');
     const port = app.getHttpServer().address().port;
     const root = 'http://127.0.0.1:'+port;
@@ -76,6 +79,12 @@ test('HTTP JWT+database sessions deny forged/foreign tenant, allow owner and aud
     assert.equal((await send('/owner-files',aToken,'POST',{title:'Truncated PDF',
       fileName:'truncated.pdf',mimeType:'application/pdf',
       contentBase64:Buffer.from('%PDF-1.7\\ninvalid').toString('base64')})).status,400);
+    // A real 160 KiB file crosses Express's default 100 KiB JSON limit.
+    // Prove it reaches the controller with the route-scoped parser.
+    const largeUpload = await send('/owner-files',aToken,'POST',{title:'Larger than default parser',
+      fileName:'large.txt',mimeType:'text/plain',
+      contentBase64:Buffer.alloc(160 * 1024, 65).toString('base64')});
+    assert.equal(largeUpload.status,201,await largeUpload.text());
     const uploaded = await send('/owner-files',aToken,'POST',{title:'HTTP text', fileName:'http.txt',
       mimeType:'text/plain',contentBase64:Buffer.from('alpha\nbeta\ngamma').toString('base64')});
     assert.equal(uploaded.status,201);
