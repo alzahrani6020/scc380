@@ -138,7 +138,8 @@ export class OwnerFilesController {
     return prisma.ownerFileRequest.findMany({
       where: { tenantId: this.tenant(req), requesterId: req.user.userId },
       select: { id: true, fileId: true, scope: true, startLine: true, endLine: true,
-        status: true, createdAt: true, decidedAt: true },
+        status: true, createdAt: true, decidedAt: true,
+        file: { select: { fileName: true } } },
       orderBy: { createdAt: 'desc' }, take: 100,
     });
   }
