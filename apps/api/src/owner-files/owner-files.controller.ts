@@ -189,9 +189,10 @@ export class OwnerFilesController {
     });
   }
   private async paid(req: any, fileId: string, scope: 'FULL' | 'PARTIAL', invoiceNumber?: string) {
-    // Fail closed until the PSP webhook is integrated and independently verified.
-    // An ERP payment or a manually inserted audit log must never enable production downloads.
-    if (process.env.SCC380_FILE_PSP_VERIFIED !== 'true') return false;
+    // No production PSP webhook integration exists yet. A bookkeeping payment or manually
+    // inserted audit log is not trusted settlement evidence. Keep production fail-closed.
+    // Synthetic attestation exercises the entitlement rules ONLY in isolated CI tests.
+    if (process.env.NODE_ENV !== 'test' || process.env.SCC380_TEST_DATABASE_ISOLATED !== 'YES') return false;
     if (!invoiceNumber || invoiceNumber.length > 80 || !req.user?.email) return false;
     const tenantId = this.tenant(req);
     const account = await prisma.user.findUnique({ where: { id: req.user.userId }, select: { emailVerified: true } });
