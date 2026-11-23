@@ -153,6 +153,18 @@ export class OwnerFilesController {
       orderBy: { createdAt: 'desc' }, take: 200,
     });
   }
+  @Get('owner/audit')
+  async ownerAudit(@Req() req: any) {
+    await this.owner(req);
+    // Only commercial file center events; exclude invoice/payment payloads and secrets.
+    return prisma.auditLog.findMany({
+      where: { entityType: 'OWNER_FILE_REQUEST',
+        action: { startsWith: 'OWNER_FILE_' } },
+      select: { id: true, tenantId: true, userId: true, entityId: true,
+        action: true, createdAt: true },
+      orderBy: { createdAt: 'desc' }, take: 100,
+    });
+  }
   @Post('owner/decide')
   async decide(@Req() req: any, @Body() body: DecisionDto) {
     await this.owner(req);
