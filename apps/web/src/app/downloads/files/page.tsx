@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import api from '@/lib/api';
 type FileRow = { id: string; title: string; fileName: string; mimeType: string; sizeBytes: number };
-type RequestRow = { id: string; fileId: string; scope: string; status: string; startLine: number | null; endLine: number | null };
+type RequestRow = { id: string; fileId: string; scope: string; status: string; startLine: number | null; endLine: number | null; file: { fileName: string } };
 export default function TenantFileCenter() {
   const [files, setFiles] = useState<FileRow[]>([]);
   const [requests, setRequests] = useState<RequestRow[]>([]);
@@ -56,14 +56,15 @@ export default function TenantFileCenter() {
     } catch { setNotice('تعذر تسجيل الطلب. تحقق من نوع الملف والنطاق.'); }
     finally { setBusy(false); }
   }
-  async function download(id: string) {
+  async function download(id: string, fileName: string) {
     setBusy(true);
     try {
       const args = invoiceNumber.trim() ? '?invoiceNumber='+encodeURIComponent(invoiceNumber.trim()) : '';
       const response = await api.get('/owner-files/requests/'+encodeURIComponent(id)+'/download'+args,{responseType:'blob'});
       const blob = new Blob([response.data],{type: typeof response.headers['content-type'] === 'string' ? response.headers['content-type'] : 'application/octet-stream'});
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href=url; a.download='scc380-file-'+id; document.body.appendChild(a); a.click(); a.remove();
+      const safeName = fileName.replace(/[\\/\x00-\x1f\x7f]/g, '_').trim() || 'scc380-file-'+id;
+      const a = document.createElement('a'); a.href=url; a.download=safeName; document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url),1000);
       setNotice('استلم المتصفح استجابة ملف؛ حفظ الملف على الجهاز لم يتم التحقق منه.');
     } catch { setNotice('رُفض التنزيل أو فشل الاتصال؛ لم يثبت تسليم الملف.'); }
@@ -102,7 +103,7 @@ export default function TenantFileCenter() {
     {notice && <p role="status" className="text-amber-300">{notice}</p>}
     {requests.map(r=><section key={r.id} className="rounded-lg border border-slate-700 bg-slate-900 p-4">
       <p className="break-all text-sm">الطلب {r.id} — {r.scope} — {r.status}</p>
-      <button type="button" disabled={busy} onClick={()=>void download(r.id)} className="mt-2 rounded bg-blue-600 px-3 py-2 disabled:opacity-50">تنزيل بعد التحقق</button>
+      <button type="button" disabled={busy} onClick={()=>void download(r.id, r.file.fileName)} className="mt-2 rounded bg-blue-600 px-3 py-2 disabled:opacity-50">تنزيل بعد التحقق</button>
     </section>)}
   </main>;
 }
