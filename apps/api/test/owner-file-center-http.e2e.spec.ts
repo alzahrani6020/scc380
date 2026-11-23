@@ -66,6 +66,16 @@ test('HTTP JWT+database sessions deny forged/foreign tenant, allow owner and aud
     const invalidSid = token(alice, uid+'_nonexistent');
     assert.equal((await send('/owner-files',invalidSid)).status,401);
     assert.equal((await send('/owner-files','bad-jwt')).status,401);
+    // Malformed text and disguised PDF must fail before database persistence.
+    assert.equal((await send('/owner-files',aToken,'POST',{title:'Malformed UTF-8',
+      fileName:'bad.txt',mimeType:'text/plain',
+      contentBase64:Buffer.from([0xff,0xfe]).toString('base64')})).status,400);
+    assert.equal((await send('/owner-files',aToken,'POST',{title:'Disguised PDF',
+      fileName:'bad.pdf',mimeType:'application/pdf',
+      contentBase64:Buffer.from('not-a-pdf').toString('base64')})).status,400);
+    assert.equal((await send('/owner-files',aToken,'POST',{title:'Truncated PDF',
+      fileName:'truncated.pdf',mimeType:'application/pdf',
+      contentBase64:Buffer.from('%PDF-1.7\\ninvalid').toString('base64')})).status,400);
     const uploaded = await send('/owner-files',aToken,'POST',{title:'HTTP text', fileName:'http.txt',
       mimeType:'text/plain',contentBase64:Buffer.from('alpha\nbeta\ngamma').toString('base64')});
     assert.equal(uploaded.status,201);

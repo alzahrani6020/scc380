@@ -98,9 +98,22 @@ export class OwnerFilesController {
     if (!MIME.includes(body.mimeType as any) || !body.title?.trim() || !body.fileName?.trim()) {
       throw new BadRequestException('Invalid file metadata');
     }
-    if (['text/plain', 'text/csv'].includes(body.mimeType) &&
-        !new TextDecoder('utf-8', { fatal: true }).decode(content)) {
-      throw new BadRequestException('Invalid UTF-8 text');
+    if (['text/plain', 'text/csv'].includes(body.mimeType)) {
+      try { new TextDecoder('utf-8', { fatal: true }).decode(content); }
+      catch { throw new BadRequestException('Invalid UTF-8 text'); }
+    }
+    if (body.mimeType === 'application/pdf') {
+      // Validate the uploaded bytes before persisting; malformed and encrypted
+      // PDFs cannot safely support the approved partial-page workflow.
+      if (!content.subarray(0, 5).equals(Buffer.from('%PDF-'))) {
+        throw new BadRequestException('Invalid PDF file');
+      }
+      try {
+        const document = await PDFDocument.load(content);
+        if (document.getPageCount() < 1) throw new Error('PDF contains no pages');
+      } catch {
+        throw new BadRequestException('Invalid or encrypted PDF document');
+      }
     }
     return prisma.ownerFile.create({
       data: { tenantId, title: body.title.trim(), fileName: body.fileName.trim(),
