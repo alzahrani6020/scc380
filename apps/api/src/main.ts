@@ -31,6 +31,10 @@ async function bootstrap() {
   const evidenceParser = json({ limit: '7mb' });
   app.use('/hr/governance/:id/evidence',
     (req: any, res: any, next: any) => evidenceParser(req, res, next));
+  // Commercial uploads allow 1 MiB decoded bytes, or ~1.4 MiB JSON/base64.
+  // Keep the larger parser scoped to this route; other APIs retain Nest's defaults.
+  const ownerFileParser = json({ limit: '1500kb' });
+  app.use('/owner-files', (req: any, res: any, next: any) => ownerFileParser(req, res, next));
   
   const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:3000')
     .split(',').map(o => o.trim()).filter(Boolean);

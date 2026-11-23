@@ -1,0 +1,171 @@
+import 'reflect-metadata';
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { randomBytes } from 'node:crypto';
+import { PDFDocument } from 'pdf-lib';
+import { json } from 'express';
+import { Test } from '@nestjs/testing';
+import { PassportModule } from '@nestjs/passport';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
+import { prisma } from '@scc/database';
+import { JwtStrategy } from '../src/auth/strategies/jwt.strategy';
+import { OwnerFilesController } from '../src/owner-files/owner-files.controller';
+
+const url = process.env.DIRECT_URL || process.env.DATABASE_URL || '';
+if (process.env.SCC380_TEST_DATABASE_ISOLATED !== 'YES' ||
+    new URL(url).hostname !== '127.0.0.1' || new URL(url).pathname !== '/ownerfiles_ci') {
+  throw new Error('HTTP JWT integration requires isolated localhost ownerfiles_ci');
+}
+const secret = 'isolated-scc380-ci-signing-key-not-production';
+// tsx runtime does not emit Nest constructor design metadata automatically.
+Reflect.defineMetadata('design:paramtypes', [ConfigService], JwtStrategy);
+test('HTTP JWT+database sessions deny forged/foreign tenant, allow owner and audited file delivery', async () => {
+  const uid = 'httpci_' + randomBytes(6).toString('hex');
+  const tenants: string[] = [];
+  const users: string[] = [];
+  const sessions: string[] = [];
+  const previous = process.env.SCC380_ACTIVITY_OWNER_EMAIL;
+  let app: any;
+  try {
+    const a = await prisma.tenant.create({ data: { name: uid+'a', slug: uid+'a' } });
+    const b = await prisma.tenant.create({ data: { name: uid+'b', slug: uid+'b' } });
+    tenants.push(a.id,b.id);
+    const user = async (suffix:string, tenantId:string) => {
+      const u = await prisma.user.create({ data: { email: uid + suffix + '@example.test',
+        firstName:'CI',lastName:'HTTP',role:'ADMIN',status:'ACTIVE', tenantId } });
+      users.push(u.id);
+      const sid = uid + suffix + '_sid';
+      await prisma.session.create({ data: { id: sid, tenantId, userId: u.id,
+        token: uid + suffix + '_unique-hash',expiresAt: new Date(Date.now() + 3600000) } });
+      sessions.push(sid);
+      return { ...u, sid };
+    };
+    const owner = await user('owner',a.id);
+    const alice = await user('alice',a.id);
+    const bob = await user('bob',b.id);
+    process.env.SCC380_ACTIVITY_OWNER_EMAIL = owner.email;
+    const config = { get: (key:string) => key === 'JWT_SECRET' ? secret : undefined };
+    const moduleRef = await Test.createTestingModule({
+      imports: [PassportModule],
+      controllers: [OwnerFilesController],
+      providers: [JwtStrategy,{ provide: ConfigService, useValue:config }],
+    }).compile();
+    app = moduleRef.createNestApplication();
+    // Mirror the dedicated upload parser installed by src/main.ts.
+    app.use('/owner-files', json({ limit: '1500kb' }));
+    await app.listen(0,'127.0.0.1');
+    const port = app.getHttpServer().address().port;
+    const root = 'http://127.0.0.1:'+port;
+    const jwt = new JwtService({secret});
+    const token = (u:any, sid?:string) => jwt.sign({ sub:u.id, email:u.email, role:u.role,
+      tenantId:u.tenantId, type:'access', sid: sid || u.sid },{expiresIn:'10m'});
+    const send = (path:string, t:string, method='GET', body?:unknown) =>
+      fetch(root+path,{method,headers:{Authorization:'Bearer '+t,
+        ...(body ? {'Content-Type':'application/json'} : {})},body:body ? JSON.stringify(body):undefined});
+    const aToken = token(alice);
+    const bToken = token(bob);
+    const ownerToken = token(owner);
+    const invalidSid = token(alice, uid+'_nonexistent');
+    assert.equal((await send('/owner-files',invalidSid)).status,401);
+    assert.equal((await send('/owner-files','bad-jwt')).status,401);
+    // Malformed text and disguised PDF must fail before database persistence.
+    assert.equal((await send('/owner-files',aToken,'POST',{title:'Malformed UTF-8',
+      fileName:'bad.txt',mimeType:'text/plain',
+      contentBase64:Buffer.from([0xff,0xfe]).toString('base64')})).status,400);
+    assert.equal((await send('/owner-files',aToken,'POST',{title:'Disguised PDF',
+      fileName:'bad.pdf',mimeType:'application/pdf',
+      contentBase64:Buffer.from('not-a-pdf').toString('base64')})).status,400);
+    assert.equal((await send('/owner-files',aToken,'POST',{title:'Truncated PDF',
+      fileName:'truncated.pdf',mimeType:'application/pdf',
+      contentBase64:Buffer.from('%PDF-1.7\\ninvalid').toString('base64')})).status,400);
+    // A real 160 KiB file crosses Express's default 100 KiB JSON limit.
+    // Prove it reaches the controller with the route-scoped parser.
+    const largeUpload = await send('/owner-files',aToken,'POST',{title:'Larger than default parser',
+      fileName:'large.txt',mimeType:'text/plain',
+      contentBase64:Buffer.alloc(160 * 1024, 65).toString('base64')});
+    assert.equal(largeUpload.status,201,await largeUpload.text());
+    const uploaded = await send('/owner-files',aToken,'POST',{title:'HTTP text', fileName:'http.txt',
+      mimeType:'text/plain',contentBase64:Buffer.from('alpha\nbeta\ngamma').toString('base64')});
+    assert.equal(uploaded.status,201);
+    const file = await uploaded.json() as {id:string};
+    assert.ok(file.id);
+    const filesB = await send('/owner-files',bToken);
+    assert.equal(filesB.status,200);
+    assert.equal(((await filesB.json()) as Array<{id:string}>).some(x=>x.id===file.id),false);
+    assert.equal((await send('/owner-files/requests',bToken,'POST',{fileId:file.id,scope:'FULL'})).status,404);
+    const request = await send('/owner-files/requests',aToken,'POST',{fileId:file.id,scope:'FULL'});
+    assert.equal(request.status,201);
+    const approval = await request.json() as {id:string};
+    const mine = await send('/owner-files/requests/mine',aToken);
+    assert.equal(mine.status,200);
+    const ownRequests = await mine.json() as Array<{id:string;file:{fileName:string}}>;
+    assert.equal(ownRequests.find(x=>x.id===approval.id)?.file.fileName,'http.txt');
+    const foreignMine = await send('/owner-files/requests/mine',bToken);
+    assert.equal(foreignMine.status,200);
+    const foreignRequests = await foreignMine.json() as Array<{id:string}>;
+    assert.equal(foreignRequests.some(x=>x.id===approval.id),false);
+    assert.equal((await send('/owner-files/requests/'+approval.id+'/download',aToken)).status,403);
+    assert.equal((await send('/owner-files/owner/requests',bToken)).status,403);
+    assert.equal((await send('/owner-files/owner/audit',bToken)).status,403);
+    assert.equal((await send('/owner-files/owner/audit',aToken)).status,403);
+    const emptyAudit = await send('/owner-files/owner/audit',ownerToken);
+    assert.equal(emptyAudit.status,200);
+    assert.ok(Array.isArray(await emptyAudit.json()));
+    assert.equal((await send('/owner-files/owner/decide',aToken,'POST',{
+      requestId:approval.id,decision:'APPROVE'})).status,403);
+    assert.equal((await send('/owner-files/owner/decide',ownerToken,'POST',{
+      requestId:approval.id,decision:'APPROVE'})).status,201);
+    const delivered = await send('/owner-files/requests/'+approval.id+'/download',aToken);
+    assert.equal(delivered.status,200);
+    assert.match(delivered.headers.get('content-disposition') || '', /filename\*=UTF-8''http\.txt/);
+    assert.equal(await delivered.text(), ['alpha','beta','gamma'].join(String.fromCharCode(10)));
+    assert.equal((await send('/owner-files/requests/'+approval.id+'/download',bToken)).status,404);
+    const auditAfterDelivery = await send('/owner-files/owner/audit',ownerToken);
+    assert.equal(auditAfterDelivery.status,200);
+    const auditRows = await auditAfterDelivery.json() as Array<{entityId:string;action:string}>;
+    assert.ok(auditRows.some(x=>x.entityId===approval.id && x.action==='OWNER_FILE_APPROVED'));
+    assert.ok(auditRows.some(x=>x.entityId===approval.id && x.action==='OWNER_FILE_DELIVERY_STARTED'));
+    assert.equal((await send('/owner-files/owner/decide',ownerToken,'POST',{
+      requestId:approval.id,decision:'REVOKE'})).status,201);
+    assert.equal((await send('/owner-files/requests/'+approval.id+'/download',aToken)).status,403);
+
+    // Partial PDF download contains ONLY requested pages, not the full source.
+    const sourcePdf = await PDFDocument.create();
+    sourcePdf.addPage([300, 400]); sourcePdf.addPage([310, 410]); sourcePdf.addPage([320, 420]);
+    const sourceBytes = Buffer.from(await sourcePdf.save());
+    const uploadedPdf = await send('/owner-files',aToken,'POST',{title:'HTTP PDF',fileName:'three-pages.pdf',
+      mimeType:'application/pdf',contentBase64:sourceBytes.toString('base64')});
+    assert.equal(uploadedPdf.status,201);
+    const pdfFile = await uploadedPdf.json() as {id:string};
+    assert.equal((await send('/owner-files/requests',aToken,'POST',{
+      fileId:pdfFile.id,scope:'PARTIAL',startLine:3,endLine:4})).status,400);
+    const reqPdf = await send('/owner-files/requests',aToken,'POST',{
+      fileId:pdfFile.id,scope:'PARTIAL',startLine:2,endLine:2});
+    assert.equal(reqPdf.status,201);
+    const pdfRequest = await reqPdf.json() as {id:string};
+    assert.equal((await send('/owner-files/requests/'+pdfRequest.id+'/download',aToken)).status,403);
+    assert.equal((await send('/owner-files/owner/decide',ownerToken,'POST',{
+      requestId:pdfRequest.id,decision:'APPROVE'})).status,201);
+    const pdfDelivered = await send('/owner-files/requests/'+pdfRequest.id+'/download',aToken);
+    assert.equal(pdfDelivered.status,200);
+    assert.match(pdfDelivered.headers.get('content-type') || '', /application\/pdf/);
+    const partial = await PDFDocument.load(await pdfDelivered.arrayBuffer());
+    assert.equal(partial.getPageCount(),1);
+    assert.equal(partial.getPage(0).getWidth(),310);
+    assert.equal(partial.getPage(0).getHeight(),410);
+    assert.equal((await send('/owner-files/requests/'+pdfRequest.id+'/download',bToken)).status,404);
+  } finally {
+    if(app) await app.close();
+    process.env.SCC380_ACTIVITY_OWNER_EMAIL=previous;
+    if(tenants.length) {
+      await prisma.auditLog.deleteMany({where:{tenantId:{in:tenants},entityType:'OWNER_FILE_REQUEST'}});
+      await prisma.ownerFileRequest.deleteMany({where:{tenantId:{in:tenants}}});
+      await prisma.ownerFile.deleteMany({where:{tenantId:{in:tenants}}});
+    }
+    if(sessions.length) await prisma.session.deleteMany({where:{id:{in:sessions}}});
+    if(users.length) await prisma.user.deleteMany({where:{id:{in:users}}});
+    if(tenants.length) await prisma.tenant.deleteMany({where:{id:{in:tenants}}});
+    await prisma.$disconnect();
+  }
+});
