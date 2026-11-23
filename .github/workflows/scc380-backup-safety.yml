@@ -1,0 +1,35 @@
+name: SCC380 Backup Scripts Safety
+on:
+  pull_request:
+    paths:
+      - 'ops/backup/**'
+      - '.github/workflows/scc380-backup-safety.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  fail-closed:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Bash syntax
+        run: |
+          bash -n ops/backup/scc380-encrypted-backup.sh
+          bash -n ops/backup/scc380-verify-restore.sh
+      - name: Confirm backup refuses absent credentials
+        run: |
+          set -euo pipefail
+          if env -u PGHOST -u PGPASSWORD -u BACKUP_S3_BUCKET bash ops/backup/scc380-encrypted-backup.sh > /tmp/backup.log 2>&1; then
+            echo "FAIL: backup allowed missing credentials"; exit 1
+          fi
+          grep -Eq '(Missing command|Missing required setting)' /tmp/backup.log
+          echo "PASS: backup did not run without requirements"
+      - name: Confirm restore refuses absent credentials
+        run: |
+          set -euo pipefail
+          if env -u PGHOST -u PGPASSWORD -u BACKUP_S3_BUCKET bash ops/backup/scc380-verify-restore.sh > /tmp/restore.log 2>&1; then
+            echo "FAIL: restore allowed missing credentials"; exit 1
+          fi
+          grep -Eq '(Missing command|Missing required setting)' /tmp/restore.log
+          echo "PASS: restore did not run without requirements"
