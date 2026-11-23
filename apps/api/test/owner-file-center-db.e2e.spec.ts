@@ -115,6 +115,16 @@ test('PostgreSQL file center: two tenants, audited approval, partial/full, cross
         receiptId: id + '-provider-receipt', settlement: 'SETTLED', source: 'TRUSTED_GATEWAY' },
     } });
     // This fixture simulates a server attestation; it is not a real PSP callback.
+    // Synthetic receipts cannot unlock a paid download in production mode.
+    const previousNodeEnv = process.env.NODE_ENV;
+    try {
+      process.env.NODE_ENV = 'production';
+      await assert.rejects(controller.download(makeReq(alice), payRequest.id, invoice.invoiceNumber, response()),
+        /Verified payment or owner approval/);
+    } finally {
+      if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = previousNodeEnv;
+    }
     const partialResponse = response();
     const partialStream = once(partialResponse, 'finish');
     const partialChunks: Buffer[] = [];
