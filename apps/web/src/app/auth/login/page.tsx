@@ -61,12 +61,12 @@ export default function LoginPage() {
     }
     setLoading(true); setError(''); setDiagnosticId('');
     try {
-      // Use the same-origin proxy; the browser must not call the API directly.
-      // This matches the production login fix and avoids cross-origin preflight.
+      // Use Next.js's same-origin /api rewrite, avoiding browser cross-origin
+      // preflight (and dependence on production CORS origin configuration).
       const initial = await api.post('/auth/login', {
         email: submittedEmail,
         password: submittedPassword,
-      }, { headers: { 'Content-Type': 'application/json' } });
+      });
       const loginResult = initial.data;
 
       if (loginResult.requires2FA) {
