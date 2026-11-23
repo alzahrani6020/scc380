@@ -58,3 +58,5 @@ jobs:
         run: pnpm --filter @scc/api exec tsx --test test/owner-file-center-db.e2e.spec.ts
       - name: Test real HTTP JWT and database-backed active sessions
         run: pnpm --filter @scc/api exec tsx --test test/owner-file-center-http.e2e.spec.ts
+      - name: Check owner file-center safety invariants and HR/ERP metadata index wiring
+        run: pnpm --filter @scc/api exec tsx --test test/owner-file-center.spec.ts
