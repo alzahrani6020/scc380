@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import api from '@/lib/api';
 import Link from 'next/link';
 
+type AuditRow = { id: string; tenantId: string | null; userId: string | null; entityId: string | null; action: string; createdAt: string };
 type RequestRow = {
   id: string; tenantId: string; fileId: string; requesterId: string;
   scope: string; status: string; startLine?: number | null; endLine?: number | null;
@@ -10,13 +11,18 @@ type RequestRow = {
 };
 export default function OwnerFilesPage() {
   const [requests, setRequests] = useState<RequestRow[]>([]);
+  const [audits, setAudits] = useState<AuditRow[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [reason, setReason] = useState('');
   const load = useCallback(async () => {
     try {
-      const result = await api.get<RequestRow[]>('/owner-files/owner/requests');
+      const [result, auditResult] = await Promise.all([
+        api.get<RequestRow[]>('/owner-files/owner/requests'),
+        api.get<AuditRow[]>('/owner-files/owner/audit'),
+      ]);
       setRequests(Array.isArray(result.data) ? result.data : []);
+      setAudits(Array.isArray(auditResult.data) ? auditResult.data : []);
       setError('');
     } catch { setError('تعذر جلب الطلبات؛ لم يتم تغيير الصلاحيات.'); }
   }, []);
@@ -51,5 +57,20 @@ export default function OwnerFilesPage() {
         {item.status === 'APPROVED' && <button type="button" disabled={busy} onClick={() => void decide(item.id, 'REVOKE')} className="mt-3 rounded border border-amber-600 px-3 py-2 disabled:opacity-50">إلغاء السماح</button>}
       </section>
     )}{!requests.length && <p className="text-slate-300">لا توجد طلبات مسجلة.</p>}</div>
+    <section className="space-y-3 rounded-xl border border-slate-700 bg-slate-900 p-4">
+      <h2 className="font-semibold">سجل الموافقات ومحاولات التسليم — آخر 100 حدث</h2>
+      <p className="text-xs text-slate-400">أحداث API المسجلة؛ اكتمال استجابة HTTP لا يثبت حفظ الملف على جهاز المستخدم.</p>
+      <div className="overflow-x-auto"><table className="w-full text-right text-sm">
+        <thead><tr><th className="p-2">الوقت</th><th className="p-2">العملية</th><th className="p-2">الطلب</th><th className="p-2">الشركة</th><th className="p-2">المستخدم</th></tr></thead>
+        <tbody>{audits.map(a => <tr key={a.id} className="border-t border-slate-700">
+          <td className="p-2 whitespace-nowrap">{new Date(a.createdAt).toLocaleString('ar-SA')}</td>
+          <td className="p-2">{a.action}</td>
+          <td className="p-2 break-all">{a.entityId || '-'}</td>
+          <td className="p-2 break-all">{a.tenantId || '-'}</td>
+          <td className="p-2 break-all">{a.userId || '-'}</td>
+        </tr>)}</tbody>
+      </table></div>
+      {!audits.length && <p className="text-slate-400">لا توجد أحداث مسجلة.</p>}
+    </section>
   </main>;
 }
