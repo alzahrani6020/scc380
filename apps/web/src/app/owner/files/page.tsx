@@ -39,7 +39,12 @@ export default function OwnerFilesPage() {
   return <main dir="rtl" className="mx-auto max-w-6xl space-y-5 px-4 py-8 text-white">
     <h1 className="text-2xl font-bold">مركز ملفات المالك — مراجعة الطلبات</h1>
     <p className="text-sm text-slate-300">الملفات التجارية المستقلة فقط. لا يتم تجاوز صلاحيات مستندات HR أو ERP. إثبات استجابة HTTP ليس إثبات الحفظ على جهاز المستخدم.</p>
-    <Link href="/downloads/files" className="text-blue-300 underline">مركز ملفات الشركة وطلب التنزيل</Link>
+    <nav aria-label="مصادر الملفات والصلاحيات" className="flex flex-wrap gap-4 text-sm">
+      <Link href="/downloads/files" className="text-blue-300 underline">ملفات الشركة التجارية وطلب التنزيل</Link>
+      <Link href="/dashboard/hr/documents" className="text-blue-300 underline">مستندات الموظفين — بصلاحيات HR المستقلة</Link>
+      <Link href="/dashboard/erp" className="text-blue-300 underline">فواتير ERP — طباعة وتصدير حسب الصلاحيات</Link>
+    </nav>
+    <p className="text-xs text-slate-400">لا يتم نقل مستندات HR أو ERP إلى مركز التنزيل التجاري، ولا تتجاوز هذه الروابط صلاحيات الوصول الأصلية.</p>
     <div><label className="block text-sm">سبب القرار
       <input value={reason} maxLength={300} onChange={e => setReason(e.target.value)} className="mt-2 w-full rounded border border-slate-700 bg-slate-900 p-2"/>
     </label></div>
