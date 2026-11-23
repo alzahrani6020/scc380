@@ -98,6 +98,11 @@ test('HTTP JWT+database sessions deny forged/foreign tenant, allow owner and aud
     assert.equal(foreignRequests.some(x=>x.id===approval.id),false);
     assert.equal((await send('/owner-files/requests/'+approval.id+'/download',aToken)).status,403);
     assert.equal((await send('/owner-files/owner/requests',bToken)).status,403);
+    assert.equal((await send('/owner-files/owner/audit',bToken)).status,403);
+    assert.equal((await send('/owner-files/owner/audit',aToken)).status,403);
+    const emptyAudit = await send('/owner-files/owner/audit',ownerToken);
+    assert.equal(emptyAudit.status,200);
+    assert.ok(Array.isArray(await emptyAudit.json()));
     assert.equal((await send('/owner-files/owner/decide',aToken,'POST',{
       requestId:approval.id,decision:'APPROVE'})).status,403);
     assert.equal((await send('/owner-files/owner/decide',ownerToken,'POST',{
@@ -107,6 +112,11 @@ test('HTTP JWT+database sessions deny forged/foreign tenant, allow owner and aud
     assert.match(delivered.headers.get('content-disposition') || '', /filename\*=UTF-8''http\.txt/);
     assert.equal(await delivered.text(), ['alpha','beta','gamma'].join(String.fromCharCode(10)));
     assert.equal((await send('/owner-files/requests/'+approval.id+'/download',bToken)).status,404);
+    const auditAfterDelivery = await send('/owner-files/owner/audit',ownerToken);
+    assert.equal(auditAfterDelivery.status,200);
+    const auditRows = await auditAfterDelivery.json() as Array<{entityId:string;action:string}>;
+    assert.ok(auditRows.some(x=>x.entityId===approval.id && x.action==='OWNER_FILE_APPROVED'));
+    assert.ok(auditRows.some(x=>x.entityId===approval.id && x.action==='OWNER_FILE_DELIVERY_STARTED'));
     assert.equal((await send('/owner-files/owner/decide',ownerToken,'POST',{
       requestId:approval.id,decision:'REVOKE'})).status,201);
     assert.equal((await send('/owner-files/requests/'+approval.id+'/download',aToken)).status,403);
