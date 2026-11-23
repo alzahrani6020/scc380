@@ -16,6 +16,7 @@ const { JwtService } = requireApi('@nestjs/jwt');
 const jwt = new JwtService({ secret: process.env.JWT_SECRET });
 const base = 'http://127.0.0.1:3000';
 const uid = 'browserci_' + randomBytes(7).toString('hex');
+const configuredOwner = 'owner-browser-ci@example.test';
 const tenants = [], users = [], sessions = [];
 let browser;
 const signIn = async (person) => {
@@ -53,7 +54,7 @@ async function downloadAndVerify(page,expected) {
   const path=await item.path();
   assert.ok(path,'Browser must save a real download');
   assert.equal(await readFile(path,'utf8'),expected);
-  assert.equal(item.failure()===null || await item.failure()===null,true);
+  assert.equal(await item.failure(),null);
 }
 try {
   browser=await chromium.launch({headless:true});
@@ -63,7 +64,7 @@ try {
   tenants.push(tenantB.id);
   async function user(suffix,tenantId) {
     const row=await prisma.user.create({data:{
-      email:uid+'-'+suffix+'@example.test',firstName:'Browser',lastName:suffix,
+      email:suffix==='owner' ? configuredOwner : uid+'-'+suffix+'@example.test',firstName:'Browser',lastName:suffix,
       role:'ADMIN',status:'ACTIVE',tenantId
     }});
     users.push(row.id);
@@ -77,7 +78,7 @@ try {
   const owner=await user('owner',tenant.id);
   const outsider=await user('outsider',tenantB.id);
   // Explicit CI guard: the owner email must be configured to this fixture, never production.
-  assert.equal(process.env.SCC380_ACTIVITY_OWNER_EMAIL,owner.email);
+  assert.equal(process.env.SCC380_ACTIVITY_OWNER_EMAIL,configuredOwner);
   const applicant=await signIn(requester);
   const principal=await signIn(owner);
   const foreign=await signIn(outsider);
@@ -95,11 +96,11 @@ try {
   await page.getByRole('button',{name:'إرسال طلب تنزيل'}).click();
   await page.getByText(/سُجل الطلب/).waitFor();
   const full=await waitForRequest(requester.id,'FULL');
-  const foreignResponse=await foreign.page.evaluate(async (id,token) => {
+  const foreignResponse=await foreign.page.evaluate(async ({id,token}) => {
     const response=await fetch('/api/owner-files/requests/'+id+'/download',{
       headers:{Authorization:'Bearer '+token}});
     return response.status;
-  },full.id,foreign.token);
+  },{id:full.id,token:foreign.token});
   assert.equal(foreignResponse,404,'Foreign tenant download must not disclose request');
   await principal.page.getByRole('button',{name:'تحديث'}).click();
   await principal.page.getByRole('button',{name:'موافقة'}).first().click();
@@ -109,11 +110,11 @@ try {
   await principal.page.getByRole('button',{name:'إلغاء السماح'}).first().click();
   await principal.page.getByText(/REVOKED/).first().waitFor();
   await page.getByRole('button',{name:'تحديث الطلبات'}).click();
-  const forbidden=await page.evaluate(async (id,token) => {
+  const forbidden=await page.evaluate(async ({id,token}) => {
     const response=await fetch('/api/owner-files/requests/'+id+'/download',{
       headers:{Authorization:'Bearer '+token}});
     return response.status;
-  },full.id,applicant.token);
+  },{id:full.id,token:applicant.token});
   assert.equal(forbidden,403,'Revoked download must be forbidden by API');
   await page.locator('select').nth(1).selectOption('PARTIAL');
   await page.locator('input[type=number]').first().fill('2');
