@@ -11,6 +11,8 @@ export default function TenantFileCenter() {
   const [startLine, setStartLine] = useState(1);
   const [endLine, setEndLine] = useState(1);
   const [invoiceNumber, setInvoiceNumber] = useState('');
+  const selectedFile = files.find(f => f.id === fileId);
+  const isPdf = selectedFile?.mimeType === 'application/pdf';
   const [uploadTitle, setUploadTitle] = useState('');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -69,24 +71,24 @@ export default function TenantFileCenter() {
   }
   return <main dir="rtl" className="mx-auto max-w-5xl space-y-5 px-4 py-8 text-white">
     <h1 className="text-2xl font-bold">مركز ملفات الشركة</h1>
-    <p className="text-sm text-slate-300">ملفات هذه الشركة فقط. التنزيل يتطلب قرار المالك أو فاتورة مسددة تطابق الملف والمشتري. التنزيل الجزئي للملفات النصية فقط.</p>
+    <p className="text-sm text-slate-300">ملفات هذه الشركة فقط. التنزيل يتطلب قرار المالك أو فاتورة مسددة تطابق الملف والمشتري. التنزيل الجزئي يدعم صفحات PDF أو أسطر الملفات النصية.</p>
     <section className="space-y-3 rounded-xl border border-slate-700 bg-slate-900 p-4">
       <h2 className="font-semibold">رفع ملف تجاري — لمدير الشركة فقط</h2>
       <label className="block">عنوان الملف<input value={uploadTitle} onChange={e=>setUploadTitle(e.target.value)} maxLength={160} className="mt-2 block w-full rounded bg-slate-950 p-2"/></label>
       <input aria-label="اختيار الملف" type="file" accept=".txt,.csv,.pdf" onChange={e=>setUploadFile(e.target.files?.[0] || null)} className="block w-full"/>
-      <p className="text-xs text-slate-400">ملفات PDF أو نص حتى 1 ميجابايت. لا يدعم تنزيل صفحات PDF الجزئي في هذا الإصدار.</p>
+      <p className="text-xs text-slate-400">ملفات PDF أو نص حتى 1 ميجابايت. يمكن طلب صفحات محددة من PDF أو أسطر من الملفات النصية.</p>
       <button type="button" onClick={()=>void upload()} disabled={busy} className="rounded bg-blue-600 px-4 py-2 disabled:opacity-50">رفع الملف</button>
     </section>
     <div className="space-y-3 rounded-xl border border-slate-700 bg-slate-900 p-4">
-      <label className="block">الملف<select value={fileId} onChange={e=>setFileId(e.target.value)} className="mt-2 block w-full rounded bg-slate-950 p-2">
+      <label className="block">الملف<select value={fileId} onChange={e=>{ setFileId(e.target.value); setScope('FULL'); }} className="mt-2 block w-full rounded bg-slate-950 p-2">
         <option value="">اختر ملفًا</option>{files.map(f=><option key={f.id} value={f.id}>{f.title} — {f.fileName} ({f.mimeType})</option>)}
       </select></label>
       <label className="block">النطاق<select value={scope} onChange={e=>setScope(e.target.value as 'FULL'|'PARTIAL')} className="mt-2 block rounded bg-slate-950 p-2">
-        <option value="FULL">كامل</option><option value="PARTIAL">جزئي — أسطر نصية</option>
+        <option value="FULL">كامل</option><option value="PARTIAL">جزئي — صفحات PDF أو أسطر نصية</option>
       </select></label>
       {scope==='PARTIAL' && <div className="flex flex-wrap gap-3">
-        <label>من السطر<input aria-label="من السطر" type="number" min={1} value={startLine} onChange={e=>setStartLine(Number(e.target.value))} className="mr-2 w-20 rounded bg-slate-950 p-2"/></label>
-        <label>إلى السطر<input aria-label="إلى السطر" type="number" min={1} value={endLine} onChange={e=>setEndLine(Number(e.target.value))} className="mr-2 w-20 rounded bg-slate-950 p-2"/></label>
+        <label>من {isPdf ? 'الصفحة' : 'السطر'}<input aria-label="من السطر" type="number" min={1} value={startLine} onChange={e=>setStartLine(Number(e.target.value))} className="mr-2 w-20 rounded bg-slate-950 p-2"/></label>
+        <label>إلى {isPdf ? 'الصفحة' : 'السطر'}<input aria-label="إلى السطر" type="number" min={1} value={endLine} onChange={e=>setEndLine(Number(e.target.value))} className="mr-2 w-20 rounded bg-slate-950 p-2"/></label>
       </div>}
       <button disabled={busy} onClick={()=>void requestFile()} type="button" className="rounded bg-blue-600 px-4 py-2 disabled:opacity-50">إرسال طلب تنزيل</button>
     </div>
