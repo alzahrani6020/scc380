@@ -1,0 +1,73 @@
+name: SCC380 Backup PostgreSQL 17 Roundtrip
+on:
+  pull_request:
+    paths:
+      - 'ops/backup/**'
+      - '.github/workflows/scc380-backup-roundtrip.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  encrypted-roundtrip:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: scc380_source_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test -d scc380_source_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: test
+      PGPASSWORD: test
+      PGSSLMODE: prefer
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PostgreSQL 17 client and GPG
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17 gnupg
+          pg_dump --version
+      - name: Exercise encrypted dump and isolated restore with synthetic data
+        run: |
+          set -euo pipefail
+          export GNUPGHOME="$(mktemp -d)"
+          work="$(mktemp -d)"
+          trap 'rm -rf "$GNUPGHOME" "$work"' EXIT
+          chmod 700 "$GNUPGHOME"
+          gpg --batch --passphrase '' --quick-generate-key 'SCC380 CI Only <test@example.invalid>' default default never
+          gpg --batch --list-keys 'SCC380 CI Only'
+          export PGDATABASE=scc380_source_ci
+          psql -X -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE TABLE sample_tenants (id integer PRIMARY KEY, name text NOT NULL);
+          CREATE TABLE sample_files (id integer PRIMARY KEY, tenant_id integer NOT NULL REFERENCES sample_tenants(id), content bytea NOT NULL);
+          INSERT INTO sample_tenants VALUES (1, 'first'), (2, 'second');
+          INSERT INTO sample_files VALUES (1, 1, decode('00ffaa','hex')), (2, 2, decode('aabbcc','hex'));
+          SQL
+          pg_dump --format=custom --no-owner --no-privileges --file=- |
+            gpg --batch --yes --trust-model always --recipient 'SCC380 CI Only' --encrypt --output "$work/archive.pgdump.gpg"
+          test -s "$work/archive.pgdump.gpg"
+          sha256sum "$work/archive.pgdump.gpg" > "$work/archive.sha256"
+          (cd "$work" && sha256sum -c archive.sha256)
+          gpg --batch --decrypt --output "$work/archive.pgdump" "$work/archive.pgdump.gpg"
+          pg_restore --list "$work/archive.pgdump" | grep -q 'sample_files'
+          createdb scc380_restore_acceptance
+          export PGDATABASE=scc380_restore_acceptance
+          pg_restore --exit-on-error --no-owner --no-privileges --dbname "$PGDATABASE" "$work/archive.pgdump"
+          test "$(psql -XAtqc 'SELECT count(*) FROM sample_tenants')" = 2
+          test "$(psql -XAtqc 'SELECT count(*) FROM sample_files')" = 2
+          test "$(psql -XAtqc "SELECT encode(content,'hex') FROM sample_files WHERE id=1")" = 00ffaa
+          test "$(psql -XAtqc "SELECT count(*) FROM pg_constraint WHERE contype='f' AND conrelid='sample_files'::regclass")" = 1
+          echo "PASS: encrypted PostgreSQL 17 synthetic dump, hash, decrypt, isolated restore, records, FK"
+          echo "NOTE: This does not validate the real S3 upload or production data."
