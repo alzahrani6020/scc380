@@ -193,6 +193,14 @@ export class OwnerFilesController {
     // inserted audit log is not trusted settlement evidence. Keep production fail-closed.
     // Synthetic attestation exercises the entitlement rules ONLY in isolated CI tests.
     if (process.env.NODE_ENV !== 'test' || process.env.SCC380_TEST_DATABASE_ISOLATED !== 'YES') return false;
+    const testUrl = process.env.DIRECT_URL || process.env.DATABASE_URL || '';
+    let isolatedDatabase = false;
+    try {
+      const parsed = new URL(testUrl);
+      isolatedDatabase = ['127.0.0.1', 'localhost'].includes(parsed.hostname) &&
+        parsed.pathname === '/ownerfiles_ci';
+    } catch { /* No valid isolated database URL: deny paid entitlement. */ }
+    if (!isolatedDatabase) return false;
     if (!invoiceNumber || invoiceNumber.length > 80 || !req.user?.email) return false;
     const tenantId = this.tenant(req);
     const account = await prisma.user.findUnique({ where: { id: req.user.userId }, select: { emailVerified: true } });
