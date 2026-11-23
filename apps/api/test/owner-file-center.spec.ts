@@ -53,6 +53,14 @@ test('partial delivery validates text lines and bounded PDF pages', () => {
   assert.match(api, /HTTP_ONLY/);
   assert.match(api, /OWNER_FILE_HTTP_RESPONSE_INTERRUPTED/);
 });
+test('existing HR and ERP records are only indexed through their permission-protected endpoints', () => {
+  assert.match(tenant, /api\.get<\{ data: HrDocumentIndex\[\] \}>\('\/hr\/employee-documents'\)/);
+  assert.match(tenant, /api\.get<InvoiceIndex\[\] \| \{ data: InvoiceIndex\[\] \}>\('\/erp\/invoices'\)/);
+  assert.match(tenant, /Promise\.allSettled/);
+  assert.match(tenant, /status: 'denied'/);
+  assert.doesNotMatch(api, /employeeDocument\.findMany/);
+  assert.doesNotMatch(api, /invoice\.findMany/);
+});
 test('actual owner decisions and tenant requests are wired to the server', () => {
   assert.match(owner, /api\.post\('\/owner-files\/owner\/decide'/);
   assert.match(tenant, /api\.post\('\/owner-files\/requests'/);
