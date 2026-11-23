@@ -51,11 +51,12 @@ jobs:
           INSERT INTO sample_tenants VALUES (1, 'first'), (2, 'second');
           INSERT INTO sample_files VALUES (1, 1, decode('00ffaa','hex')), (2, 2, decode('aabbcc','hex'));
           SQL
-          docker exec "$PG_CONTAINER" pg_dump -U test -d scc380_source_ci --format=custom --no-owner --no-privileges --file=- |
+          docker exec "$PG_CONTAINER" pg_dump -U test -d scc380_source_ci --format=custom --no-owner --no-privileges |
             gpg --batch --yes --trust-model always --recipient 'SCC380 CI Only' --encrypt --output "$work/archive.pgdump.gpg"
           test -s "$work/archive.pgdump.gpg"
           (cd "$work" && sha256sum archive.pgdump.gpg > archive.sha256 && sha256sum -c archive.sha256)
           gpg --batch --decrypt --output "$work/archive.pgdump" "$work/archive.pgdump.gpg"
+          test "$(head -c 5 "$work/archive.pgdump")" = PGDMP
           docker exec -i "$PG_CONTAINER" pg_restore --list < "$work/archive.pgdump" > "$work/toc.txt"
           grep -q 'sample_files' "$work/toc.txt"
           docker exec "$PG_CONTAINER" createdb -U test scc380_restore_acceptance
