@@ -88,6 +88,14 @@ test('HTTP JWT+database sessions deny forged/foreign tenant, allow owner and aud
     const request = await send('/owner-files/requests',aToken,'POST',{fileId:file.id,scope:'FULL'});
     assert.equal(request.status,201);
     const approval = await request.json() as {id:string};
+    const mine = await send('/owner-files/requests/mine',aToken);
+    assert.equal(mine.status,200);
+    const ownRequests = await mine.json() as Array<{id:string;file:{fileName:string}}>;
+    assert.equal(ownRequests.find(x=>x.id===approval.id)?.file.fileName,'http.txt');
+    const foreignMine = await send('/owner-files/requests/mine',bToken);
+    assert.equal(foreignMine.status,200);
+    const foreignRequests = await foreignMine.json() as Array<{id:string}>;
+    assert.equal(foreignRequests.some(x=>x.id===approval.id),false);
     assert.equal((await send('/owner-files/requests/'+approval.id+'/download',aToken)).status,403);
     assert.equal((await send('/owner-files/owner/requests',bToken)).status,403);
     assert.equal((await send('/owner-files/owner/decide',aToken,'POST',{
@@ -96,6 +104,7 @@ test('HTTP JWT+database sessions deny forged/foreign tenant, allow owner and aud
       requestId:approval.id,decision:'APPROVE'})).status,201);
     const delivered = await send('/owner-files/requests/'+approval.id+'/download',aToken);
     assert.equal(delivered.status,200);
+    assert.match(delivered.headers.get('content-disposition') || '', /filename\*=UTF-8''http\.txt/);
     assert.equal(await delivered.text(), ['alpha','beta','gamma'].join(String.fromCharCode(10)));
     assert.equal((await send('/owner-files/requests/'+approval.id+'/download',bToken)).status,404);
     assert.equal((await send('/owner-files/owner/decide',ownerToken,'POST',{
