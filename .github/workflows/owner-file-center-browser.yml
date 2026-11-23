@@ -1,0 +1,113 @@
+name: Owner File Center Browser Acceptance
+on:
+  pull_request:
+    paths:
+      - 'apps/web/e2e/owner-file-center.mjs'
+      - 'apps/web/src/app/owner/**'
+      - 'apps/web/src/app/downloads/files/**'
+      - 'apps/api/src/owner-files/**'
+      - '.github/workflows/owner-file-center-browser.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  owner-browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: ownerfiles_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test -d ownerfiles_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://test:test@127.0.0.1:5432/ownerfiles_ci
+      DIRECT_URL: postgresql://test:test@127.0.0.1:5432/ownerfiles_ci
+      SCC380_TEST_DATABASE_ISOLATED: 'YES'
+      SCC380_ACTIVITY_OWNER_EMAIL: owner-browser-ci@example.test
+      JWT_SECRET: owner-file-browser-ci-only-jwt-secret-do-not-deploy
+      REDIS_URL: redis://127.0.0.1:6379
+      API_INTERNAL_URL: http://127.0.0.1:3101
+      NEXT_PUBLIC_API_URL: /api
+      CORS_ORIGINS: http://127.0.0.1:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Activate repository pnpm
+        run: corepack enable && corepack prepare pnpm@8.15.0 --activate
+      - name: Install frozen dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install isolated browser tooling without modifying lockfile
+        run: pnpm add -Dw playwright@1.65.0 --lockfile=false
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Generate Prisma client
+        run: pnpm --filter @scc/database exec prisma generate --schema prisma/schema.prisma
+      - name: Build API dependencies
+        run: pnpm turbo run build --filter=@scc/api... --no-daemon --concurrency=1
+      - name: Apply migrations only to isolated CI PostgreSQL
+        run: pnpm --filter @scc/database exec prisma migrate deploy --schema prisma/schema.prisma
+      - name: Start isolated API
+        run: |
+          NODE_ENV=test PORT=3101 node apps/api/dist/main.js > /tmp/owner-api.log 2>&1 &
+          echo $! > /tmp/owner-api.pid
+      - name: Confirm API is responsive
+        run: |
+          for i in $(seq 1 60); do
+            if ! kill -0 "$(cat /tmp/owner-api.pid)" 2>/dev/null; then
+              tail -n 80 /tmp/owner-api.log
+              exit 1
+            fi
+            if curl -s --max-time 2 -o /dev/null http://127.0.0.1:3101/; then exit 0; fi
+            sleep 2
+          done
+          tail -n 80 /tmp/owner-api.log
+          exit 1
+      - name: Build matching Next.js Web
+        run: pnpm --filter @scc/web build
+        env:
+          NODE_ENV: production
+      - name: Start matching Next.js Web
+        run: |
+          (cd apps/web && NODE_ENV=production pnpm exec next start -H 127.0.0.1 -p 3000) > /tmp/owner-web.log 2>&1 &
+          echo $! > /tmp/owner-web.pid
+      - name: Confirm Web is responsive
+        run: |
+          for i in $(seq 1 60); do
+            if ! kill -0 "$(cat /tmp/owner-web.pid)" 2>/dev/null; then
+              tail -n 80 /tmp/owner-web.log
+              exit 1
+            fi
+            if curl -fsS --max-time 5 http://127.0.0.1:3000/ >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          tail -n 80 /tmp/owner-web.log
+          exit 1
+      - name: Validate full and partial browser downloads and revocation
+        run: node apps/web/e2e/owner-file-center.mjs
+        env:
+          NODE_ENV: test
+      - name: Diagnostic logs if acceptance fails
+        if: failure()
+        run: |
+          tail -n 120 /tmp/owner-api.log || true
+          tail -n 120 /tmp/owner-web.log || true
