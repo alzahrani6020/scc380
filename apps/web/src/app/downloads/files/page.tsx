@@ -103,7 +103,9 @@ export default function TenantFileCenter() {
     {notice && <p role="status" className="text-amber-300">{notice}</p>}
     {requests.map(r=><section key={r.id} className="rounded-lg border border-slate-700 bg-slate-900 p-4">
       <p className="break-all text-sm">الطلب {r.id} — {r.scope} — {r.status}</p>
-      <button type="button" disabled={busy} onClick={()=>void download(r.id, r.file.fileName)} className="mt-2 rounded bg-blue-600 px-3 py-2 disabled:opacity-50">تنزيل بعد التحقق</button>
+      <button type="button" disabled={busy || r.status === 'REJECTED' || r.status === 'REVOKED' || (r.status !== 'APPROVED' && !invoiceNumber.trim())} onClick={()=>void download(r.id, r.file.fileName)} className="mt-2 rounded bg-blue-600 px-3 py-2 disabled:opacity-50">تنزيل بعد التحقق</button>
+      {r.status === 'PENDING' && !invoiceNumber.trim() && <p className="mt-2 text-xs text-slate-400">يلزم اعتماد المالك أو إدخال رقم فاتورة مدفوعة ومتحقق منها لإتاحة التنزيل.</p>}
+      {(r.status === 'REJECTED' || r.status === 'REVOKED') && <p className="mt-2 text-xs text-slate-400">التنزيل غير متاح لهذا الطلب؛ يلزم إنشاء طلب جديد.</p>}
     </section>)}
   </main>;
 }
