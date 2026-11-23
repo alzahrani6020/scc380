@@ -189,6 +189,9 @@ export class OwnerFilesController {
     });
   }
   private async paid(req: any, fileId: string, scope: 'FULL' | 'PARTIAL', invoiceNumber?: string) {
+    // Fail closed until the PSP webhook is integrated and independently verified.
+    // An ERP payment or a manually inserted audit log must never enable production downloads.
+    if (process.env.SCC380_FILE_PSP_VERIFIED !== 'true') return false;
     if (!invoiceNumber || invoiceNumber.length > 80 || !req.user?.email) return false;
     const tenantId = this.tenant(req);
     const account = await prisma.user.findUnique({ where: { id: req.user.userId }, select: { emailVerified: true } });
