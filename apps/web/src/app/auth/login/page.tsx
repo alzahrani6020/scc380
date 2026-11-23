@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import axios from 'axios';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { sessionAuth } from '@/lib/session-auth';
@@ -62,9 +61,9 @@ export default function LoginPage() {
     }
     setLoading(true); setError(''); setDiagnosticId('');
     try {
-      // Avoid the same-origin Next.js proxy for the initial login request.
-      // This endpoint is HTTPS and permits this web origin via API CORS policy.
-      const initial = await axios.post('https://scc380-api.onrender.com/auth/login', {
+      // Use the same-origin proxy; the browser must not call the API directly.
+      // This matches the production login fix and avoids cross-origin preflight.
+      const initial = await api.post('/auth/login', {
         email: submittedEmail,
         password: submittedPassword,
       }, { headers: { 'Content-Type': 'application/json' } });
