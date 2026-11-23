@@ -43,8 +43,11 @@ test('file payment is bound to tenant, verified identity, exact SKU, and fully s
   assert.match(api, /TRUSTED_GATEWAY/);
   assert.match(api, /proof\.scope !== scope/);
 });
-test('partial delivery is strictly text-only and checked within 500 lines', () => {
-  assert.match(api, /\['text\/plain', 'text\/csv'\]/);
+test('partial delivery validates text lines and bounded PDF pages', () => {
+  assert.match(api, /PDFDocument\.load/);
+  assert.match(api, /PDFDocument\.create/);
+  assert.match(api, /target\.copyPages\(source, indexes\)/);
+  assert.match(api, /pdf\.getPageCount\(\)/);
   assert.match(api, /endLine as number\) - \(startLine as number\) > 499/);
   assert.match(api, /slice\(request\.startLine! - 1, request\.endLine!\)/);
   assert.match(api, /HTTP_ONLY/);
