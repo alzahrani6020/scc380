@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
+import { PDFDocument } from 'pdf-lib';
 import { Test } from '@nestjs/testing';
 import { PassportModule } from '@nestjs/passport';
 import { JwtService } from '@nestjs/jwt';
@@ -90,6 +91,32 @@ test('HTTP JWT+database sessions deny forged/foreign tenant, allow owner and aud
     assert.equal((await send('/owner-files/owner/decide',ownerToken,'POST',{
       requestId:approval.id,decision:'REVOKE'})).status,201);
     assert.equal((await send('/owner-files/requests/'+approval.id+'/download',aToken)).status,403);
+
+    // Partial PDF download contains ONLY requested pages, not the full source.
+    const sourcePdf = await PDFDocument.create();
+    sourcePdf.addPage([300, 400]); sourcePdf.addPage([310, 410]); sourcePdf.addPage([320, 420]);
+    const sourceBytes = Buffer.from(await sourcePdf.save());
+    const uploadedPdf = await send('/owner-files',aToken,'POST',{title:'HTTP PDF',fileName:'three-pages.pdf',
+      mimeType:'application/pdf',contentBase64:sourceBytes.toString('base64')});
+    assert.equal(uploadedPdf.status,201);
+    const pdfFile = await uploadedPdf.json() as {id:string};
+    assert.equal((await send('/owner-files/requests',aToken,'POST',{
+      fileId:pdfFile.id,scope:'PARTIAL',startLine:3,endLine:4})).status,400);
+    const reqPdf = await send('/owner-files/requests',aToken,'POST',{
+      fileId:pdfFile.id,scope:'PARTIAL',startLine:2,endLine:2});
+    assert.equal(reqPdf.status,201);
+    const pdfRequest = await reqPdf.json() as {id:string};
+    assert.equal((await send('/owner-files/requests/'+pdfRequest.id+'/download',aToken)).status,403);
+    assert.equal((await send('/owner-files/owner/decide',ownerToken,'POST',{
+      requestId:pdfRequest.id,decision:'APPROVE'})).status,201);
+    const pdfDelivered = await send('/owner-files/requests/'+pdfRequest.id+'/download',aToken);
+    assert.equal(pdfDelivered.status,200);
+    assert.match(pdfDelivered.headers.get('content-type') || '', /application\/pdf/);
+    const partial = await PDFDocument.load(await pdfDelivered.arrayBuffer());
+    assert.equal(partial.getPageCount(),1);
+    assert.equal(partial.getPage(0).getWidth(),310);
+    assert.equal(partial.getPage(0).getHeight(),410);
+    assert.equal((await send('/owner-files/requests/'+pdfRequest.id+'/download',bToken)).status,404);
   } finally {
     if(app) await app.close();
     process.env.SCC380_ACTIVITY_OWNER_EMAIL=previous;
