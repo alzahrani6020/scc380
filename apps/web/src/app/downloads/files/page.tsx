@@ -1,11 +1,18 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
 import api from '@/lib/api';
+import Link from 'next/link';
 type FileRow = { id: string; title: string; fileName: string; mimeType: string; sizeBytes: number };
 type RequestRow = { id: string; fileId: string; scope: string; status: string; startLine: number | null; endLine: number | null; file: { fileName: string } };
+type HrDocumentIndex = { id: string; title: string; fileName: string; mimeType: string };
+type InvoiceIndex = { id: string; invoiceNumber: string; status: string };
+type SourceResult<T> = { status: 'idle' | 'loading' | 'loaded' | 'denied'; items: T[] };
+const initialSource = <T,>(): SourceResult<T> => ({ status: 'idle', items: [] });
 export default function TenantFileCenter() {
   const [files, setFiles] = useState<FileRow[]>([]);
   const [requests, setRequests] = useState<RequestRow[]>([]);
+  const [hrSource, setHrSource] = useState<SourceResult<HrDocumentIndex>>(initialSource);
+  const [erpSource, setErpSource] = useState<SourceResult<InvoiceIndex>>(initialSource);
   const [fileId, setFileId] = useState('');
   const [scope, setScope] = useState<'FULL' | 'PARTIAL'>('FULL');
   const [startLine, setStartLine] = useState(1);
@@ -25,6 +32,25 @@ export default function TenantFileCenter() {
     } catch { setNotice('تعذر جلب الملفات أو الطلبات من الخادم.'); }
   },[]);
   useEffect(() => { void refresh(); },[refresh]);
+  async function loadOriginalSources() {
+    setHrSource({ status: 'loading', items: [] });
+    setErpSource({ status: 'loading', items: [] });
+    // These existing endpoints apply hr:documents:read and erp:read respectively.
+    // Do not copy content into commercial storage or fall back to privileged access.
+    const [hr, erp] = await Promise.allSettled([
+      api.get<{ data: HrDocumentIndex[] }>('/hr/employee-documents'),
+      api.get<InvoiceIndex[] | { data: InvoiceIndex[] }>('/erp/invoices'),
+    ]);
+    if (hr.status === 'fulfilled') {
+      const items = hr.value.data?.data;
+      setHrSource({ status: 'loaded', items: Array.isArray(items) ? items : [] });
+    } else setHrSource({ status: 'denied', items: [] });
+    if (erp.status === 'fulfilled') {
+      const payload = erp.value.data;
+      const items = Array.isArray(payload) ? payload : payload?.data;
+      setErpSource({ status: 'loaded', items: Array.isArray(items) ? items : [] });
+    } else setErpSource({ status: 'denied', items: [] });
+  }
   async function upload() {
     if (!uploadFile || !uploadTitle.trim()) { setNotice('اختر ملفًا وعنوانًا'); return; }
     if (uploadFile.size > 1048576 || !['application/pdf','text/plain','text/csv'].includes(uploadFile.type)) {
@@ -72,6 +98,27 @@ export default function TenantFileCenter() {
   }
   return <main dir="rtl" className="mx-auto max-w-5xl space-y-5 px-4 py-8 text-white">
     <h1 className="text-2xl font-bold">مركز ملفات الشركة</h1>
+    <section className="space-y-3 rounded-xl border border-slate-700 bg-slate-900 p-4">
+      <h2 className="font-semibold">فهرس المستندات من الأنظمة القائمة</h2>
+      <p className="text-xs text-slate-400">الفهرس للقراءة فقط. مستندات الموظفين والفواتير تبقى في أنظمتها، وتظل صلاحيات عرضها وتنزيلها كما هي. لا تُباع ولا تُنسخ إلى الملفات التجارية تلقائيًا.</p>
+      <button type="button" onClick={()=>void loadOriginalSources()} disabled={hrSource.status==='loading' || erpSource.status==='loading'} className="rounded border border-slate-600 px-3 py-2 disabled:opacity-50">عرض المستندات المصرح بها</button>
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="space-y-2">
+          <h3 className="font-semibold">مستندات الموظفين (HR)</h3>
+          {hrSource.status==='denied' && <p className="text-sm text-amber-300">غير متاحة لهذه الجلسة أو تعذر الاتصال؛ لم يتم تجاوز صلاحيات HR.</p>}
+          {hrSource.status==='loaded' && !hrSource.items.length && <p className="text-sm text-slate-400">لا توجد مستندات ضمن الصلاحيات الحالية.</p>}
+          {hrSource.items.map(doc=><p key={doc.id} className="break-words text-sm">{doc.title} — {doc.fileName}</p>)}
+          <Link href="/dashboard/hr/documents" className="text-blue-300 underline">فتح مستندات HR الأصلية</Link>
+        </div>
+        <div className="space-y-2">
+          <h3 className="font-semibold">الفواتير (ERP)</h3>
+          {erpSource.status==='denied' && <p className="text-sm text-amber-300">غير متاحة لهذه الجلسة أو تعذر الاتصال؛ لم يتم تجاوز صلاحيات ERP.</p>}
+          {erpSource.status==='loaded' && !erpSource.items.length && <p className="text-sm text-slate-400">لا توجد فواتير ضمن الصلاحيات الحالية.</p>}
+          {erpSource.items.map(inv=><p key={inv.id} className="break-words text-sm">{inv.invoiceNumber} — {inv.status}</p>)}
+          <Link href="/dashboard/erp" className="text-blue-300 underline">فتح الفواتير الأصلية</Link>
+        </div>
+      </div>
+    </section>
     <p className="text-sm text-slate-300">ملفات هذه الشركة فقط. التنزيل يتطلب قرار المالك أو فاتورة مسددة تطابق الملف والمشتري. التنزيل الجزئي يدعم صفحات PDF أو أسطر الملفات النصية.</p>
     <section className="space-y-3 rounded-xl border border-slate-700 bg-slate-900 p-4">
       <h2 className="font-semibold">رفع ملف تجاري — لمدير الشركة فقط</h2>
