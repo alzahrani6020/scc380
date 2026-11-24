@@ -95,7 +95,10 @@ export async function middleware(request: NextRequest) {
   // This route contains no owner data; it rotates the HttpOnly refresh session
   // and obtains a new access token before the server-only owner layout runs.
   if (path.startsWith('/owner/') && !sessionValid && mayRefresh) {
-    const resume = NextResponse.redirect(new URL('/auth/owner-resume', request.url));
+    const target = new URL('/auth/owner-resume', request.url);
+    // Preserve only known owner routes; never accept an arbitrary redirect URL.
+    target.searchParams.set('next', path === '/owner/files' ? '/owner/files' : '/owner/activity');
+    const resume = NextResponse.redirect(target);
     resume.headers.set('Cache-Control', 'no-store');
     return resume;
   }
