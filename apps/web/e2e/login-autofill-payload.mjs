@@ -8,7 +8,7 @@ const browser = await chromium.launch({ headless: true });
 try {
   const page = await browser.newPage();
   let observed = null;
-  await page.route('https://scc380-api.onrender.com/auth/login', async route => {
+  await page.route('http://127.0.0.1:3000/api/auth/login', async route => {
     const req = route.request();
     observed = { method: req.method(), data: req.postDataJSON() };
     await route.fulfill({
@@ -53,7 +53,7 @@ try {
   // Reproduce the exact NestJS ValidationPipe array response shown in the
   // screenshot. The UI must not concatenate raw English diagnostics.
   const validationPage = await browser.newPage();
-  await validationPage.route('https://scc380-api.onrender.com/auth/login', async route => {
+  await validationPage.route('http://127.0.0.1:3000/api/auth/login', async route => {
     await route.fulfill({
       status: 400, contentType: 'application/json',
       body: JSON.stringify({
