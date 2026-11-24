@@ -117,6 +117,10 @@ export default function LoginPage() {
         setError(`تعذر تسجيل الدخول (429). ${details} ${seconds > 0
           ? `مدة الانتظار الواردة من الخادم: ${Math.floor(seconds / 60)} دقيقة و${seconds % 60} ثانية.`
           : 'لم يرسل الخادم مدة انتظار قابلة للتحقق.'}`);
+      } else if ([502, 503, 504].includes(err?.response?.status)) {
+        // Render Free may be waking from idle. Never automatically replay
+        // credential POSTs: the upstream could have processed the first one.
+        setError('خدمة تسجيل الدخول غير متاحة مؤقتًا وقد تكون قيد التشغيل بعد الخمول. انتظر قليلًا ثم اضغط تسجيل الدخول مرة أخرى؛ لم نُعِد إرسال بيانات الدخول تلقائيًا.');
       } else if (err?.response?.status === 401) {
         setError('البريد الإلكتروني أو كلمة المرور غير صحيحة.');
       } else {
@@ -159,9 +163,11 @@ export default function LoginPage() {
       window.location.assign('/dashboard');
     } catch (err: any) {
       const detail = err?.response?.data?.message;
-      setError(typeof detail === 'string'
-        ? detail
-        : 'تعذر تسجيل الدخول بـ Google. تحقق من تفعيل الحساب وحاول مرة أخرى.');
+      setError([502, 503, 504].includes(err?.response?.status)
+        ? 'خدمة المصادقة غير متاحة مؤقتًا، وقد تكون قيد الاستيقاظ من الخمول. أعد محاولة Google بعد قليل. لم نكرر إرسال رمز المصادقة تلقائيًا.'
+        : typeof detail === 'string'
+          ? detail
+          : 'تعذر تسجيل الدخول بـ Google. تحقق من تفعيل الحساب وحاول مرة أخرى.');
       googleLogout();
     } finally { setLoading(false); }
   };
