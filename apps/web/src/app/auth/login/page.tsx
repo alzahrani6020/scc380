@@ -132,6 +132,11 @@ export default function LoginPage() {
   };
 
   const handleGoogleSuccess = async (credentialResponse: any) => {
+    if (loading) return;
+    if (typeof credentialResponse?.credential !== 'string' || !credentialResponse.credential) {
+      setError('لم تُرجع Google بيانات مصادقة صالحة؛ أعد المحاولة.');
+      return;
+    }
     setLoading(true); setError('');
     try {
       const initial = await api.post('/auth/google', { credential: credentialResponse.credential });
@@ -149,9 +154,14 @@ export default function LoginPage() {
         user: { email: data.user.email, firstName: data.user.firstName, lastName: data.user.lastName },
       };
       setAuth(authData, true);
-      router.push('/dashboard');
+      // Use a full navigation only after the refresh cookie and access cookie
+      // are established, so protected server routes see the new session.
+      window.location.assign('/dashboard');
     } catch (err: any) {
-      setError(err.response?.data?.message || err.message || 'فشل تسجيل الدخول بـ Google');
+      const detail = err?.response?.data?.message;
+      setError(typeof detail === 'string'
+        ? detail
+        : 'تعذر تسجيل الدخول بـ Google. تحقق من تفعيل الحساب وحاول مرة أخرى.');
       googleLogout();
     } finally { setLoading(false); }
   };
