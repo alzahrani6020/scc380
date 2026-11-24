@@ -1,5 +1,5 @@
 // Browser regression for the production-reported login HTTP 429 case.
-// Runs against the LOCAL web build with a mocked auth endpoint: no production requests.
+// Runs against the LOCAL web build; intercept the actual same-origin /api/auth/login rewrite, without production requests.
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 
@@ -7,7 +7,7 @@ const browser = await chromium.launch({ headless: true });
 try {
   const page = await browser.newPage({ locale: 'ar-SA' });
   let attempts = 0;
-  await page.route('https://scc380-api.onrender.com/auth/login', async route => {
+  await page.route('http://127.0.0.1:3000/api/auth/login', async route => {
     attempts += 1;
     await route.fulfill({
       status: 429,
