@@ -25,12 +25,14 @@ export default function OwnerFilesPage() {
       api.get<RequestRow[]>('/owner-files/owner/requests'),
       api.get<AuditRow[]>('/owner-files/owner/audit'),
     ]);
-    const requestFailed = requestResult.status === 'rejected'
-      || !Array.isArray(requestResult.value.data);
-    const auditFailed = auditResult.status === 'rejected'
-      || !Array.isArray(auditResult.value.data);
-    setRequests(requestFailed ? [] : requestResult.value.data);
-    setAudits(auditFailed ? [] : auditResult.value.data);
+    const loadedRequests = requestResult.status === 'fulfilled' && Array.isArray(requestResult.value.data)
+      ? requestResult.value.data : null;
+    const loadedAudits = auditResult.status === 'fulfilled' && Array.isArray(auditResult.value.data)
+      ? auditResult.value.data : null;
+    const requestFailed = loadedRequests === null;
+    const auditFailed = loadedAudits === null;
+    setRequests(loadedRequests ?? []);
+    setAudits(loadedAudits ?? []);
     setRequestsError(requestFailed);
     setAuditsError(auditFailed);
     setLoading(false);
