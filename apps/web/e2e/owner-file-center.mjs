@@ -47,14 +47,29 @@ async function waitForRequest(requesterId, scope) {
   }
   throw new Error('Browser request never reached database');
 }
-async function downloadAndVerify(page,expected) {
-  const event=page.waitForEvent('download',{timeout:15000});
-  await page.getByRole('button',{name:'تنزيل بعد التحقق'}).last().click();
-  const item=await event;
-  const path=await item.path();
-  assert.ok(path,'Browser must save a real download');
-  assert.equal(await readFile(path,'utf8'),expected);
-  assert.equal(await item.failure(),null);
+async function downloadAndVerify(page,expected,requestId) {
+  const responses = [];
+  const onResponse = (response) => {
+    if (response.url().includes('/owner-files/requests/') && response.url().includes('/download')) {
+      responses.push({status:response.status(), contentType:response.headers()['content-type'] || null});
+    }
+  };
+  page.on('response', onResponse);
+  const event = page.waitForEvent('download',{timeout:15000});
+  try {
+    await page.locator('section').filter({hasText:requestId}).getByRole('button',{name:'تنزيل بعد التحقق'}).click();
+    const item = await event.catch(async error => {
+      const notice = await page.getByRole('status').allTextContents().catch(() => []);
+      throw new Error('Browser download missing; API responses=' + JSON.stringify(responses)
+        + '; visible notices=' + JSON.stringify(notice), {cause:error});
+    });
+    const path = await item.path();
+    assert.ok(path,'Browser must save a real download');
+    assert.equal(await readFile(path,'utf8'),expected);
+    assert.equal(await item.failure(),null);
+  } finally {
+    page.off('response', onResponse);
+  }
 }
 try {
   browser=await chromium.launch({headless:true});
@@ -106,7 +121,7 @@ try {
   await principal.page.getByRole('button',{name:'موافقة'}).first().click();
   await principal.page.getByText(/APPROVED/).first().waitFor();
   await page.getByRole('button',{name:'تحديث الطلبات'}).click();
-  await downloadAndVerify(page,'alpha\nbeta\ngamma');
+  await downloadAndVerify(page,'alpha\nbeta\ngamma',full.id);
   await principal.page.getByRole('button',{name:'إلغاء السماح'}).first().click();
   await principal.page.getByText(/REVOKED/).first().waitFor();
   await page.getByRole('button',{name:'تحديث الطلبات'}).click();
@@ -126,7 +141,7 @@ try {
   await principal.page.getByRole('button',{name:'موافقة'}).first().click();
   await principal.page.getByText(/APPROVED/).first().waitFor();
   await page.getByRole('button',{name:'تحديث الطلبات'}).click();
-  await downloadAndVerify(page,'beta');
+  await downloadAndVerify(page,'beta',partial.id);
   console.log('STATUS: PASS - OWNER_FILES_REAL_BROWSER_DOWNLOAD_AND_REVOKE');
   console.log('EVIDENCE: Chromium saved FULL and PARTIAL files; bytes matched; revoked HTTP 403; foreign tenant HTTP 404');
 } finally {
