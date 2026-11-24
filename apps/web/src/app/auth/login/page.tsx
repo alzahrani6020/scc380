@@ -23,6 +23,15 @@ export default function LoginPage() {
   const [retrySeconds, setRetrySeconds] = useState(0);
   const [diagnosticId, setDiagnosticId] = useState('');
 
+  // Wake the free-tier API as soon as the public login page opens, instead
+  // of delaying first contact until the user submits credentials. GET only;
+  // never send or retry credentials, and never treat this as an auth check.
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch('/api/', { method: 'GET', cache: 'no-store', signal: controller.signal }).catch(() => undefined);
+    return () => controller.abort();
+  }, []);
+
   // Prefill the remembered email when the user chose "تذكرني" previously
   useEffect(() => {
     const saved = localStorage.getItem('rememberedEmail');
