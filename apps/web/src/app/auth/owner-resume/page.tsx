@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { sessionAuth } from '@/lib/session-auth';
 import { setAuth, getRememberPreference } from '@/lib/auth';
@@ -10,8 +9,6 @@ import { setAuth, getRememberPreference } from '@/lib/auth';
 // The protected owner layout will re-validate the new access token at the API.
 export default function OwnerSessionRecovery() {
   const [state, setState] = useState<'checking' | 'expired'>('checking');
-  const searchParams = useSearchParams();
-  const destination = searchParams.get('next') === '/owner/files' ? '/owner/files' : '/owner/activity';
   useEffect(() => {
     let mounted = true;
     const restore = async () => {
@@ -25,7 +22,10 @@ export default function OwnerSessionRecovery() {
           tenantId: result.user.tenantId || null,
           user: { email: result.user.email },
         }, getRememberPreference());
-        if (mounted) window.location.replace(destination);
+        if (mounted) {
+          const next = new URLSearchParams(window.location.search).get('next');
+          window.location.replace(next === '/owner/files' ? '/owner/files' : '/owner/activity');
+        }
       } catch {
         // A failed refresh does not prove a fresh login will succeed.
         // Keep the page unprivileged and offer normal sign-in.
@@ -34,7 +34,7 @@ export default function OwnerSessionRecovery() {
     };
     void restore();
     return () => { mounted = false; };
-  }, [destination]);
+  }, []);
 
   return (
     <main dir="rtl" className="mx-auto mt-24 max-w-lg rounded-xl border border-slate-700 bg-slate-900 p-6 text-white">
