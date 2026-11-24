@@ -15,16 +15,25 @@ export default function OwnerFilesPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [reason, setReason] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [requestsError, setRequestsError] = useState(false);
+  const [auditsError, setAuditsError] = useState(false);
   const load = useCallback(async () => {
-    try {
-      const [result, auditResult] = await Promise.all([
-        api.get<RequestRow[]>('/owner-files/owner/requests'),
-        api.get<AuditRow[]>('/owner-files/owner/audit'),
-      ]);
-      setRequests(Array.isArray(result.data) ? result.data : []);
-      setAudits(Array.isArray(auditResult.data) ? auditResult.data : []);
-      setError('');
-    } catch { setError('تعذر جلب الطلبات؛ لم يتم تغيير الصلاحيات.'); }
+    setLoading(true);
+    // Audit history is supplementary: failure must not suppress approvable requests.
+    const [requestResult, auditResult] = await Promise.allSettled([
+      api.get<RequestRow[]>('/owner-files/owner/requests'),
+      api.get<AuditRow[]>('/owner-files/owner/audit'),
+    ]);
+    const requestFailed = requestResult.status === 'rejected'
+      || !Array.isArray(requestResult.value.data);
+    const auditFailed = auditResult.status === 'rejected'
+      || !Array.isArray(auditResult.value.data);
+    setRequests(requestFailed ? [] : requestResult.value.data);
+    setAudits(auditFailed ? [] : auditResult.value.data);
+    setRequestsError(requestFailed);
+    setAuditsError(auditFailed);
+    setLoading(false);
   }, []);
   useEffect(() => { void load(); }, [load]);
   async function decide(requestId: string, decision: 'APPROVE' | 'REJECT' | 'REVOKE') {
@@ -50,6 +59,9 @@ export default function OwnerFilesPage() {
     </label></div>
     <button type="button" onClick={() => void load()} className="rounded bg-blue-700 px-4 py-2">تحديث</button>
     {error && <p role="alert" className="text-red-300">{error}</p>}
+    {loading && <p role="status" className="text-slate-300">جارٍ تحميل الطلبات وسجل التدقيق...</p>}
+    {requestsError && <p role="alert" className="text-red-300">تعذر تحميل طلبات الموافقة. لا يمكن اعتماد قرارات حتى تتوفر الطلبات؛ أعد المحاولة.</p>}
+    {auditsError && <p role="alert" className="text-amber-300">تعذر تحميل سجل التدقيق، لكن عرض الطلبات والقرارات المصرح بها لا يزال متاحًا.</p>}
     <div className="space-y-3">{requests.map(item =>
       <section key={item.id} className="rounded-xl border border-slate-700 bg-slate-900 p-4">
         <strong className="block break-all">{item.file.title} — {item.file.fileName}</strong>
@@ -61,7 +73,7 @@ export default function OwnerFilesPage() {
         </div>}
         {item.status === 'APPROVED' && <button type="button" disabled={busy} onClick={() => void decide(item.id, 'REVOKE')} className="mt-3 rounded border border-amber-600 px-3 py-2 disabled:opacity-50">إلغاء السماح</button>}
       </section>
-    )}{!requests.length && <p className="text-slate-300">لا توجد طلبات مسجلة.</p>}</div>
+    )}{!loading && !requestsError && !requests.length && <p className="text-slate-300">لا توجد طلبات مسجلة.</p>}</div>
     <section className="space-y-3 rounded-xl border border-slate-700 bg-slate-900 p-4">
       <h2 className="font-semibold">سجل الموافقات ومحاولات التسليم — آخر 100 حدث</h2>
       <p className="text-xs text-slate-400">أحداث API المسجلة؛ اكتمال استجابة HTTP لا يثبت حفظ الملف على جهاز المستخدم.</p>
@@ -75,7 +87,7 @@ export default function OwnerFilesPage() {
           <td className="p-2 break-all">{a.userId || '-'}</td>
         </tr>)}</tbody>
       </table></div>
-      {!audits.length && <p className="text-slate-400">لا توجد أحداث مسجلة.</p>}
+      {!loading && !auditsError && !audits.length && <p className="text-slate-400">لا توجد أحداث مسجلة.</p>}
     </section>
   </main>;
 }
