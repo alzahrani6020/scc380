@@ -198,8 +198,19 @@ try {
   const partialPanel = principal.page.locator('section').filter({hasText:partial.id});
   await partialPanel.getByRole('button',{name:'موافقة'}).click();
   await partialPanel.getByText(/APPROVED/).waitFor();
-  const approvedPartial=await prisma.ownerFileRequest.findUnique({where:{id:partial.id}});
-  assert.equal(approvedPartial?.status,'APPROVED','Partial request must actually be approved');
+  // Wait for the actual database commit, not merely a UI text match.
+  let approvedPartial;
+  const approvalDeadline=Date.now()+8000;
+  while (Date.now()<approvalDeadline) {
+    approvedPartial=await prisma.ownerFileRequest.findUnique({where:{id:partial.id}});
+    if(approvedPartial?.status==='APPROVED')break;
+    await new Promise(resolve=>setTimeout(resolve,150));
+  }
+  if(approvedPartial?.status!=='APPROVED') {
+    const notice=await principal.page.locator('[role="alert"]').allTextContents().catch(()=>[]);
+    throw new Error('Partial approval not persisted; status='+String(approvedPartial?.status)+
+      '; notices='+JSON.stringify(notice));
+  }
   await page.getByRole('button',{name:'تحديث الطلبات'}).click();
   await downloadAndVerify(page,'beta',partial.id);
   const forbiddenAudit=await prisma.auditLog.findFirst({where:{
