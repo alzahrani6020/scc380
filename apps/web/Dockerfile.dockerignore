@@ -1,0 +1,20 @@
+# Web-specific Docker build context; do not change API's root .dockerignore.
+# Exclude unrelated apps but retain apps/web and all workspace packages.
+apps/api/
+apps/admin/
+apps/mobile/
+# Build artifacts
+**/.next/
+**/dist/
+**/build/
+**/node_modules/
+.git/
+.gitignore
+.env
+.env.*
+*.log
+**/.vscode/
+**/_Organized/
+**/coverage/
+docs/
+scripts/
