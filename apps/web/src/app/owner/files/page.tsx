@@ -15,11 +15,24 @@ export default function OwnerFilesPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [reason, setReason] = useState('');
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [page, setPage] = useState(1);
+  const pageSize = 20;
+  const filtered = requests.filter(item =>
+    (statusFilter === 'ALL' || item.status === statusFilter) &&
+    [item.file.title, item.file.fileName, item.id, item.tenantId, item.requesterId]
+      .some(value => value.toLowerCase().includes(search.trim().toLowerCase()))
+  );
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const visibleRequests = filtered.slice((Math.min(page, totalPages) - 1) * pageSize, Math.min(page, totalPages) * pageSize);
+
   const [loading, setLoading] = useState(true);
   const [requestsError, setRequestsError] = useState(false);
   const [auditsError, setAuditsError] = useState(false);
   const load = useCallback(async () => {
     setLoading(true);
+    setError('');
     // Audit history is supplementary: failure must not suppress approvable requests.
     const [requestResult, auditResult] = await Promise.allSettled([
       api.get<RequestRow[]>('/owner-files/owner/requests'),
@@ -64,7 +77,24 @@ export default function OwnerFilesPage() {
     {loading && <p role="status" className="text-slate-300">جارٍ تحميل الطلبات وسجل التدقيق...</p>}
     {requestsError && <p role="alert" className="text-red-300">تعذر تحميل طلبات الموافقة. لا يمكن اعتماد قرارات حتى تتوفر الطلبات؛ أعد المحاولة.</p>}
     {auditsError && <p role="alert" className="text-amber-300">تعذر تحميل سجل التدقيق، لكن عرض الطلبات والقرارات المصرح بها لا يزال متاحًا.</p>}
-    <div className="space-y-3">{requests.map(item =>
+    <section aria-label="بحث وتصنيف طلبات التنزيل" className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-700 bg-slate-900 p-4">
+      <label className="text-sm">البحث في الطلبات
+        <input value={search} onChange={event => { setSearch(event.target.value); setPage(1); }}
+          placeholder="الملف، الشركة، المستخدم أو رقم الطلب" className="mt-2 block w-full min-w-64 rounded border border-slate-700 bg-slate-950 p-2"/>
+      </label>
+      <label className="text-sm">حالة الطلب
+        <select value={statusFilter} onChange={event => { setStatusFilter(event.target.value); setPage(1); }}
+          className="mt-2 block rounded border border-slate-700 bg-slate-950 p-2">
+          <option value="ALL">كل الحالات</option>
+          <option value="PENDING">قيد الموافقة</option>
+          <option value="APPROVED">موافق عليه</option>
+          <option value="REJECTED">مرفوض</option>
+          <option value="REVOKED">ملغى السماح</option>
+        </select>
+      </label>
+      <p className="text-sm text-slate-300">المعروض: {visibleRequests.length} من {filtered.length} ضمن آخر {requests.length} طلب أرجعه الخادم.</p>
+    </section>
+    <div className="space-y-3">{visibleRequests.map(item =>
       <section key={item.id} className="rounded-xl border border-slate-700 bg-slate-900 p-4">
         <strong className="block break-all">{item.file.title} — {item.file.fileName}</strong>
         <p className="mt-1 break-all text-xs text-slate-400">الطلب: {item.id} | الشركة: {item.tenantId} | المستخدم: {item.requesterId}</p>
@@ -75,7 +105,15 @@ export default function OwnerFilesPage() {
         </div>}
         {item.status === 'APPROVED' && <button type="button" disabled={busy} onClick={() => void decide(item.id, 'REVOKE')} className="mt-3 rounded border border-amber-600 px-3 py-2 disabled:opacity-50">إلغاء السماح</button>}
       </section>
-    )}{!loading && !requestsError && !requests.length && <p className="text-slate-300">لا توجد طلبات مسجلة.</p>}</div>
+    )}{!loading && !requestsError && !requests.length && <p className="text-slate-300">لا توجد طلبات مسجلة.</p>}
+    {!loading && !requestsError && requests.length > 0 && !filtered.length && <p className="text-slate-300">لا توجد طلبات مطابقة للبحث أو الحالة المحددة.</p>}</div>
+    {!loading && !requestsError && totalPages > 1 && <nav aria-label="صفحات الطلبات" className="flex items-center gap-3">
+      <button type="button" disabled={page <= 1} onClick={() => setPage(current => Math.max(1, current - 1))}
+        className="rounded border border-slate-600 px-3 py-2 disabled:opacity-50">السابق</button>
+      <span>صفحة {Math.min(page, totalPages)} من {totalPages}</span>
+      <button type="button" disabled={page >= totalPages} onClick={() => setPage(current => Math.min(totalPages, current + 1))}
+        className="rounded border border-slate-600 px-3 py-2 disabled:opacity-50">التالي</button>
+    </nav>}
     <section className="space-y-3 rounded-xl border border-slate-700 bg-slate-900 p-4">
       <h2 className="font-semibold">سجل الموافقات ومحاولات التسليم — آخر 100 حدث</h2>
       <p className="text-xs text-slate-400">أحداث API المسجلة؛ اكتمال استجابة HTTP لا يثبت حفظ الملف على جهاز المستخدم.</p>
