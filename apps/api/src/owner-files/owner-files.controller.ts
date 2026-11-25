@@ -161,13 +161,19 @@ export class OwnerFilesController {
     });
   }
   @Get('owner/requests')
-  async queue(@Req() req: any) {
+  async queue(@Req() req: any, @Query('offset') offsetParam?: string) {
     await this.owner(req);
+    const offset = offsetParam === undefined ? 0 : Number(offsetParam);
+    if (!Number.isSafeInteger(offset) || offset < 0 || offset > 1000000) {
+      throw new BadRequestException('Invalid requests offset');
+    }
+    // Preserve the array response used by existing clients while allowing
+    // explicit pagination past the first 200 commercial-file requests.
     return prisma.ownerFileRequest.findMany({
       select: { id: true, fileId: true, tenantId: true, requesterId: true, scope: true,
         startLine: true, endLine: true, status: true, createdAt: true, decidedAt: true,
         file: { select: { title: true, fileName: true } } },
-      orderBy: { createdAt: 'desc' }, take: 200,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip: offset, take: 200,
     });
   }
   @Get('owner/audit')
