@@ -102,6 +102,25 @@ api.interceptors.response.use(
         '/auth/logout-all',
       ].some((path) => original.url.startsWith(path));
 
+    // Free-tier API wake-ups can briefly return 502/503/504. Retry only
+    // read-only metadata GETs. Never retry downloads (delivery is audited)
+    // or writes, token rotation, login, payments, or permission decisions.
+    // Keep 401/403/404 authoritative; do not change cookies or roles here.
+    const retryableStatus = [502, 503, 504].includes(error.response?.status);
+    const requestPath = typeof original?.url === 'string' ? original.url : '';
+    const safeRead = original?.method?.toLowerCase() === 'get'
+      && !/\\/download(?:\\/|\\?|$)/i.test(requestPath)
+      && !/\\/payments?(?:\\/|\\?|$)/i.test(requestPath);
+    if (retryableStatus && safeRead && typeof window !== 'undefined') {
+      const attempt = Number.isInteger(original._coldStartAttempt) ? original._coldStartAttempt : 0;
+      const delays = [2000, 4000, 8000, 12000, 16000];
+      if (attempt < delays.length) {
+        original._coldStartAttempt = attempt + 1;
+        await new Promise<void>(resolve => setTimeout(resolve, delays[attempt]));
+        return api(original);
+      }
+    }
+
     // A 404 may be caused by a browser tenant selection from an old account.
     // Reconcile only GET requests, using the authenticated server identity.
     // Never retry an unrelated missing record unless the verified tenant changed.
