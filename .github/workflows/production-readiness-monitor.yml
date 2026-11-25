@@ -1,6 +1,10 @@
 name: SCC380 Production Readiness Monitor
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-readiness-monitor.yml'
   schedule:
     # UTC, four checks per hour; GitHub schedules are best-effort.
     - cron: '7,22,37,52 * * * *'
