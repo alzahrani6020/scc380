@@ -1,0 +1,74 @@
+# Customer-owned isolated installation; HTTPS reverse proxy required.
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: scc
+      POSTGRES_DB: scc_main
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes: [scc_postgres:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scc -d scc_main"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [backend]
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [scc_redis:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [backend]
+  api:
+    build:
+      context: ../../../
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      DATABASE_URL: ${DATABASE_URL:?Set isolated customer DATABASE_URL}
+      DIRECT_URL: ${DIRECT_URL:?Set isolated customer DIRECT_URL}
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:?Set strong JWT_SECRET}
+      SCC380_ACTIVITY_OWNER_EMAIL: ${SCC380_ACTIVITY_OWNER_EMAIL:?Set owner email}
+      CORS_ORIGINS: ${CORS_ORIGINS:?Set HTTPS customer origin}
+      ENABLE_SWAGGER: "0"
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 20s
+      timeout: 8s
+      retries: 12
+      start_period: 120s
+    networks: [backend]
+  web:
+    build:
+      context: ../../../
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: /api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      API_INTERNAL_URL: http://api:3001
+      NEXT_PUBLIC_API_URL: /api
+    depends_on:
+      api: {condition: service_healthy}
+    ports: ["127.0.0.1:${SCC_HTTP_PORT:-3000}:3000"]
+    networks: [backend]
+networks:
+  backend:
+    driver: bridge
+volumes:
+  scc_postgres:
+  scc_redis:
