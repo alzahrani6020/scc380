@@ -97,7 +97,20 @@ try {
   const applicant=await signIn(requester);
   const principal=await signIn(owner);
   const foreign=await signIn(outsider);
+  // Emulate one upstream 503 while Render wakes up. A safe GET should
+  // recover without re-submitting any upload, payment or approval.
+  let initialReadFaults=0;
+  await applicant.page.route('**/api/owner-files', async route => {
+    if (route.request().method() === 'GET' && initialReadFaults === 0) {
+      initialReadFaults++;
+      await route.fulfill({status:503,contentType:'application/json',body:'{"message":"Service temporarily unavailable"}'});
+      return;
+    }
+    await route.continue();
+  });
   await checkPage(applicant.page,'/downloads/files','مركز ملفات الشركة');
+  await applicant.page.getByText('لا توجد ملفات تجارية مسجلة لهذه الشركة.').waitFor({timeout:20000});
+  assert.equal(initialReadFaults,1,'Transient simulated 503 must be exercised');
   await checkPage(principal.page,'/owner/files','مركز ملفات المالك — مراجعة الطلبات');
   await checkPage(foreign.page,'/downloads/files','مركز ملفات الشركة');
   const page=applicant.page;

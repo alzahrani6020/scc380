@@ -92,7 +92,7 @@ export default function OwnerFilesPage() {
     </label></div>
     <button type="button" onClick={() => void load()} className="rounded bg-blue-700 px-4 py-2">تحديث</button>
     {error && <p role="alert" className="text-red-300">{error}</p>}
-    {loading && <p role="status" className="text-slate-300">جارٍ تحميل الطلبات وسجل التدقيق...</p>}
+    {loading && <p role="status" className="text-slate-300">جارٍ التحقق من طلبات المالك وسجل التدقيق... قد يستغرق الاتصال نحو دقيقة أثناء استعادة الخدمة. لن تُنفذ أي موافقة تلقائيًا.</p>}
     {requestsError && <p role="alert" className="text-red-300">تعذر تحميل طلبات الموافقة. لا يمكن اعتماد قرارات حتى تتوفر الطلبات؛ أعد المحاولة.</p>}
     {auditsError && <p role="alert" className="text-amber-300">تعذر تحميل سجل التدقيق، لكن عرض الطلبات والقرارات المصرح بها لا يزال متاحًا.</p>}
     <section aria-label="بحث وتصنيف طلبات التنزيل" className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-700 bg-slate-900 p-4">
