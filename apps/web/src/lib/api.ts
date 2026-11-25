@@ -109,8 +109,8 @@ api.interceptors.response.use(
     const retryableStatus = [502, 503, 504].includes(error.response?.status);
     const requestPath = typeof original?.url === 'string' ? original.url : '';
     const safeRead = original?.method?.toLowerCase() === 'get'
-      && !/\\/download(?:\\/|\\?|$)/i.test(requestPath)
-      && !/\\/payments?(?:\\/|\\?|$)/i.test(requestPath);
+      && !requestPath.includes('/download')
+      && !requestPath.includes('/payment');
     if (retryableStatus && safeRead && typeof window !== 'undefined') {
       const attempt = Number.isInteger(original._coldStartAttempt) ? original._coldStartAttempt : 0;
       const delays = [2000, 4000, 8000, 12000, 16000];
