@@ -50,6 +50,15 @@ export class OwnerFilesController {
     if (!user || user.status !== 'ACTIVE' || user.role !== req.user.role ||
       user.email.toLowerCase() !== configured) throw new ForbiddenException('Owner authorization required');
   }
+  // Bounded, validated offsets prevent accidental unbounded scans. Existing
+  // clients keep the same array response and default first-page behavior.
+  private offset(value: string | undefined): number {
+    const offset = value === undefined ? 0 : Number(value);
+    if (!Number.isSafeInteger(offset) || offset < 0 || offset > 1000000) {
+      throw new BadRequestException('Invalid pagination offset');
+    }
+    return offset;
+  }
   private async fileForTenant(req: any, fileId: string) {
     const file = await prisma.ownerFile.findFirst({ where: { id: fileId, tenantId: this.tenant(req) } });
     if (!file) throw new NotFoundException('File not found');
@@ -78,11 +87,11 @@ export class OwnerFilesController {
     if ((endLine as number) > count) throw new BadRequestException('Line range exceeds document');
   }
   @Get()
-  async list(@Req() req: any) {
+  async list(@Req() req: any, @Query('offset') offsetParam?: string) {
     const tenantId = this.tenant(req);
     return prisma.ownerFile.findMany({ where: { tenantId },
       select: { id: true, title: true, fileName: true, mimeType: true, sizeBytes: true, checksumSha256: true, createdAt: true },
-      orderBy: { createdAt: 'desc' }, take: 100 });
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip: this.offset(offsetParam), take: 100 });
   }
   @Post()
   async upload(@Req() req: any, @Body() body: UploadDto) {
@@ -151,22 +160,19 @@ export class OwnerFilesController {
     });
   }
   @Get('requests/mine')
-  async mine(@Req() req: any) {
+  async mine(@Req() req: any, @Query('offset') offsetParam?: string) {
     return prisma.ownerFileRequest.findMany({
       where: { tenantId: this.tenant(req), requesterId: req.user.userId },
       select: { id: true, fileId: true, scope: true, startLine: true, endLine: true,
         status: true, createdAt: true, decidedAt: true,
         file: { select: { fileName: true } } },
-      orderBy: { createdAt: 'desc' }, take: 100,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip: this.offset(offsetParam), take: 100,
     });
   }
   @Get('owner/requests')
   async queue(@Req() req: any, @Query('offset') offsetParam?: string) {
     await this.owner(req);
-    const offset = offsetParam === undefined ? 0 : Number(offsetParam);
-    if (!Number.isSafeInteger(offset) || offset < 0 || offset > 1000000) {
-      throw new BadRequestException('Invalid requests offset');
-    }
+    const offset = this.offset(offsetParam);
     // Preserve the array response used by existing clients while allowing
     // explicit pagination past the first 200 commercial-file requests.
     return prisma.ownerFileRequest.findMany({
@@ -177,7 +183,7 @@ export class OwnerFilesController {
     });
   }
   @Get('owner/audit')
-  async ownerAudit(@Req() req: any) {
+  async ownerAudit(@Req() req: any, @Query('offset') offsetParam?: string) {
     await this.owner(req);
     // Only commercial file center events; exclude invoice/payment payloads and secrets.
     return prisma.auditLog.findMany({
@@ -185,7 +191,8 @@ export class OwnerFilesController {
         action: { startsWith: 'OWNER_FILE_' } },
       select: { id: true, tenantId: true, userId: true, entityId: true,
         action: true, createdAt: true },
-      orderBy: { createdAt: 'desc' }, take: 100,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      skip: this.offset(offsetParam), take: 100,
     });
   }
   @Post('owner/decide')
@@ -300,11 +307,11 @@ export class OwnerFilesController {
       data: { tenantId, userId: req.user.userId, entityType: 'OWNER_FILE_REQUEST', entityId: request.id,
         action: 'OWNER_FILE_HTTP_RESPONSE_FINISHED',
         newValues: { scope: request.scope, bytes: output.length, sha256: checksum, proof: 'HTTP_ONLY' } },
-    }).catch(() => undefined); });
+    }).catch(error => console.error('OWNER_FILE_HTTP_AUDIT_WRITE_FAILED', error instanceof Error ? error.name : 'UnknownError')); });
     res.once('close', () => { if (!res.writableFinished) { void prisma.auditLog.create({
       data: { tenantId, userId: req.user.userId, entityType: 'OWNER_FILE_REQUEST', entityId: request.id,
         action: 'OWNER_FILE_HTTP_RESPONSE_INTERRUPTED', newValues: { proof: 'HTTP_ONLY' } },
-    }).catch(() => undefined); } });
+    }).catch(error => console.error('OWNER_FILE_HTTP_AUDIT_WRITE_FAILED', error instanceof Error ? error.name : 'UnknownError')); } });
     res.end(output);
   }
 }
