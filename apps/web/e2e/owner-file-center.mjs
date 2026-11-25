@@ -111,7 +111,12 @@ try {
   await checkPage(applicant.page,'/downloads/files','مركز ملفات الشركة');
   await applicant.page.getByText('لا توجد ملفات تجارية مسجلة لهذه الشركة.').waitFor({timeout:20000});
   assert.equal(initialReadFaults,1,'Transient simulated 503 must be exercised');
-  await checkPage(principal.page,'/owner/files','مركز ملفات المالك — مراجعة الطلبات');
+  await checkPage(principal.page,'/owner/files','مراجعة الملفات وقرارات التنزيل');
+  // Legacy deep link must land in the single owner console, not a second dashboard.
+  const ownerUrl = new URL(principal.page.url());
+  assert.equal(ownerUrl.pathname,'/owner','Legacy owner file route must redirect to the single console');
+  assert.equal(ownerUrl.searchParams.get('tab'),'files','Files tab must be selected');
+  await principal.page.getByRole('navigation',{name:'أقسام لوحة المالك الموحدة'}).waitFor();
   await checkPage(foreign.page,'/downloads/files','مركز ملفات الشركة');
   const page=applicant.page;
   await page.getByRole('textbox',{name:'عنوان الملف'}).fill('Browser acceptance');
@@ -160,7 +165,7 @@ try {
     return response.status;
   },{id:full.id,token:foreign.token});
   assert.equal(foreignResponse,404,'Foreign tenant download must not disclose request');
-  await principal.page.getByRole('button',{name:'تحديث'}).click();
+  await principal.page.getByRole('button',{name:'تحديث',exact:true}).click();
   // Owner search and status filter must expose the pending request.
   await principal.page.getByRole('textbox',{name:'البحث في الطلبات'}).fill(full.id);
   await principal.page.getByLabel('حالة الطلب').selectOption('PENDING');
@@ -206,7 +211,7 @@ try {
   await page.getByRole('button',{name:'إرسال طلب تنزيل'}).click();
   await page.getByText(/سُجل الطلب/).waitFor();
   const partial=await waitForRequest(requester.id,'PARTIAL');
-  await principal.page.getByRole('button',{name:'تحديث'}).click();
+  await principal.page.getByRole('button',{name:'تحديث',exact:true}).click();
   // Do not approve the older self-request; act on the exact partial request ID.
   const partialPanel = principal.page.locator('section').filter({hasText:partial.id});
   await partialPanel.getByRole('button',{name:'موافقة'}).click();
