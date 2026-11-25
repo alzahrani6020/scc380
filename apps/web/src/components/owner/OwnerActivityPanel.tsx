@@ -31,7 +31,7 @@ type Feed = {
 
 const readable = (value: string) => new Date(value).toLocaleString('ar-SA');
 
-export default function SiteActivityDashboard() {
+export default function OwnerActivityPanel() {
   const [role, setRole] = useState<string | null>(null);
   const [identityEmail, setIdentityEmail] = useState<string>('');
   const [authUnavailable, setAuthUnavailable] = useState(false);
@@ -174,7 +174,7 @@ export default function SiteActivityDashboard() {
 
   if (!role) return <div className="p-6 text-slate-200" dir="rtl">التحقق من الصلاحيات...</div>;
   if (!ownerAuthorized) return (
-    <main dir="rtl" className="mx-auto mt-12 max-w-xl rounded-xl border border-slate-700 bg-slate-900 p-6 text-white">
+    <section dir="rtl" className="mx-auto mt-12 max-w-xl rounded-xl border border-slate-700 bg-slate-900 p-6 text-white">
       <h1 className="mb-3 text-xl font-bold">التحقق من صلاحية لوحة المالك</h1>
       {authUnavailable ? (
         <>
@@ -189,7 +189,7 @@ export default function SiteActivityDashboard() {
         </>
       )}
       <p className="mt-4 text-xs text-slate-400">لا تُمنح صلاحيات المالك تلقائيًا بالوصول إلى الرابط؛ يجب أن تكون مرتبطة بحساب موثّق ومخوّل على الخادم.</p>
-    </main>
+    </section>
   );
 
   const rows = (data?.events || []).filter(event =>
@@ -205,7 +205,7 @@ export default function SiteActivityDashboard() {
   ];
 
   return (
-    <main dir="rtl" className="mx-auto min-w-0 w-full max-w-screen-2xl space-y-6 overflow-x-hidden px-4 py-6 text-white sm:px-6 lg:px-8">
+    <section dir="rtl" className="mx-auto min-w-0 w-full max-w-screen-2xl space-y-6 overflow-x-hidden px-4 py-6 text-white sm:px-6 lg:px-8">
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-4">
         <div className="min-w-0 flex-1">
           <h1 className="break-words text-xl font-bold sm:text-2xl">لوحة المالك المستقلة — مراقبة نشاط الموقع</h1>
@@ -325,6 +325,6 @@ export default function SiteActivityDashboard() {
         </section>
       </div>
       <p className="text-xs text-slate-400">تنزيل CSV يسجل إنشاء التقرير واستجابة الخادم؛ لا يثبت حفظ الملف على جهاز المستخدم. الزيارات لا تشمل صفحات الموقع العامة أو الزوار المجهولين.</p>
-    </main>
+    </section>
   );
 }
