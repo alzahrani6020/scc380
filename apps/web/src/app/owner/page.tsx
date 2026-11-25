@@ -59,6 +59,7 @@ export default function OwnerCommandCenter() {
   const [insights, setInsights] = useState<InsightSummary | null>(null);
   const [reportPending, setReportPending] = useState<number | null>(null);
   const [filePending, setFilePending] = useState<number | null>(null);
+  const [apiReady, setApiReady] = useState<boolean | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [lastChecked, setLastChecked] = useState<string | null>(null);
 
@@ -68,6 +69,7 @@ export default function OwnerCommandCenter() {
       api.get<InsightResponse>('/analytics/activity/owner/insights?days=7'),
       api.get<ReportRequest[]>('/analytics/activity/owner/requests'),
       api.get<FileRequest[]>('/owner-files/owner/requests'),
+      api.get<{ status: string }>('/ready'),
     ]);
     const problems: string[] = [];
     if (results[0].status === 'fulfilled' && results[0].value.data?.summary) {
@@ -88,6 +90,12 @@ export default function OwnerCommandCenter() {
       // This count is a loaded-page count, not a complete system total.
       setFilePending(requests.filter(r => r.status === 'PENDING').length);
     } else { setFilePending(null); problems.push('طلبات الملفات: تعذرت القراءة'); }
+    if (results[3].status === 'fulfilled' && results[3].value.data?.status === 'ready') {
+      setApiReady(true);
+    } else {
+      setApiReady(false);
+      problems.push('جاهزية API وقاعدة PostgreSQL: لم تثبت');
+    }
     setErrors(problems);
     setLastChecked(new Date().toISOString());
     setLoading(false);
@@ -122,7 +130,8 @@ export default function OwnerCommandCenter() {
           <h2 className="font-semibold">حالة مصادر بيانات المالك</h2>
           <span className="text-xs text-slate-400">{lastChecked ? `آخر تحقق: ${new Date(lastChecked).toLocaleString('ar-SA')}` : 'لم يكتمل التحقق بعد'}</span>
         </div>
-        <p className="mt-2 text-sm text-slate-300">{loading ? 'جارٍ فحص مصادر البيانات...' : errors.length === 0 ? 'اجتازت المصادر الثلاثة قراءة البيانات. هذه ليست شهادة بصحة جميع خدمات الإنتاج.' : 'بعض المصادر غير متاحة. الأرقام المتأثرة تعرض «غير متاح» بدل الصفر.'}</p>
+        <p className="mt-2 text-sm text-slate-300">{loading ? 'جارٍ فحص مصادر البيانات...' : errors.length === 0 ? 'اجتازت مصادر البيانات وفحص الجاهزية القراءة. هذه ليست شهادة بصحة جميع خدمات الإنتاج.' : 'بعض المصادر غير متاحة. الأرقام المتأثرة تعرض «غير متاح» بدل الصفر.'}</p>
+        <p className="mt-2 text-sm text-slate-300">جاهزية API واتصال PostgreSQL: {apiReady === null ? 'جارٍ الفحص' : apiReady ? 'جاهز وفق /ready' : 'غير جاهز أو تعذر التحقق'}. لا تثبت هذه القراءة وجود نسخة احتياطية أو سلامة جميع الوظائف.</p>
         {errors.length > 0 && <ul role="alert" className="mt-3 list-inside list-disc space-y-1 text-sm text-amber-300">
           {errors.map(error => <li key={error}>{error}</li>)}
         </ul>}
