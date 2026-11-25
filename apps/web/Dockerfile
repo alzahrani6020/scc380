@@ -1,7 +1,7 @@
 # Build stage for Next.js
 FROM node:20-alpine AS builder
 
-RUN npm install -g pnpm
+RUN npm install -g pnpm@9
 
 WORKDIR /app
 
@@ -17,15 +17,18 @@ RUN pnpm --filter @scc/utils build || true
 RUN pnpm --filter @scc/ui build || true
 RUN pnpm --filter @scc/auth build || true
 
-# Build web
+# Next.js serializes rewrites at build time. Customer builds MUST bind the
+# internal API origin to their own Compose service rather than SCC380 Render.
+ARG API_INTERNAL_URL
 ARG NEXT_PUBLIC_API_URL
+ENV API_INTERNAL_URL=${API_INTERNAL_URL}
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 RUN pnpm --filter @scc/web build
 
 # Production stage
 FROM node:20-alpine AS runner
 
-RUN npm install -g pnpm
+RUN npm install -g pnpm@9
 
 WORKDIR /app
 
