@@ -236,6 +236,27 @@ try {
     action:'OWNER_FILE_REVOKED'
   }});
   assert.ok(revokeAudit,'Revocation must be recorded in audit log');
+  // Audit pagination: generate only tenant-scoped synthetic CI events and verify
+  // that the owner can navigate beyond the original 100-event cutoff.
+  await prisma.auditLog.createMany({
+    data: Array.from({ length: 105 }, (_, index) => ({
+      tenantId:tenant.id, userId:requester.id, entityType:'OWNER_FILE_REQUEST',
+      entityId:full.id, action:'OWNER_FILE_PAGINATION_TEST',
+      newValues:{ testIndex:index },
+    })),
+  });
+  await principal.page.getByRole('button',{name:'تحديث',exact:true}).click();
+  await principal.page.getByRole('button',{name:'تحميل 100 حدث أقدم'}).waitFor();
+  await principal.page.getByRole('button',{name:'تحميل 100 حدث أقدم'}).click();
+  await principal.page.getByText(/سجل الموافقات ومحاولات التسليم — 1\d\d حدث محمّل/).waitFor();
+  const olderAuditResponse=await principal.page.evaluate(async token => {
+    const response=await fetch('/api/owner-files/owner/audit?offset=100', {
+      headers:{Authorization:'Bearer '+token}
+    });
+    return {status:response.status,rows:response.ok?(await response.json()).length:0};
+  },principal.token);
+  assert.equal(olderAuditResponse.status,200,'Owner audit offset must be available');
+  assert.ok(olderAuditResponse.rows>0,'Audit second page must contain older events');
   console.log('STATUS: PASS - OWNER_FILES_REAL_BROWSER_DOWNLOAD_AND_REVOKE');
   console.log('EVIDENCE: Chromium saved FULL and PARTIAL files; bytes matched; revoked HTTP 403; foreign tenant HTTP 404');
 } finally {
