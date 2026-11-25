@@ -175,7 +175,7 @@ export default function OwnerCommandCenter() {
       <section aria-labelledby="owner-modules">
         <h2 id="owner-modules" className="mb-3 text-lg font-semibold">وحدات مركز القيادة</h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {modules.map(({ title, detail, href, state, icon: Icon }) => (
+          {modules.filter(item => item.state === 'linked').map(({ title, detail, href, state, icon: Icon }) => (
             <div key={title} className="rounded-xl border border-slate-700 bg-slate-900 p-4">
               <div className="flex items-center justify-between gap-2">
                 <Icon className="h-5 w-5 text-blue-300" aria-hidden="true" />
@@ -191,6 +191,7 @@ export default function OwnerCommandCenter() {
             </div>
           ))}
         </div>
+        <p className="mt-3 text-sm text-slate-400">الوظائف الإدارية التي لم تُربط بالخادم لن تظهر كوحدات قابلة للتشغيل. يجري استكمالها ضمن مراحل منفصلة بعد إثبات مساراتها وصلاحياتها.</p>
       </section>
       </>}
       {tab === 'activity' && <OwnerActivityPanel />}
