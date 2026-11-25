@@ -96,7 +96,7 @@ export default function OwnerFilesPanel() {
     finally { setBusy(false); }
   }
   return <section dir="rtl" className="mx-auto max-w-6xl space-y-5 px-4 py-8 text-white">
-    <h1 className="text-2xl font-bold">مركز ملفات المالك — مراجعة الطلبات</h1>
+    <h1 className="text-2xl font-bold">مراجعة الملفات وقرارات التنزيل</h1>
     
     <p className="text-sm text-slate-300">الملفات التجارية المستقلة فقط. لا يتم تجاوز صلاحيات مستندات HR أو ERP. إثبات استجابة HTTP ليس إثبات الحفظ على جهاز المستخدم.</p>
     <nav aria-label="مصادر الملفات والصلاحيات" className="flex flex-wrap gap-4 text-sm">
