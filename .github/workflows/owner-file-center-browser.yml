@@ -77,7 +77,7 @@ jobs:
               tail -n 80 /tmp/owner-api.log
               exit 1
             fi
-            if curl -s --max-time 2 -o /dev/null http://127.0.0.1:3101/; then exit 0; fi
+            if curl -s --max-time 2 -o /dev/null http://127.0.0.1:3101/ready; then exit 0; fi
             sleep 2
           done
           tail -n 80 /tmp/owner-api.log
