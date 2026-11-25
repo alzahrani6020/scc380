@@ -208,7 +208,7 @@ export default function OwnerActivityPanel() {
     <section dir="rtl" className="mx-auto min-w-0 w-full max-w-screen-2xl space-y-6 overflow-x-hidden px-4 py-6 text-white sm:px-6 lg:px-8">
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <h1 className="break-words text-xl font-bold sm:text-2xl">لوحة المالك المستقلة — مراقبة نشاط الموقع</h1>
+          <h1 className="break-words text-xl font-bold sm:text-2xl">النشاط والتدقيق والموافقات</h1>
           
           <p className="mt-1 text-sm text-slate-400">المستخدمون المصرح لهم، زيارات لوحة النظام، الجلسات وسجلات التنزيل. لا تشمل الزيارات المجهولة.</p>
         </div>
