@@ -1,0 +1,74 @@
+name: SCC380 Customer Delivery Build Gate
+
+on:
+  pull_request:
+    paths:
+      - 'apps/web/Dockerfile'
+      - 'apps/web/next.config.js'
+      - 'apps/api/Dockerfile'
+      - 'infrastructure/docker/prod/**'
+      - '.github/workflows/customer-delivery-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-customer-package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate customer-only configuration and Compose topology
+        shell: bash
+        run: |
+          set -euo pipefail
+          path=infrastructure/docker/prod
+          cp "$path/.env.example" "$path/.env"
+          # A template must never be treated as valid production configuration.
+          if python3 "$path/preflight.py"; then
+            echo 'FAIL: placeholder environment was accepted'
+            exit 1
+          fi
+          python3 - <<'PY'
+          from pathlib import Path
+          from urllib.parse import quote
+          import secrets
+          path=Path("infrastructure/docker/prod/.env")
+          password=secrets.token_urlsafe(40)
+          jwt=secrets.token_urlsafe(48)
+          rows=path.read_text().splitlines()
+          rows=[row.replace("REPLACE_WITH_RANDOM_UNIQUE_PASSWORD",password)
+               .replace("REPLACE_WITH_AT_LEAST_32_RANDOM_CHARACTERS",jwt) for row in rows]
+          path.write_text("\n".join(rows)+"\n")
+          PY
+          python3 "$path/preflight.py"
+          docker compose --env-file "$path/.env" -f "$path/docker-compose.yml" config --quiet
+          docker compose --env-file "$path/.env" -f "$path/docker-compose.yml" config --format json > /tmp/scc-customer-config.json
+          python3 - <<'PY'
+          import json
+          cfg=json.load(open("/tmp/scc-customer-config.json"))
+          services=cfg["services"]
+          assert set(services)=={"postgres","redis","api","web"}
+          for service in ("postgres","redis","api"):
+              assert not services[service].get("ports"), f"{service} exposed"
+          assert services["web"]["build"]["args"]["API_INTERNAL_URL"]=="http://api:3001"
+          assert services["web"]["environment"]["API_INTERNAL_URL"]=="http://api:3001"
+          assert services["web"]["ports"][0]["host_ip"]=="127.0.0.1"
+          assert "scc380-api.onrender.com" not in str(services["web"])
+          print("PASS: isolated customer topology and build-time internal rewrite")
+          PY
+          sed -i 's|postgres:5432/scc_main|scc380-api.onrender.com:5432/scc_main|' "$path/.env"
+          if python3 "$path/preflight.py"; then
+            echo 'FAIL: remote database was accepted'
+            exit 1
+          fi
+          rm -f "$path/.env"
+      - name: Build customer API and Web images without connecting production
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Docker builds perform package compilation only. Do not start API:
+          # its existing CMD performs database migrations.
+          docker compose --env-file infrastructure/docker/prod/.env.example \
+            -f infrastructure/docker/prod/docker-compose.yml build api web
