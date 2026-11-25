@@ -26,13 +26,30 @@ export default async function OwnerLayout({ children }: { children: React.ReactN
 
   let response: Response;
   try {
-    response = await fetch(getOwnerApiOrigin() + '/analytics/activity/owner/status', {
-      method: 'GET',
-      headers: { Authorization: 'Bearer ' + token },
-      cache: 'no-store',
-      redirect: 'error',
-      signal: AbortSignal.timeout(25000),
-    });
+    // This is a read-only identity check. A sleeping API must not be
+    // interpreted as a rejected owner session, and privileged children
+    // must remain hidden until the live API explicitly authorizes them.
+    const delays = [2000, 4000, 8000];
+    let lastError: unknown;
+    let checked: Response | undefined;
+    for (let attempt = 0; attempt <= delays.length; attempt++) {
+      try {
+        checked = await fetch(getOwnerApiOrigin() + '/analytics/activity/owner/status', {
+          method: 'GET',
+          headers: { Authorization: 'Bearer ' + token },
+          cache: 'no-store',
+          redirect: 'error',
+          signal: AbortSignal.timeout(12000),
+        });
+        if (![502, 503, 504].includes(checked.status) || attempt === delays.length) break;
+      } catch (error) {
+        lastError = error;
+        if (attempt === delays.length) throw error;
+      }
+      await new Promise(resolve => setTimeout(resolve, delays[attempt]));
+    }
+    if (!checked) throw lastError || new Error('Owner authorization service unavailable');
+    response = checked;
   } catch {
     // Backend unavailability is not evidence that the caller is unauthorized.
     // This error component contains no privileged owner data.
