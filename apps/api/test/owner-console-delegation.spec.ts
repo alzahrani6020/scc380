@@ -62,7 +62,7 @@ test('cold-start mitigation retries only read-only GETs and never sensitive down
   assert.match(apiClient, /\[502, 503, 504\]/);
   assert.match(apiClient, /original\?\.method\?\.toLowerCase\(\) === 'get'/);
   assert.match(apiClient, /\/download/);
-  assert.match(apiClient, /\/payments/);
+  assert.match(apiClient, /\/payment/);
   assert.match(apiClient, /_coldStartAttempt/);
   assert.doesNotMatch(apiClient, /original\?\.method\?\.toLowerCase\(\) === 'post'\s*&&\s*retryableStatus/);
   assert.match(ownerLayout, /\[502, 503, 504\]/);
