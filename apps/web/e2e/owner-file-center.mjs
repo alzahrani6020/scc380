@@ -165,7 +165,7 @@ try {
     return response.status;
   },{id:full.id,token:foreign.token});
   assert.equal(foreignResponse,404,'Foreign tenant download must not disclose request');
-  await principal.page.getByRole('button',{name:'تحديث'}).click();
+  await principal.page.getByRole('button',{name:'تحديث',exact:true}).click();
   // Owner search and status filter must expose the pending request.
   await principal.page.getByRole('textbox',{name:'البحث في الطلبات'}).fill(full.id);
   await principal.page.getByLabel('حالة الطلب').selectOption('PENDING');
@@ -211,7 +211,7 @@ try {
   await page.getByRole('button',{name:'إرسال طلب تنزيل'}).click();
   await page.getByText(/سُجل الطلب/).waitFor();
   const partial=await waitForRequest(requester.id,'PARTIAL');
-  await principal.page.getByRole('button',{name:'تحديث'}).click();
+  await principal.page.getByRole('button',{name:'تحديث',exact:true}).click();
   // Do not approve the older self-request; act on the exact partial request ID.
   const partialPanel = principal.page.locator('section').filter({hasText:partial.id});
   await partialPanel.getByRole('button',{name:'موافقة'}).click();
