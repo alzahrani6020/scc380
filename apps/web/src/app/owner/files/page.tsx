@@ -12,6 +12,8 @@ type RequestRow = {
 export default function OwnerFilesPage() {
   const [requests, setRequests] = useState<RequestRow[]>([]);
   const [audits, setAudits] = useState<AuditRow[]>([]);
+  const [hasMoreRequests, setHasMoreRequests] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [reason, setReason] = useState('');
@@ -45,12 +47,28 @@ export default function OwnerFilesPage() {
     const requestFailed = loadedRequests === null;
     const auditFailed = loadedAudits === null;
     setRequests(loadedRequests ?? []);
+    setHasMoreRequests((loadedRequests?.length ?? 0) === 200);
+    setPage(1);
     setAudits(loadedAudits ?? []);
     setRequestsError(requestFailed);
     setAuditsError(auditFailed);
     setLoading(false);
   }, []);
   useEffect(() => { void load(); }, [load]);
+  async function loadMoreRequests() {
+    if (loadingMore || !hasMoreRequests || requestsError) return;
+    setLoadingMore(true);
+    try {
+      const response = await api.get<RequestRow[]>('/owner-files/owner/requests', { params: { offset: requests.length } });
+      if (!Array.isArray(response.data)) throw new Error('Invalid owner requests response');
+      setRequests(previous => [...previous, ...response.data.filter(item => !previous.some(old => old.id === item.id))]);
+      setHasMoreRequests(response.data.length === 200);
+    } catch {
+      setError('تعذر تحميل الصفحة التالية من الطلبات؛ لم يُحذف أي طلب من القائمة.');
+    } finally {
+      setLoadingMore(false);
+    }
+  }
   async function decide(requestId: string, decision: 'APPROVE' | 'REJECT' | 'REVOKE') {
     setBusy(true);
     try {
@@ -92,7 +110,7 @@ export default function OwnerFilesPage() {
           <option value="REVOKED">ملغى السماح</option>
         </select>
       </label>
-      <p className="text-sm text-slate-300">المعروض: {visibleRequests.length} من {filtered.length} ضمن آخر {requests.length} طلب أرجعه الخادم.</p>
+      <p className="text-sm text-slate-300">المعروض: {visibleRequests.length} من {filtered.length} ضمن {requests.length} طلب تم تحميله {hasMoreRequests ? '(توجد طلبات أقدم)' : ''}.</p>
     </section>
     <div className="space-y-3">{visibleRequests.map(item =>
       <section key={item.id} className="rounded-xl border border-slate-700 bg-slate-900 p-4">
@@ -107,6 +125,10 @@ export default function OwnerFilesPage() {
       </section>
     )}{!loading && !requestsError && !requests.length && <p className="text-slate-300">لا توجد طلبات مسجلة.</p>}
     {!loading && !requestsError && requests.length > 0 && !filtered.length && <p className="text-slate-300">لا توجد طلبات مطابقة للبحث أو الحالة المحددة.</p>}</div>
+    {!loading && !requestsError && hasMoreRequests && <button type="button" disabled={loadingMore || busy}
+      onClick={() => void loadMoreRequests()} className="rounded border border-slate-600 px-3 py-2 disabled:opacity-50">
+      {loadingMore ? 'جارٍ تحميل طلبات أقدم...' : 'تحميل 200 طلب أقدم'}
+    </button>}
     {!loading && !requestsError && totalPages > 1 && <nav aria-label="صفحات الطلبات" className="flex items-center gap-3">
       <button type="button" disabled={page <= 1} onClick={() => setPage(current => Math.max(1, current - 1))}
         className="rounded border border-slate-600 px-3 py-2 disabled:opacity-50">السابق</button>
