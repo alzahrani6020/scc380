@@ -1,0 +1,73 @@
+name: SCC380 Production Readiness Monitor
+
+on:
+  schedule:
+    # UTC, four checks per hour; GitHub schedules are best-effort.
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: scc380-production-readiness-monitor
+  cancel-in-progress: false
+
+jobs:
+  readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Verify production readiness and anonymous owner authorization
+        id: probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          ready_url='https://scc380-api.onrender.com/ready'
+          owner_url='https://scc380-owner-files-web.vercel.app/api/owner-files/owner/audit?offset=100'
+          successful=false
+          for attempt in 1 2 3 4 5; do
+            ready_code="$(curl --silent --show-error --location --max-time 18 --output /tmp/scc-ready-body --write-out '%{http_code}' "$ready_url" 2>/dev/null || true)"
+            owner_code="$(curl --silent --show-error --location --max-time 18 --output /dev/null --write-out '%{http_code}' "$owner_url" 2>/dev/null || true)"
+            if [ "$ready_code" = '200' ] && grep -Eq '"status"[[:space:]]*:[[:space:]]*"ready"' /tmp/scc-ready-body && [ "$owner_code" = '401' ]; then
+              successful=true
+              echo "SCC_READY=PASS attempt=$attempt readiness=200 anonymous_owner=401"
+              break
+            fi
+            echo "SCC_READY=RETRY attempt=$attempt readiness=${ready_code:-unavailable} anonymous_owner=${owner_code:-unavailable}"
+            if [ "$attempt" -lt 5 ]; then sleep 25; fi
+          done
+          echo "successful=$successful" >> "$GITHUB_OUTPUT"
+          if [ "$successful" != 'true' ]; then
+            echo 'SCC_READY=FAIL after bounded retries'
+          fi
+
+      - name: Record incident without duplicate issues
+        if: steps.probe.outputs.successful == 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          title='SCC380 production readiness failure'
+          open_issue="$(gh issue list --state open --search "$title in:title" --json number,title --jq ".[] | select(.title == \"$title\") | .number" | head -n 1)"
+          if [ -z "$open_issue" ]; then
+            gh issue create --title "$title" --body "Automated production check failed after five attempts. Verify /ready status and anonymous /api/owner-files/owner/audit?offset=100 returns 401. Check Render deploys, cold-start behavior, database reachability and Vercel. No user data or tokens were inspected. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          else
+            echo "Existing incident issue #$open_issue remains open."
+          fi
+          exit 1
+
+      - name: Close only recovered monitor incident
+        if: steps.probe.outputs.successful == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          title='SCC380 production readiness failure'
+          open_issue="$(gh issue list --state open --search "$title in:title" --json number,title --jq ".[] | select(.title == \"$title\") | .number" | head -n 1)"
+          if [ -n "$open_issue" ]; then
+            gh issue comment "$open_issue" --body "Production readiness recovered: HTTP 200 from database-backed /ready and HTTP 401 on unauthenticated owner audit. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            gh issue close "$open_issue" --reason completed
+          fi
