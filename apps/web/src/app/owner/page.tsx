@@ -8,6 +8,8 @@ import {
   Users, Wallet, Wrench, LifeBuoy, PackageCheck,
 } from 'lucide-react';
 import api from '@/lib/api';
+import OwnerActivityPanel from '@/components/owner/OwnerActivityPanel';
+import OwnerFilesPanel from '@/components/owner/OwnerFilesPanel';
 
 type InsightSummary = {
   activeSessions: number;
@@ -26,8 +28,8 @@ type Tile = {
 };
 
 const modules: Tile[] = [
-  { title: 'النشاط والتدقيق', detail: 'سجل الأحداث والجلسات وعمليات الدخول', href: '/owner/activity', state: 'linked', icon: Activity },
-  { title: 'طلبات الملفات', detail: 'الموافقات وقرارات تنزيل الملفات التجارية', href: '/owner/files', state: 'linked', icon: FileDown },
+  { title: 'النشاط والتدقيق', detail: 'سجل الأحداث والجلسات وعمليات الدخول', href: '/owner?tab=activity', state: 'linked', icon: Activity },
+  { title: 'طلبات الملفات', detail: 'الموافقات وقرارات تنزيل الملفات التجارية', href: '/owner?tab=files', state: 'linked', icon: FileDown },
   { title: 'إدارة الشركات', detail: 'العقود وحالة التفعيل وحدود الخدمات', state: 'planned', icon: Building2 },
   { title: 'إدارة المستخدمين', detail: 'الأدوار والدعوات وإدارة الجلسات', state: 'planned', icon: Users },
   { title: 'صحة المنصة', detail: 'الخدمات والإنذارات وزمن الاستجابة', state: 'planned', icon: HeartPulse },
@@ -55,6 +57,23 @@ function MetricCard({ metric }: { metric: Metric }) {
 }
 
 export default function OwnerCommandCenter() {
+  const [tab, setTab] = useState<'overview' | 'activity' | 'files'>('overview');
+  useEffect(() => {
+    const resolve = () => {
+      const requested = new URLSearchParams(window.location.search).get('tab');
+      setTab(requested === 'activity' || requested === 'files' ? requested : 'overview');
+    };
+    resolve();
+    window.addEventListener('popstate', resolve);
+    return () => window.removeEventListener('popstate', resolve);
+  }, []);
+  const selectTab = (next: 'overview' | 'activity' | 'files') => {
+    setTab(next);
+    const url = new URL(window.location.href);
+    if (next === 'overview') url.searchParams.delete('tab');
+    else url.searchParams.set('tab', next);
+    window.history.pushState(null, '', url.pathname + url.search);
+  };
   const [loading, setLoading] = useState(true);
   const [insights, setInsights] = useState<InsightSummary | null>(null);
   const [reportPending, setReportPending] = useState<number | null>(null);
@@ -125,6 +144,14 @@ export default function OwnerCommandCenter() {
         </button>
       </header>
 
+      <nav aria-label="أقسام لوحة المالك الموحدة" className="flex flex-wrap gap-2 rounded-xl border border-slate-700 bg-slate-900 p-3">
+        {([{id:'overview',name:'نظرة عامة'}, {id:'activity',name:'النشاط والتدقيق والموافقات'}, {id:'files',name:'طلبات الملفات'}] as const).map(item => (
+          <button key={item.id} type="button" aria-current={tab === item.id ? 'page' : undefined}
+            className={`rounded-lg px-4 py-3 text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400 ${tab === item.id ? 'bg-blue-700 text-white' : 'bg-slate-800 text-slate-200 hover:bg-slate-700'}`}
+            onClick={() => selectTab(item.id)}>{item.name}</button>
+        ))}
+      </nav>
+      {tab === 'overview' && <>
       <section aria-label="حالة الاتصال" className="rounded-xl border border-slate-700 bg-slate-900 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="font-semibold">حالة مصادر بيانات المالك</h2>
@@ -165,11 +192,14 @@ export default function OwnerCommandCenter() {
           ))}
         </div>
       </section>
+      </>}
+      {tab === 'activity' && <OwnerActivityPanel />}
+      {tab === 'files' && <OwnerFilesPanel />}
       <aside className="rounded-xl border border-slate-700 p-4 text-sm text-slate-300">
         <ClipboardCheck className="mb-2 h-5 w-5 text-blue-300" />
         صلاحية المالك تخضع للتحقق من API قبل عرض هذه الصفحة. لا تمنح هذه اللوحة صلاحيات جديدة للوصول إلى بيانات شركات العملاء أو ملفات HR وERP.
-        <Link href="/owner/activity" className="mr-2 text-blue-300 underline">سجل النشاط والقرارات</Link>
-        <Link href="/owner/files" className="mr-2 text-blue-300 underline">مركز الملفات</Link>
+        <Link href="/owner?tab=activity" className="mr-2 text-blue-300 underline">سجل النشاط والقرارات</Link>
+        <Link href="/owner?tab=files" className="mr-2 text-blue-300 underline">مركز الملفات</Link>
       </aside>
     </main>
   );
