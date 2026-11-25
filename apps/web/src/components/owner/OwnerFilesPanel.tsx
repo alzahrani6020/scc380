@@ -9,7 +9,7 @@ type RequestRow = {
   scope: string; status: string; startLine?: number | null; endLine?: number | null;
   file: { title: string; fileName: string }; createdAt: string;
 };
-export default function OwnerFilesPage() {
+export default function OwnerFilesPanel() {
   const [requests, setRequests] = useState<RequestRow[]>([]);
   const [audits, setAudits] = useState<AuditRow[]>([]);
   const [hasMoreAudits, setHasMoreAudits] = useState(false);
@@ -95,7 +95,7 @@ export default function OwnerFilesPage() {
     } catch { setError('فشل القرار أو تم اتخاذه من قبل؛ لم يُمنح وصول جديد.'); }
     finally { setBusy(false); }
   }
-  return <main dir="rtl" className="mx-auto max-w-6xl space-y-5 px-4 py-8 text-white">
+  return <section dir="rtl" className="mx-auto max-w-6xl space-y-5 px-4 py-8 text-white">
     <h1 className="text-2xl font-bold">مركز ملفات المالك — مراجعة الطلبات</h1>
     
     <p className="text-sm text-slate-300">الملفات التجارية المستقلة فقط. لا يتم تجاوز صلاحيات مستندات HR أو ERP. إثبات استجابة HTTP ليس إثبات الحفظ على جهاز المستخدم.</p>
@@ -170,5 +170,5 @@ export default function OwnerFilesPage() {
       {!loading && !auditsError && !audits.length && <p className="text-slate-400">لا توجد أحداث مسجلة.</p>}
       {!loading && !auditsError && hasMoreAudits && <button type="button" disabled={loadingMoreAudits || busy} onClick={() => void loadMoreAudits()} className="rounded border border-slate-600 px-3 py-2 disabled:opacity-50">{loadingMoreAudits ? 'جارٍ تحميل أحداث أقدم...' : 'تحميل 100 حدث أقدم'}</button>}
     </section>
-  </main>;
+  </section>;
 }
