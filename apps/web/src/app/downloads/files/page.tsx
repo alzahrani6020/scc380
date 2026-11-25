@@ -172,7 +172,7 @@ export default function TenantFileCenter() {
       <button type="button" onClick={()=>void upload()} disabled={busy} className="rounded bg-blue-600 px-4 py-2 disabled:opacity-50">رفع الملف</button>
     </section>
     <div className="space-y-3 rounded-xl border border-slate-700 bg-slate-900 p-4">
-      {filesLoad === 'loading' && <p role="status" className="text-slate-300">جارٍ تحميل قائمة الملفات...</p>}
+      {filesLoad === 'loading' && <p role="status" className="text-slate-300">جارٍ تحميل قائمة الملفات... إذا كانت الخدمة تستعيد تشغيلها فقد يستغرق الاتصال نحو دقيقة. لا تعِد إرسال طلب تنزيل قبل ظهور حالته.</p>}
       {filesLoad === 'error' && <p role="alert" className="text-red-300">فشل تحميل الملفات. لن يُفسر ذلك على أنه عدم وجود ملفات. اضغط تحديث الطلبات لإعادة المحاولة.</p>}
       {filesLoad === 'loaded' && files.length === 0 && <p className="text-slate-400">لا توجد ملفات تجارية مسجلة لهذه الشركة.</p>}
       <label className="block">الملف<select disabled={filesLoad !== 'loaded' || busy} value={fileId} onChange={e=>{ setFileId(e.target.value); setScope('FULL'); }} className="mt-2 block w-full rounded bg-slate-950 p-2">
