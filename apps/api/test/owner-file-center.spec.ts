@@ -71,3 +71,20 @@ test('actual owner decisions and tenant requests are wired to the server', () =>
   assert.match(tenant, /api\.post\('\/owner-files\/requests'/);
   assert.match(tenant, /responseType:'blob'/);
 });
+
+test('file, personal request, owner approval and audit endpoints paginate with validated offsets', () => {
+  assert.match(api, /private offset\(value: string \| undefined\): number/);
+  assert.match(api, /Number\.isSafeInteger\(offset\)/);
+  assert.match(api, /@Query\('offset'\) offsetParam\?: string/g);
+  assert.match(api, /skip: this\.offset\(offsetParam\), take: 100/);
+  assert.match(api, /skip: offset, take: 200/);
+  assert.match(api, /skip: this\.offset\(offsetParam\), take: 100/);
+  assert.match(owner, /loadMoreAudits/);
+  assert.match(owner, /owner\/audit/);
+  assert.match(tenant, /loadMoreFiles/);
+  assert.match(tenant, /loadMoreRequests/);
+});
+test('file download audit failures are observable, never silently swallowed', () => {
+  assert.match(api, /OWNER_FILE_HTTP_AUDIT_WRITE_FAILED/);
+  assert.doesNotMatch(api, /catch\(\(\) => undefined\)/);
+});
