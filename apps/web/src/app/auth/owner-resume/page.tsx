@@ -24,7 +24,7 @@ export default function OwnerSessionRecovery() {
         }, getRememberPreference());
         if (mounted) {
           const next = new URLSearchParams(window.location.search).get('next');
-          window.location.replace(next === '/owner/files' ? '/owner/files' : '/owner/activity');
+          window.location.replace(next === '/owner/files' ? '/owner/files' : next === '/owner' ? '/owner' : '/owner/activity');
         }
       } catch {
         // A failed refresh does not prove a fresh login will succeed.
