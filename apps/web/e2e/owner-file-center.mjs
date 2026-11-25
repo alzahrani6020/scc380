@@ -111,6 +111,13 @@ try {
   await page.getByRole('button',{name:'إرسال طلب تنزيل'}).click();
   await page.getByText(/سُجل الطلب/).waitFor();
   const full=await waitForRequest(requester.id,'FULL');
+  // A request awaiting owner approval must never grant download access.
+  const pendingStatus = await page.evaluate(async ({id,token}) => {
+    const response=await fetch('/api/owner-files/requests/'+id+'/download',{
+      headers:{Authorization:'Bearer '+token}});
+    return response.status;
+  },{id:full.id,token:applicant.token});
+  assert.equal(pendingStatus,403,'Pending request must deny download');
   // Upload and request creation are audited atomically, including tenant and actor.
   const uploadAudit = await prisma.auditLog.findFirst({
     where: { tenantId:tenant.id, userId:requester.id, action:'OWNER_FILE_UPLOADED' }
@@ -120,6 +127,20 @@ try {
     where: { tenantId:tenant.id, userId:requester.id, action:'OWNER_FILE_REQUEST_CREATED', entityId:full.id }
   });
   assert.ok(requestAudit,'File request creation must create an audit entry');
+  // Even the configured owner cannot approve their own request.
+  const selfRequest = await prisma.ownerFileRequest.create({ data: {
+    tenantId:tenant.id, fileId:full.fileId, requesterId:owner.id, scope:'FULL'
+  }});
+  const selfApproval = await principal.page.evaluate(async ({id,token}) => {
+    const response = await fetch('/api/owner-files/owner/decide', {
+      method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},
+      body:JSON.stringify({requestId:id,decision:'APPROVE'})
+    });
+    return response.status;
+  },{id:selfRequest.id,token:principal.token});
+  assert.equal(selfApproval,403,'Owner must not approve own request');
+  const selfAfter=await prisma.ownerFileRequest.findUnique({where:{id:selfRequest.id}});
+  assert.equal(selfAfter?.status,'PENDING','Rejected self approval must not change request');
   const foreignResponse=await foreign.page.evaluate(async ({id,token}) => {
     const response=await fetch('/api/owner-files/requests/'+id+'/download',{
       headers:{Authorization:'Bearer '+token}});
@@ -133,11 +154,31 @@ try {
   await principal.page.getByText(full.id,{exact:false}).first().waitFor();
   await principal.page.getByLabel('حالة الطلب').selectOption('ALL');
   await principal.page.getByRole('textbox',{name:'البحث في الطلبات'}).fill('');
-  await principal.page.getByRole('button',{name:'موافقة'}).first().click();
+  await principal.page.locator('section').filter({hasText:full.id})
+    .getByRole('button',{name:'موافقة'}).click();
   await principal.page.getByText(/APPROVED/).first().waitFor();
+  // The owner must observe a durable decision after reloading the page.
+  await principal.page.reload({waitUntil:'domcontentloaded'});
+  await principal.page.getByText(/APPROVED/).first().waitFor();
+  const decisionAudit=await prisma.auditLog.findFirst({where:{
+    tenantId:tenant.id,entityType:'OWNER_FILE_REQUEST',entityId:full.id,action:'OWNER_FILE_APPROVED'
+  }});
+  assert.ok(decisionAudit,'Approved decision must create durable audit entry');
   await page.getByRole('button',{name:'تحديث الطلبات'}).click();
   await downloadAndVerify(page,'alpha\nbeta\ngamma',full.id);
-  await principal.page.getByRole('button',{name:'إلغاء السماح'}).first().click();
+  const finishDeadline=Date.now()+7000;
+  let deliveryAudit;
+  while(Date.now()<finishDeadline){
+    deliveryAudit=await prisma.auditLog.findFirst({where:{
+      tenantId:tenant.id,entityType:'OWNER_FILE_REQUEST',entityId:full.id,
+      action:'OWNER_FILE_HTTP_RESPONSE_FINISHED'
+    }});
+    if(deliveryAudit)break;
+    await new Promise(resolve=>setTimeout(resolve,200));
+  }
+  assert.ok(deliveryAudit,'Full download must log finished HTTP response');
+  await principal.page.locator('section').filter({hasText:full.id})
+    .getByRole('button',{name:'إلغاء السماح'}).click();
   await principal.page.getByText(/REVOKED/).first().waitFor();
   await page.getByRole('button',{name:'تحديث الطلبات'}).click();
   const forbidden=await page.evaluate(async ({id,token}) => {
@@ -157,6 +198,16 @@ try {
   await principal.page.getByText(/APPROVED/).first().waitFor();
   await page.getByRole('button',{name:'تحديث الطلبات'}).click();
   await downloadAndVerify(page,'beta',partial.id);
+  const forbiddenAudit=await prisma.auditLog.findFirst({where:{
+    tenantId:tenant.id,entityType:'OWNER_FILE_REQUEST',entityId:full.id,
+    action:'OWNER_FILE_DELIVERY_DENIED'
+  }});
+  assert.ok(forbiddenAudit,'Denied delivery must be recorded in audit log');
+  const revokeAudit=await prisma.auditLog.findFirst({where:{
+    tenantId:tenant.id,entityType:'OWNER_FILE_REQUEST',entityId:full.id,
+    action:'OWNER_FILE_REVOKED'
+  }});
+  assert.ok(revokeAudit,'Revocation must be recorded in audit log');
   console.log('STATUS: PASS - OWNER_FILES_REAL_BROWSER_DOWNLOAD_AND_REVOKE');
   console.log('EVIDENCE: Chromium saved FULL and PARTIAL files; bytes matched; revoked HTTP 403; foreign tenant HTTP 404');
 } finally {
