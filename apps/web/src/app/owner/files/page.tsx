@@ -12,6 +12,8 @@ type RequestRow = {
 export default function OwnerFilesPage() {
   const [requests, setRequests] = useState<RequestRow[]>([]);
   const [audits, setAudits] = useState<AuditRow[]>([]);
+  const [hasMoreAudits, setHasMoreAudits] = useState(false);
+  const [loadingMoreAudits, setLoadingMoreAudits] = useState(false);
   const [hasMoreRequests, setHasMoreRequests] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -50,6 +52,7 @@ export default function OwnerFilesPage() {
     setHasMoreRequests((loadedRequests?.length ?? 0) === 200);
     setPage(1);
     setAudits(loadedAudits ?? []);
+    setHasMoreAudits((loadedAudits?.length ?? 0) === 100);
     setRequestsError(requestFailed);
     setAuditsError(auditFailed);
     setLoading(false);
@@ -67,6 +70,20 @@ export default function OwnerFilesPage() {
       setError('تعذر تحميل الصفحة التالية من الطلبات؛ لم يُحذف أي طلب من القائمة.');
     } finally {
       setLoadingMore(false);
+    }
+  }
+  async function loadMoreAudits() {
+    if (loadingMoreAudits || !hasMoreAudits || auditsError) return;
+    setLoadingMoreAudits(true);
+    try {
+      const response = await api.get<AuditRow[]>('/owner-files/owner/audit', { params: { offset: audits.length } });
+      if (!Array.isArray(response.data)) throw new Error('Invalid audit response');
+      setAudits(previous => [...previous, ...response.data.filter(item => !previous.some(old => old.id === item.id))]);
+      setHasMoreAudits(response.data.length === 100);
+    } catch {
+      setError('تعذر تحميل أحداث تدقيق أقدم؛ الأحداث المحملة ما زالت متاحة.');
+    } finally {
+      setLoadingMoreAudits(false);
     }
   }
   async function decide(requestId: string, decision: 'APPROVE' | 'REJECT' | 'REVOKE') {
@@ -137,7 +154,7 @@ export default function OwnerFilesPage() {
         className="rounded border border-slate-600 px-3 py-2 disabled:opacity-50">التالي</button>
     </nav>}
     <section className="space-y-3 rounded-xl border border-slate-700 bg-slate-900 p-4">
-      <h2 className="font-semibold">سجل الموافقات ومحاولات التسليم — آخر 100 حدث</h2>
+      <h2 className="font-semibold">سجل الموافقات ومحاولات التسليم — {audits.length} حدث محمّل</h2>
       <p className="text-xs text-slate-400">أحداث API المسجلة؛ اكتمال استجابة HTTP لا يثبت حفظ الملف على جهاز المستخدم.</p>
       <div className="overflow-x-auto"><table className="w-full text-right text-sm">
         <thead><tr><th className="p-2">الوقت</th><th className="p-2">العملية</th><th className="p-2">الطلب</th><th className="p-2">الشركة</th><th className="p-2">المستخدم</th></tr></thead>
@@ -150,6 +167,7 @@ export default function OwnerFilesPage() {
         </tr>)}</tbody>
       </table></div>
       {!loading && !auditsError && !audits.length && <p className="text-slate-400">لا توجد أحداث مسجلة.</p>}
+      {!loading && !auditsError && hasMoreAudits && <button type="button" disabled={loadingMoreAudits || busy} onClick={() => void loadMoreAudits()} className="rounded border border-slate-600 px-3 py-2 disabled:opacity-50">{loadingMoreAudits ? 'جارٍ تحميل أحداث أقدم...' : 'تحميل 100 حدث أقدم'}</button>}
     </section>
   </main>;
 }
