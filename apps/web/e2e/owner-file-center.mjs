@@ -194,8 +194,12 @@ try {
   await page.getByText(/سُجل الطلب/).waitFor();
   const partial=await waitForRequest(requester.id,'PARTIAL');
   await principal.page.getByRole('button',{name:'تحديث'}).click();
-  await principal.page.getByRole('button',{name:'موافقة'}).first().click();
-  await principal.page.getByText(/APPROVED/).first().waitFor();
+  // Do not approve the older self-request; act on the exact partial request ID.
+  const partialPanel = principal.page.locator('section').filter({hasText:partial.id});
+  await partialPanel.getByRole('button',{name:'موافقة'}).click();
+  await partialPanel.getByText(/APPROVED/).waitFor();
+  const approvedPartial=await prisma.ownerFileRequest.findUnique({where:{id:partial.id}});
+  assert.equal(approvedPartial?.status,'APPROVED','Partial request must actually be approved');
   await page.getByRole('button',{name:'تحديث الطلبات'}).click();
   await downloadAndVerify(page,'beta',partial.id);
   const forbiddenAudit=await prisma.auditLog.findFirst({where:{
