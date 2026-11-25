@@ -8,6 +8,8 @@ const ownerPage = readFileSync(join(process.cwd(), '../web/src/app/owner/activit
 const ownerLayout = readFileSync(join(process.cwd(), '../web/src/app/owner/layout.tsx'), 'utf8');
 const middleware = readFileSync(join(process.cwd(), '../web/src/middleware.ts'), 'utf8');
 const ownerRecovery = readFileSync(join(process.cwd(), '../web/src/app/auth/owner-resume/page.tsx'), 'utf8');
+const apiClient = readFileSync(join(process.cwd(), '../web/src/lib/api.ts'), 'utf8');
+const appController = readFileSync(join(process.cwd(), 'src/app.controller.ts'), 'utf8');
 
 test('owner delegation is off unless verified email is configured', () => {
   assert.match(controller, /const configured = \(process\.env\.SCC380_ACTIVITY_OWNER_EMAIL \|\| ''\)/);
@@ -54,4 +56,17 @@ test('owner recovery requires existing HttpOnly refresh session and rechecks pri
   assert.doesNotMatch(ownerRecovery, /window\.location\.replace\(next\)/);
   assert.doesNotMatch(ownerRecovery, /SUPER_ADMIN/);
   assert.doesNotMatch(ownerRecovery, /localStorage\.setItem\('role'/);
+});
+
+test('cold-start mitigation retries only read-only GETs and never sensitive downloads or writes', () => {
+  assert.match(apiClient, /\[502, 503, 504\]/);
+  assert.match(apiClient, /original\?\.method\?\.toLowerCase\(\) === 'get'/);
+  assert.match(apiClient, /\/download/);
+  assert.match(apiClient, /\/payments/);
+  assert.match(apiClient, /_coldStartAttempt/);
+  assert.doesNotMatch(apiClient, /original\?\.method\?\.toLowerCase\(\) === 'post'\s*&&\s*retryableStatus/);
+  assert.match(ownerLayout, /\[502, 503, 504\]/);
+  assert.match(ownerLayout, /if \(!authorized\) notFound\(\)/);
+  assert.match(appController, /@Get\('ready'\)/);
+  assert.match(appController, /prisma\.\$queryRaw/);
 });
