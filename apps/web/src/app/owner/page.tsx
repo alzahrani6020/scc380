@@ -10,6 +10,7 @@ import {
 import api from '@/lib/api';
 import OwnerActivityPanel from '@/components/owner/OwnerActivityPanel';
 import OwnerFilesPanel from '@/components/owner/OwnerFilesPanel';
+import OwnerDirectory from '@/components/owner/OwnerDirectory';
 
 type InsightSummary = {
   activeSessions: number;
@@ -57,17 +58,17 @@ function MetricCard({ metric }: { metric: Metric }) {
 }
 
 export default function OwnerCommandCenter() {
-  const [tab, setTab] = useState<'overview' | 'activity' | 'files'>('overview');
+  const [tab, setTab] = useState<'overview' | 'activity' | 'files' | 'tenants' | 'users'>('overview');
   useEffect(() => {
     const resolve = () => {
       const requested = new URLSearchParams(window.location.search).get('tab');
-      setTab(requested === 'activity' || requested === 'files' ? requested : 'overview');
+      setTab(requested === 'activity' || requested === 'files' || requested === 'tenants' || requested === 'users' ? requested : 'overview');
     };
     resolve();
     window.addEventListener('popstate', resolve);
     return () => window.removeEventListener('popstate', resolve);
   }, []);
-  const selectTab = (next: 'overview' | 'activity' | 'files') => {
+  const selectTab = (next: 'overview' | 'activity' | 'files' | 'tenants' | 'users') => {
     setTab(next);
     const url = new URL(window.location.href);
     if (next === 'overview') url.searchParams.delete('tab');
@@ -123,11 +124,11 @@ export default function OwnerCommandCenter() {
   useEffect(() => { void refresh(); }, [refresh]);
 
   const metrics: Metric[] = [
-    { label: 'جلسات نشطة (آخر 7 أيام)', value: insights?.activeSessions ?? null, href: '/owner/activity' },
-    { label: 'أخطاء HTTP مسجلة (7 أيام)', value: insights?.auditedHttpErrors ?? null, warning: true, href: '/owner/activity' },
-    { label: 'محاولات دخول فاشلة (7 أيام)', value: insights?.loginFailures ?? null, warning: true, href: '/owner/activity' },
-    { label: 'طلبات تقارير معلّقة (المعروض)', value: reportPending, warning: true, href: '/owner/activity' },
-    { label: 'طلبات ملفات معلّقة (أول صفحة)', value: filePending, warning: true, href: '/owner/files' },
+    { label: 'جلسات نشطة (آخر 7 أيام)', value: insights?.activeSessions ?? null, href: '/owner?tab=activity' },
+    { label: 'أخطاء HTTP مسجلة (7 أيام)', value: insights?.auditedHttpErrors ?? null, warning: true, href: '/owner?tab=activity' },
+    { label: 'محاولات دخول فاشلة (7 أيام)', value: insights?.loginFailures ?? null, warning: true, href: '/owner?tab=activity' },
+    { label: 'طلبات تقارير معلّقة (المعروض)', value: reportPending, warning: true, href: '/owner?tab=activity' },
+    { label: 'طلبات ملفات معلّقة (أول صفحة)', value: filePending, warning: true, href: '/owner?tab=files' },
   ];
 
   return (
@@ -145,7 +146,7 @@ export default function OwnerCommandCenter() {
       </header>
 
       <nav aria-label="أقسام لوحة المالك الموحدة" className="flex flex-wrap gap-2 rounded-xl border border-slate-700 bg-slate-900 p-3">
-        {([{id:'overview',name:'نظرة عامة'}, {id:'activity',name:'النشاط والتدقيق والموافقات'}, {id:'files',name:'طلبات الملفات'}] as const).map(item => (
+        {([{id:'overview',name:'نظرة عامة'}, {id:'activity',name:'النشاط والتدقيق والموافقات'}, {id:'files',name:'طلبات الملفات'}, {id:'tenants',name:'الشركات'}, {id:'users',name:'المستخدمون'}] as const).map(item => (
           <button key={item.id} type="button" aria-current={tab === item.id ? 'page' : undefined}
             className={`rounded-lg px-4 py-3 text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400 ${tab === item.id ? 'bg-blue-700 text-white' : 'bg-slate-800 text-slate-200 hover:bg-slate-700'}`}
             onClick={() => selectTab(item.id)}>{item.name}</button>
@@ -196,6 +197,8 @@ export default function OwnerCommandCenter() {
       </>}
       {tab === 'activity' && <OwnerActivityPanel />}
       {tab === 'files' && <OwnerFilesPanel />}
+      {tab === 'tenants' && <OwnerDirectory kind="tenants" />}
+      {tab === 'users' && <OwnerDirectory kind="users" />}
       <aside className="rounded-xl border border-slate-700 p-4 text-sm text-slate-300">
         <ClipboardCheck className="mb-2 h-5 w-5 text-blue-300" />
         صلاحية المالك تخضع للتحقق من API قبل عرض هذه الصفحة. لا تمنح هذه اللوحة صلاحيات جديدة للوصول إلى بيانات شركات العملاء أو ملفات HR وERP.
