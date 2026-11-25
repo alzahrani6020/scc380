@@ -97,6 +97,7 @@ export default function OwnerFilesPage() {
   }
   return <main dir="rtl" className="mx-auto max-w-6xl space-y-5 px-4 py-8 text-white">
     <h1 className="text-2xl font-bold">مركز ملفات المالك — مراجعة الطلبات</h1>
+    <Link href="/owner" className="inline-flex rounded-lg border border-blue-600 px-3 py-2 text-sm text-blue-300">مركز القيادة الرئيسي</Link>
     <p className="text-sm text-slate-300">الملفات التجارية المستقلة فقط. لا يتم تجاوز صلاحيات مستندات HR أو ERP. إثبات استجابة HTTP ليس إثبات الحفظ على جهاز المستخدم.</p>
     <nav aria-label="مصادر الملفات والصلاحيات" className="flex flex-wrap gap-4 text-sm">
       <Link href="/downloads/files" className="text-blue-300 underline">ملفات الشركة التجارية وطلب التنزيل</Link>
