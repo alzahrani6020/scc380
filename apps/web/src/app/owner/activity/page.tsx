@@ -209,6 +209,7 @@ export default function SiteActivityDashboard() {
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-4">
         <div className="min-w-0 flex-1">
           <h1 className="break-words text-xl font-bold sm:text-2xl">لوحة المالك المستقلة — مراقبة نشاط الموقع</h1>
+          <Link href="/owner" className="inline-flex rounded-lg border border-blue-600 px-3 py-2 text-sm text-blue-300">مركز القيادة الرئيسي</Link>
           <p className="mt-1 text-sm text-slate-400">المستخدمون المصرح لهم، زيارات لوحة النظام، الجلسات وسجلات التنزيل. لا تشمل الزيارات المجهولة.</p>
         </div>
         <button type="button" onClick={download} disabled={loading || exporting || !data}
