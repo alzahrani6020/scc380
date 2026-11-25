@@ -189,7 +189,7 @@ export default function OwnerActivityPanel() {
         </>
       )}
       <p className="mt-4 text-xs text-slate-400">لا تُمنح صلاحيات المالك تلقائيًا بالوصول إلى الرابط؛ يجب أن تكون مرتبطة بحساب موثّق ومخوّل على الخادم.</p>
-    </section>
+    </div>
   );
 
   const rows = (data?.events || []).filter(event =>
