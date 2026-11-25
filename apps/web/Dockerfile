@@ -1,7 +1,7 @@
 # Build stage for Next.js
 FROM node:20-alpine AS builder
 
-RUN npm install -g pnpm
+RUN npm install -g pnpm@9
 
 WORKDIR /app
 
@@ -28,7 +28,7 @@ RUN pnpm --filter @scc/web build
 # Production stage
 FROM node:20-alpine AS runner
 
-RUN npm install -g pnpm
+RUN npm install -g pnpm@9
 
 WORKDIR /app
 
