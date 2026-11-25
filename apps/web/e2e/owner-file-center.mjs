@@ -117,6 +117,17 @@ try {
   assert.equal(ownerUrl.pathname,'/owner','Legacy owner file route must redirect to the single console');
   assert.equal(ownerUrl.searchParams.get('tab'),'files','Files tab must be selected');
   await principal.page.getByRole('navigation',{name:'أقسام لوحة المالك الموحدة'}).waitFor();
+  // New directories are read-only and remain within the same owner console.
+  await principal.page.getByRole('button',{name:'الشركات',exact:true}).click();
+  await principal.page.getByRole('heading',{name:'الشركات المصرح بعرضها'}).waitFor();
+  assert.equal(new URL(principal.page.url()).pathname,'/owner');
+  await principal.page.getByRole('button',{name:'المستخدمون',exact:true}).click();
+  await principal.page.getByRole('heading',{name:'المستخدمون المصرح بعرضهم'}).waitFor();
+  assert.equal(new URL(principal.page.url()).searchParams.get('tab'),'users');
+  await principal.page.getByRole('button',{name:'طلبات الملفات',exact:true}).click();
+  await principal.page.getByRole('heading',{name:'مراجعة الملفات وقرارات التنزيل'}).waitFor();
+  // Continue with actual approval/download/revocation checks unchanged.
+
   await checkPage(foreign.page,'/downloads/files','مركز ملفات الشركة');
   const page=applicant.page;
   await page.getByRole('textbox',{name:'عنوان الملف'}).fill('Browser acceptance');
