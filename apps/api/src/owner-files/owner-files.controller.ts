@@ -115,11 +115,19 @@ export class OwnerFilesController {
         throw new BadRequestException('Invalid or encrypted PDF document');
       }
     }
-    return prisma.ownerFile.create({
-      data: { tenantId, title: body.title.trim(), fileName: body.fileName.trim(),
-        mimeType: body.mimeType, content, sizeBytes: content.length,
-        checksumSha256: createHash('sha256').update(content).digest('hex'), createdById: req.user.userId },
-      select: { id: true, title: true, fileName: true, sizeBytes: true, checksumSha256: true },
+    return prisma.$transaction(async tx => {
+      const file = await tx.ownerFile.create({
+        data: { tenantId, title: body.title.trim(), fileName: body.fileName.trim(),
+          mimeType: body.mimeType, content, sizeBytes: content.length,
+          checksumSha256: createHash('sha256').update(content).digest('hex'), createdById: req.user.userId },
+        select: { id: true, title: true, fileName: true, sizeBytes: true, checksumSha256: true },
+      });
+      await tx.auditLog.create({
+        data: { tenantId, userId: req.user.userId, entityType: 'OWNER_FILE_REQUEST',
+          entityId: file.id, action: 'OWNER_FILE_UPLOADED',
+          newValues: { fileId: file.id, bytes: file.sizeBytes } },
+      });
+      return file;
     });
   }
   @Post('requests')
@@ -127,10 +135,19 @@ export class OwnerFilesController {
     const file = await this.fileForTenant(req, body.fileId);
     await this.validateScope(file, body.scope, body.startLine, body.endLine);
     const tenantId = this.tenant(req);
-    return prisma.ownerFileRequest.create({
-      data: { fileId: file.id, tenantId, requesterId: req.user.userId,
-        scope: body.scope, startLine: body.startLine, endLine: body.endLine },
-      select: { id: true, status: true, scope: true, createdAt: true },
+    return prisma.$transaction(async tx => {
+      const request = await tx.ownerFileRequest.create({
+        data: { fileId: file.id, tenantId, requesterId: req.user.userId,
+          scope: body.scope, startLine: body.startLine, endLine: body.endLine },
+        select: { id: true, status: true, scope: true, createdAt: true },
+      });
+      await tx.auditLog.create({
+        data: { tenantId, userId: req.user.userId, entityType: 'OWNER_FILE_REQUEST',
+          entityId: request.id, action: 'OWNER_FILE_REQUEST_CREATED',
+          newValues: { fileId: file.id, scope: body.scope,
+            ...(body.scope === 'PARTIAL' ? { startLine: body.startLine, endLine: body.endLine } : {}) } },
+      });
+      return request;
     });
   }
   @Get('requests/mine')
