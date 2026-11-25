@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { sessionAuth } from '@/lib/session-auth';
-import { clearAuth, getToken, setAuth } from '@/lib/auth';
+import { getRememberPreference, getToken, setAuth } from '@/lib/auth';
 import { GoogleLogin, googleLogout } from '@react-oauth/google';
 import {
   Building2, Lock, Mail, ChevronLeft,
@@ -42,12 +42,40 @@ export default function LoginPage() {
   }, []);
 
   useEffect(() => {
-    const token = getToken();
-    if (!token) return;
-
-    api.get('/auth/me')
-      .then(() => router.replace('/dashboard'))
-      .catch(() => clearAuth());
+    let active = true;
+    // A user who opted to be remembered can have an expired access JWT
+    // while the HttpOnly refresh cookie is still valid. Recover the existing
+    // server session; never create an account or silently switch identities.
+    const restore = async () => {
+      try {
+        const token = getToken();
+        if (token) {
+          // The API interceptor can refresh an expired access JWT on 401.
+          // Temporary network errors must NOT erase saved authentication state.
+          await api.get('/auth/me');
+        } else if (getRememberPreference()) {
+          const result = await sessionAuth('refresh', { remember: true });
+          if (!result?.accessToken || !result?.user?.role) return;
+          setAuth({
+            accessToken: result.accessToken,
+            role: result.user.role,
+            tenantSlug: result.user.tenantSlug || null,
+            tenantId: result.user.tenantId || null,
+            user: { email: result.user.email },
+          }, true);
+          // Prove identity with the API before redirecting.
+          await api.get('/auth/me');
+        } else {
+          return;
+        }
+        if (active) router.replace('/dashboard');
+      } catch {
+        // Keep the login form usable. Network or upstream errors alone are
+        // not proof of revocation; never clear the remember preference here.
+      }
+    };
+    void restore();
+    return () => { active = false; };
   }, [router]);
 
   useEffect(() => {
