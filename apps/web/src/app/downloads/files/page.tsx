@@ -11,6 +11,10 @@ const initialSource = <T,>(): SourceResult<T> => ({ status: 'idle', items: [] })
 export default function TenantFileCenter() {
   const [files, setFiles] = useState<FileRow[]>([]);
   const [requests, setRequests] = useState<RequestRow[]>([]);
+  const [hasMoreFiles, setHasMoreFiles] = useState(false);
+  const [hasMoreRequests, setHasMoreRequests] = useState(false);
+  const [loadingMoreFiles, setLoadingMoreFiles] = useState(false);
+  const [loadingMoreRequests, setLoadingMoreRequests] = useState(false);
   const [filesLoad, setFilesLoad] = useState<'loading' | 'loaded' | 'error'>('loading');
   const [requestsLoad, setRequestsLoad] = useState<'loading' | 'loaded' | 'error'>('loading');
   const [hrSource, setHrSource] = useState<SourceResult<HrDocumentIndex>>(initialSource);
@@ -35,6 +39,7 @@ export default function TenantFileCenter() {
     ]);
     if (fileResult.status === 'fulfilled' && Array.isArray(fileResult.value.data)) {
       setFiles(fileResult.value.data);
+      setHasMoreFiles(fileResult.value.data.length === 100);
       setFilesLoad('loaded');
       setFileId(current => fileResult.value.data.some(file => file.id === current) ? current : '');
     } else {
@@ -42,12 +47,41 @@ export default function TenantFileCenter() {
     }
     if (requestResult.status === 'fulfilled' && Array.isArray(requestResult.value.data)) {
       setRequests(requestResult.value.data);
+      setHasMoreRequests(requestResult.value.data.length === 100);
       setRequestsLoad('loaded');
     } else {
       setRequestsLoad('error');
     }
   },[]);
   useEffect(() => { void refresh(); },[refresh]);
+  async function loadMoreFiles() {
+    if (loadingMoreFiles || !hasMoreFiles || filesLoad !== 'loaded') return;
+    setLoadingMoreFiles(true);
+    try {
+      const result = await api.get<FileRow[]>('/owner-files', { params: { offset: files.length } });
+      if (!Array.isArray(result.data)) throw new Error('Invalid file list');
+      setFiles(previous => [...previous, ...result.data.filter(file => !previous.some(old => old.id === file.id))]);
+      setHasMoreFiles(result.data.length === 100);
+    } catch {
+      setNotice('تعذر تحميل ملفات أقدم؛ الملفات الحالية محفوظة في العرض.');
+    } finally {
+      setLoadingMoreFiles(false);
+    }
+  }
+  async function loadMoreRequests() {
+    if (loadingMoreRequests || !hasMoreRequests || requestsLoad !== 'loaded') return;
+    setLoadingMoreRequests(true);
+    try {
+      const result = await api.get<RequestRow[]>('/owner-files/requests/mine', { params: { offset: requests.length } });
+      if (!Array.isArray(result.data)) throw new Error('Invalid request list');
+      setRequests(previous => [...previous, ...result.data.filter(request => !previous.some(old => old.id === request.id))]);
+      setHasMoreRequests(result.data.length === 100);
+    } catch {
+      setNotice('تعذر تحميل طلبات أقدم؛ حالة الطلبات المحملة لم تتغير.');
+    } finally {
+      setLoadingMoreRequests(false);
+    }
+  }
   async function loadOriginalSources() {
     setHrSource({ status: 'loading', items: [] });
     setErpSource({ status: 'loading', items: [] });
@@ -178,6 +212,7 @@ export default function TenantFileCenter() {
       <label className="block">الملف<select disabled={filesLoad !== 'loaded' || busy} value={fileId} onChange={e=>{ setFileId(e.target.value); setScope('FULL'); }} className="mt-2 block w-full rounded bg-slate-950 p-2">
         <option value="">اختر ملفًا</option>{files.map(f=><option key={f.id} value={f.id}>{f.title} — {f.fileName} ({f.mimeType})</option>)}
       </select></label>
+      {filesLoad === 'loaded' && hasMoreFiles && <button type="button" disabled={loadingMoreFiles || busy} onClick={() => void loadMoreFiles()} className="rounded border border-slate-600 px-3 py-2 disabled:opacity-50">{loadingMoreFiles ? 'جارٍ تحميل ملفات أقدم...' : 'تحميل 100 ملف أقدم'}</button>}
       <label className="block">النطاق<select value={scope} onChange={e=>setScope(e.target.value as 'FULL'|'PARTIAL')} className="mt-2 block rounded bg-slate-950 p-2">
         <option value="FULL">كامل</option><option value="PARTIAL">جزئي — صفحات PDF أو أسطر نصية</option>
       </select></label>
@@ -204,5 +239,6 @@ export default function TenantFileCenter() {
       {r.status === 'PENDING' && !invoiceNumber.trim() && <p className="mt-2 text-xs text-slate-400">يلزم اعتماد المالك أو إدخال رقم فاتورة مدفوعة ومتحقق منها لإتاحة التنزيل.</p>}
       {(r.status === 'REJECTED' || r.status === 'REVOKED') && <p className="mt-2 text-xs text-slate-400">التنزيل غير متاح لهذا الطلب؛ يلزم إنشاء طلب جديد.</p>}
     </section>)}
+    {requestsLoad === 'loaded' && hasMoreRequests && <button type="button" disabled={loadingMoreRequests || busy} onClick={() => void loadMoreRequests()} className="rounded border border-slate-600 px-3 py-2 disabled:opacity-50">{loadingMoreRequests ? 'جارٍ تحميل طلبات أقدم...' : 'تحميل 100 طلب أقدم'}</button>}
   </main>;
 }
