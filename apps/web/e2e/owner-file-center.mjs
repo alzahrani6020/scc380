@@ -111,7 +111,12 @@ try {
   await checkPage(applicant.page,'/downloads/files','مركز ملفات الشركة');
   await applicant.page.getByText('لا توجد ملفات تجارية مسجلة لهذه الشركة.').waitFor({timeout:20000});
   assert.equal(initialReadFaults,1,'Transient simulated 503 must be exercised');
-  await checkPage(principal.page,'/owner/files','مركز ملفات المالك — مراجعة الطلبات');
+  await checkPage(principal.page,'/owner/files','مراجعة الملفات وقرارات التنزيل');
+  // Legacy deep link must land in the single owner console, not a second dashboard.
+  const ownerUrl = new URL(principal.page.url());
+  assert.equal(ownerUrl.pathname,'/owner','Legacy owner file route must redirect to the single console');
+  assert.equal(ownerUrl.searchParams.get('tab'),'files','Files tab must be selected');
+  await principal.page.getByRole('navigation',{name:'أقسام لوحة المالك الموحدة'}).waitFor();
   await checkPage(foreign.page,'/downloads/files','مركز ملفات الشركة');
   const page=applicant.page;
   await page.getByRole('textbox',{name:'عنوان الملف'}).fill('Browser acceptance');
