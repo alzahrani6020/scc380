@@ -53,8 +53,11 @@ export default function LoginPage() {
           // The API interceptor can refresh an expired access JWT on 401.
           // Temporary network errors must NOT erase saved authentication state.
           await api.get('/auth/me');
-        } else if (getRememberPreference()) {
-          const result = await sessionAuth('refresh', { remember: true });
+        } else {
+          // HttpOnly refresh cookies may outlive cleared localStorage. Let the
+          // API decide whether there is a valid existing session.
+          const remember = getRememberPreference();
+          const result = await sessionAuth('refresh', { remember });
           if (!result?.accessToken || !result?.user?.role) return;
           setAuth({
             accessToken: result.accessToken,
@@ -62,11 +65,9 @@ export default function LoginPage() {
             tenantSlug: result.user.tenantSlug || null,
             tenantId: result.user.tenantId || null,
             user: { email: result.user.email },
-          }, true);
+          }, remember);
           // Prove identity with the API before redirecting.
           await api.get('/auth/me');
-        } else {
-          return;
         }
         if (active) router.replace('/dashboard');
       } catch {
