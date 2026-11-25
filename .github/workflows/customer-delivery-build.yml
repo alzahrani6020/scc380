@@ -3,7 +3,7 @@ name: SCC380 Customer Delivery Build Gate
 on:
   pull_request:
     paths:
-      - 'apps/web/Dockerfile'
+      - 'apps/web/Dockerfile*'
       - 'apps/web/next.config.js'
       - 'apps/api/Dockerfile'
       - 'infrastructure/docker/prod/**'
