@@ -11,6 +11,8 @@ const initialSource = <T,>(): SourceResult<T> => ({ status: 'idle', items: [] })
 export default function TenantFileCenter() {
   const [files, setFiles] = useState<FileRow[]>([]);
   const [requests, setRequests] = useState<RequestRow[]>([]);
+  const [filesLoad, setFilesLoad] = useState<'loading' | 'loaded' | 'error'>('loading');
+  const [requestsLoad, setRequestsLoad] = useState<'loading' | 'loaded' | 'error'>('loading');
   const [hrSource, setHrSource] = useState<SourceResult<HrDocumentIndex>>(initialSource);
   const [erpSource, setErpSource] = useState<SourceResult<InvoiceIndex>>(initialSource);
   const [fileId, setFileId] = useState('');
@@ -25,11 +27,25 @@ export default function TenantFileCenter() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const refresh = useCallback(async () => {
-    try {
-      const [a,b] = await Promise.all([api.get<FileRow[]>('/owner-files'),api.get<RequestRow[]>('/owner-files/requests/mine')]);
-      setFiles(a.data || []);
-      setRequests(b.data || []);
-    } catch { setNotice('تعذر جلب الملفات أو الطلبات من الخادم.'); }
+    setFilesLoad('loading');
+    setRequestsLoad('loading');
+    const [fileResult, requestResult] = await Promise.allSettled([
+      api.get<FileRow[]>('/owner-files'),
+      api.get<RequestRow[]>('/owner-files/requests/mine'),
+    ]);
+    if (fileResult.status === 'fulfilled' && Array.isArray(fileResult.value.data)) {
+      setFiles(fileResult.value.data);
+      setFilesLoad('loaded');
+      setFileId(current => fileResult.value.data.some(file => file.id === current) ? current : '');
+    } else {
+      setFilesLoad('error');
+    }
+    if (requestResult.status === 'fulfilled' && Array.isArray(requestResult.value.data)) {
+      setRequests(requestResult.value.data);
+      setRequestsLoad('loaded');
+    } else {
+      setRequestsLoad('error');
+    }
   },[]);
   useEffect(() => { void refresh(); },[refresh]);
   async function loadOriginalSources() {
@@ -69,17 +85,35 @@ export default function TenantFileCenter() {
       setUploadFile(null); setUploadTitle('');
       setNotice('سُجل الملف في مساحة الشركة.');
       await refresh();
-    } catch { setNotice('فشل رفع الملف أو ليست لديك صلاحية مدير الشركة.'); }
+    } catch (err: any) {
+      const status = err?.response?.status;
+      setNotice(status === 403 ? 'لا تملك صلاحية رفع ملفات الشركة.' :
+        status === 413 ? 'حجم الملف يتجاوز الحد المسموح.' :
+        status === 400 ? 'الملف أو بياناته غير صالحة. تحقق من النوع والحجم والعنوان.' :
+        status === 503 ? 'خدمة الملفات غير متاحة مؤقتًا. تحقق من الاتصال ثم أعد المحاولة.' :
+        'تعذر رفع الملف؛ لم يثبت حفظه. أعد المحاولة.');
+    }
     finally { setBusy(false); }
   }
   async function requestFile() {
+    if (filesLoad !== 'loaded') { setNotice('تعذر التحقق من قائمة الملفات، أعد تحديثها.'); return; }
     if (!fileId) { setNotice('اختر الملف أولًا'); return; }
+    if (scope === 'PARTIAL' && (!Number.isInteger(startLine) || !Number.isInteger(endLine) || startLine < 1 || endLine < startLine || endLine - startLine >= 500)) {
+      setNotice('حدد نطاقًا صحيحًا لا يتجاوز 500 صفحة أو سطر.'); return;
+    }
     setBusy(true);
     try {
       await api.post('/owner-files/requests', { fileId, scope, ...(scope === 'PARTIAL' ? { startLine, endLine } : {}) });
       setNotice('سُجل الطلب، ولا يتيح التنزيل حتى الموافقة أو الدفع المثبت.');
       await refresh();
-    } catch { setNotice('تعذر تسجيل الطلب. تحقق من نوع الملف والنطاق.'); }
+    } catch (err: any) {
+      const status = err?.response?.status;
+      setNotice(status === 400 ? 'النطاق غير صالح لنوع الملف أو يتجاوز عدد صفحاته/أسطره.' :
+        status === 403 ? 'ليست لديك صلاحية إنشاء طلب لهذه الشركة.' :
+        status === 404 ? 'الملف المحدد لم يعد موجودًا لهذه الشركة؛ حدث القائمة.' :
+        status === 503 ? 'خدمة الطلبات غير متاحة مؤقتًا. تحقق من قائمة طلباتك قبل إعادة الإرسال لتجنب التكرار.' :
+        'تعذر تأكيد إنشاء الطلب. حدّث الطلبات قبل إعادة الإرسال لتجنب التكرار.');
+    }
     finally { setBusy(false); }
   }
   async function download(id: string, fileName: string) {
@@ -93,7 +127,13 @@ export default function TenantFileCenter() {
       const a = document.createElement('a'); a.href=url; a.download=safeName; document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url),1000);
       setNotice('استلم المتصفح استجابة ملف؛ حفظ الملف على الجهاز لم يتم التحقق منه.');
-    } catch { setNotice('رُفض التنزيل أو فشل الاتصال؛ لم يثبت تسليم الملف.'); }
+    } catch (err: any) {
+      const status = err?.response?.status;
+      setNotice(status === 403 ? 'التنزيل غير مصرح به؛ يتطلب موافقة المالك السارية.' :
+        status === 404 ? 'طلب التنزيل غير موجود لحسابك أو شركتك.' :
+        status === 503 ? 'خدمة التنزيل غير متاحة مؤقتًا؛ لم يثبت تسليم الملف.' :
+        'تعذر تنزيل الملف؛ لم يثبت تسليمه.');
+    }
     finally { setBusy(false); }
   }
   return <main dir="rtl" className="mx-auto max-w-5xl space-y-5 px-4 py-8 text-white">
@@ -120,6 +160,10 @@ export default function TenantFileCenter() {
       </div>
     </section>
     <p className="text-sm text-slate-300">ملفات هذه الشركة فقط. التنزيل يتطلب قرار المالك أو فاتورة مسددة تطابق الملف والمشتري. التنزيل الجزئي يدعم صفحات PDF أو أسطر الملفات النصية.</p>
+    <nav className="flex flex-wrap gap-3 text-sm">
+      <Link href="/owner/files" className="text-blue-300 underline">لوحة مراجعة طلبات المالك (للمخولين فقط)</Link>
+      <Link href="/dashboard" className="text-blue-300 underline">العودة إلى لوحة التحكم</Link>
+    </nav>
     <section className="space-y-3 rounded-xl border border-slate-700 bg-slate-900 p-4">
       <h2 className="font-semibold">رفع ملف تجاري — لمدير الشركة فقط</h2>
       <label className="block">عنوان الملف<input value={uploadTitle} onChange={e=>setUploadTitle(e.target.value)} maxLength={160} className="mt-2 block w-full rounded bg-slate-950 p-2"/></label>
@@ -128,7 +172,10 @@ export default function TenantFileCenter() {
       <button type="button" onClick={()=>void upload()} disabled={busy} className="rounded bg-blue-600 px-4 py-2 disabled:opacity-50">رفع الملف</button>
     </section>
     <div className="space-y-3 rounded-xl border border-slate-700 bg-slate-900 p-4">
-      <label className="block">الملف<select value={fileId} onChange={e=>{ setFileId(e.target.value); setScope('FULL'); }} className="mt-2 block w-full rounded bg-slate-950 p-2">
+      {filesLoad === 'loading' && <p role="status" className="text-slate-300">جارٍ تحميل قائمة الملفات...</p>}
+      {filesLoad === 'error' && <p role="alert" className="text-red-300">فشل تحميل الملفات. لن يُفسر ذلك على أنه عدم وجود ملفات. اضغط تحديث الطلبات لإعادة المحاولة.</p>}
+      {filesLoad === 'loaded' && files.length === 0 && <p className="text-slate-400">لا توجد ملفات تجارية مسجلة لهذه الشركة.</p>}
+      <label className="block">الملف<select disabled={filesLoad !== 'loaded' || busy} value={fileId} onChange={e=>{ setFileId(e.target.value); setScope('FULL'); }} className="mt-2 block w-full rounded bg-slate-950 p-2">
         <option value="">اختر ملفًا</option>{files.map(f=><option key={f.id} value={f.id}>{f.title} — {f.fileName} ({f.mimeType})</option>)}
       </select></label>
       <label className="block">النطاق<select value={scope} onChange={e=>setScope(e.target.value as 'FULL'|'PARTIAL')} className="mt-2 block rounded bg-slate-950 p-2">
@@ -138,7 +185,7 @@ export default function TenantFileCenter() {
         <label>من {isPdf ? 'الصفحة' : 'السطر'}<input aria-label="من السطر" type="number" min={1} value={startLine} onChange={e=>setStartLine(Number(e.target.value))} className="mr-2 w-20 rounded bg-slate-950 p-2"/></label>
         <label>إلى {isPdf ? 'الصفحة' : 'السطر'}<input aria-label="إلى السطر" type="number" min={1} value={endLine} onChange={e=>setEndLine(Number(e.target.value))} className="mr-2 w-20 rounded bg-slate-950 p-2"/></label>
       </div>}
-      <button disabled={busy} onClick={()=>void requestFile()} type="button" className="rounded bg-blue-600 px-4 py-2 disabled:opacity-50">إرسال طلب تنزيل</button>
+      <button disabled={busy || filesLoad !== 'loaded' || !fileId} onClick={()=>void requestFile()} type="button" className="rounded bg-blue-600 px-4 py-2 disabled:opacity-50">إرسال طلب تنزيل</button>
     </div>
     <div className="rounded-xl border border-slate-700 bg-slate-900 p-4">
       <label className="block text-sm">رقم فاتورة مدفوعة (اختياري)
@@ -148,7 +195,10 @@ export default function TenantFileCenter() {
     </div>
     <button type="button" onClick={()=>void refresh()} className="rounded border px-4 py-2">تحديث الطلبات</button>
     {notice && <p role="status" className="text-amber-300">{notice}</p>}
-    {requests.map(r=><section key={r.id} className="rounded-lg border border-slate-700 bg-slate-900 p-4">
+    {requestsLoad === 'loading' && <p role="status" className="text-slate-300">جارٍ تحميل طلبات التنزيل...</p>}
+    {requestsLoad === 'error' && <p role="alert" className="text-red-300">تعذر تحميل الطلبات. حالة الموافقة غير معروفة؛ أعد التحديث قبل إرسال طلب جديد.</p>}
+    {requestsLoad === 'loaded' && requests.length === 0 && <p className="text-slate-400">لا توجد طلبات تنزيل مسجلة لحسابك.</p>}
+    {requestsLoad === 'loaded' && requests.map(r=><section key={r.id} className="rounded-lg border border-slate-700 bg-slate-900 p-4">
       <p className="break-all text-sm">الطلب {r.id} — {r.scope} — {r.status}</p>
       <button type="button" disabled={busy || r.status === 'REJECTED' || r.status === 'REVOKED' || (r.status !== 'APPROVED' && !invoiceNumber.trim())} onClick={()=>void download(r.id, r.file.fileName)} className="mt-2 rounded bg-blue-600 px-3 py-2 disabled:opacity-50">تنزيل بعد التحقق</button>
       {r.status === 'PENDING' && !invoiceNumber.trim() && <p className="mt-2 text-xs text-slate-400">يلزم اعتماد المالك أو إدخال رقم فاتورة مدفوعة ومتحقق منها لإتاحة التنزيل.</p>}

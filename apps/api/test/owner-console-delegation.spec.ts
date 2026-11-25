@@ -49,7 +49,9 @@ test('owner recovery requires existing HttpOnly refresh session and rechecks pri
   assert.match(middleware, /new URL\('\/auth\/owner-resume', request\.url\)/);
   assert.match(ownerRecovery, /sessionAuth\('refresh'/);
   assert.match(ownerRecovery, /setAuth\(/);
-  assert.match(ownerRecovery, /window\.location\.replace\('\/owner\/activity'\)/);
+  // Recovery may return to the two fixed, server-protected owner routes only.
+  assert.match(ownerRecovery, /next === '\/owner\/files' \? '\/owner\/files' : '\/owner\/activity'/);
+  assert.doesNotMatch(ownerRecovery, /window\.location\.replace\(next\)/);
   assert.doesNotMatch(ownerRecovery, /SUPER_ADMIN/);
   assert.doesNotMatch(ownerRecovery, /localStorage\.setItem\('role'/);
 });

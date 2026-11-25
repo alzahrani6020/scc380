@@ -111,6 +111,15 @@ try {
   await page.getByRole('button',{name:'إرسال طلب تنزيل'}).click();
   await page.getByText(/سُجل الطلب/).waitFor();
   const full=await waitForRequest(requester.id,'FULL');
+  // Upload and request creation are audited atomically, including tenant and actor.
+  const uploadAudit = await prisma.auditLog.findFirst({
+    where: { tenantId:tenant.id, userId:requester.id, action:'OWNER_FILE_UPLOADED' }
+  });
+  assert.ok(uploadAudit,'Commercial upload must create a durable audit entry');
+  const requestAudit = await prisma.auditLog.findFirst({
+    where: { tenantId:tenant.id, userId:requester.id, action:'OWNER_FILE_REQUEST_CREATED', entityId:full.id }
+  });
+  assert.ok(requestAudit,'File request creation must create an audit entry');
   const foreignResponse=await foreign.page.evaluate(async ({id,token}) => {
     const response=await fetch('/api/owner-files/requests/'+id+'/download',{
       headers:{Authorization:'Bearer '+token}});
@@ -118,6 +127,12 @@ try {
   },{id:full.id,token:foreign.token});
   assert.equal(foreignResponse,404,'Foreign tenant download must not disclose request');
   await principal.page.getByRole('button',{name:'تحديث'}).click();
+  // Owner search and status filter must expose the pending request.
+  await principal.page.getByRole('textbox',{name:'البحث في الطلبات'}).fill(full.id);
+  await principal.page.getByLabel('حالة الطلب').selectOption('PENDING');
+  await principal.page.getByText(full.id,{exact:false}).first().waitFor();
+  await principal.page.getByLabel('حالة الطلب').selectOption('ALL');
+  await principal.page.getByRole('textbox',{name:'البحث في الطلبات'}).fill('');
   await principal.page.getByRole('button',{name:'موافقة'}).first().click();
   await principal.page.getByText(/APPROVED/).first().waitFor();
   await page.getByRole('button',{name:'تحديث الطلبات'}).click();

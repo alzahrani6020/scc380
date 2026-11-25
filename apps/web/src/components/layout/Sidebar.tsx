@@ -122,6 +122,8 @@ export const navigation: NavEntry[] = [
   { name: 'التكاملات الحكومية', href: '/dashboard/government', icon: Globe },
   { name: 'المساعد الذكي', href: '/dashboard/ai', icon: Bot },
   { name: 'طلبات الموافقة', href: '/dashboard/approvals', icon: ListChecks },
+  { name: 'ملفات الشركة التجارية', href: '/downloads/files', icon: FileStack },
+  { name: 'مراجعة ملفات المالك', href: '/owner/files', icon: Shield },
   { name: 'الامتثال', href: '/dashboard/compliance', icon: Shield },
   { name: 'الأمان', href: '/dashboard/security', icon: Lock },
   { name: 'المستخدمون', href: '/dashboard/users', icon: Users },
