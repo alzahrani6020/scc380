@@ -39,14 +39,21 @@ export class SurveillanceGatewayController {
 
   @Get()
   @UseGuards(JwtAuthGuard)
-  list(@Req() req: any) {
+  async list(@Req() req: any) {
     const { tenantId } = this.admin(req);
-    return prisma.surveillanceGateway.findMany({
+    const rows = await prisma.surveillanceGateway.findMany({
       where: { tenantId },
       select: { id: true, siteId: true, name: true, tokenPrefix: true,
         lastSeenAt: true, revokedAt: true, createdAt: true },
       orderBy: { createdAt: 'desc' }, take: 200,
     });
+    const cutoff = Date.now() - 120_000;
+    return rows.map(gateway => ({
+      ...gateway,
+      connectionState: gateway.revokedAt ? 'REVOKED'
+        : !gateway.lastSeenAt ? 'NEVER_CONNECTED'
+        : gateway.lastSeenAt.getTime() < cutoff ? 'STALE' : 'CONNECTED',
+    }));
   }
 
   @Post()
