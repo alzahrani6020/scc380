@@ -22,6 +22,7 @@ const req = (tenantId: string, role = 'ADMIN') => ({ user: { userId: 'test-actor
 after(async () => {
   // Isolated CI only. Never use production credentials for this test.
   if (tenants.length) {
+    await prisma.surveillanceIncident.deleteMany({ where: { tenantId: { in: tenants } } });
     await prisma.surveillanceMaintenance.deleteMany({ where: { tenantId: { in: tenants } } });
     await prisma.surveillanceCamera.deleteMany({ where: { tenantId: { in: tenants } } });
     await prisma.surveillanceSite.deleteMany({ where: { tenantId: { in: tenants } } });
@@ -58,6 +59,27 @@ test('surveillance tenant isolation and maintenance lifecycle', async () => {
   await assert.rejects(() => controller.updateMaintenance(req(a), task.id, { status: 'IN_PROGRESS' }),
     /Closed maintenance records cannot be changed/);
   assert.equal((await controller.maintenance(req(a)))[0].status, 'COMPLETED');
+  await assert.rejects(() => controller.createIncident(req(b), {
+    cameraId: camera.id, title: 'Foreign report', severity: 'HIGH',
+  }), /Camera not found in tenant/);
+  const incident = await controller.createIncident(req(a), {
+    cameraId: camera.id, title: 'Unauthorized access near loading bay', severity: 'HIGH',
+  });
+  assert.equal((await controller.incidents(req(b))).length, 0);
+  await assert.rejects(() => controller.resolveIncident(req(b), incident.id, {
+    status: 'RESOLVED', resolution: 'Unauthorized actor removed',
+  }), /Incident not found/);
+  await assert.rejects(() => controller.resolveIncident(req(a), incident.id, {
+    status: 'RESOLVED',
+  }), /Resolution explanation required/);
+  await controller.resolveIncident(req(a), incident.id, { status: 'ACKNOWLEDGED' });
+  const closed = await controller.resolveIncident(req(a), incident.id, {
+    status: 'RESOLVED', resolution: 'Security team reviewed event',
+  });
+  assert.equal(closed?.status, 'RESOLVED');
+  await assert.rejects(() => controller.resolveIncident(req(a), incident.id, {
+    status: 'ACKNOWLEDGED',
+  }), /already closed or invalid transition/);
 });
 
 test('tenant-free sessions and unprivileged roles cannot access cameras', async () => {
