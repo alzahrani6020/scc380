@@ -2,7 +2,7 @@ import {
   BadRequestException, Body, Controller, ForbiddenException, Get,
   Headers, Injectable, NotFoundException, Param, Post, Req, UseGuards,
 } from '@nestjs/common';
-import { IsArray, IsIn, IsOptional, IsString, MaxLength, ArrayMaxSize, ValidateNested } from 'class-validator';
+import { IsArray, IsIn, IsOptional, IsString, IsNumber, Min, Max, MaxLength, ArrayMaxSize, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { prisma } from '@scc/database';
@@ -17,6 +17,8 @@ class RegisterGatewayDto {
 class EdgeCameraStatusDto {
   @IsString() @MaxLength(80) cameraId!: string;
   @IsIn(['ONLINE', 'OFFLINE', 'DEGRADED']) status!: 'ONLINE' | 'OFFLINE' | 'DEGRADED';
+  @IsOptional() @IsNumber() @Min(-90) @Max(90) latitude?: number;
+  @IsOptional() @IsNumber() @Min(-180) @Max(180) longitude?: number;
 }
 
 class EdgeHeartbeatDto {
@@ -111,7 +113,14 @@ export class SurveillanceGatewayController {
         !Array.isArray(status) || status.length > 100 ||
         status.some(c => !c || typeof c.cameraId !== 'string' ||
           !['ONLINE', 'OFFLINE', 'DEGRADED'].includes(c.status) ||
-          Object.keys(c).some(k => !['cameraId', 'status'].includes(k)))) {
+          Object.keys(c).some(k => !['cameraId', 'status', 'latitude', 'longitude'].includes(k)) ||
+          ((c.latitude === undefined) !== (c.longitude === undefined)) ||
+          (c.latitude !== undefined && (
+            typeof c.latitude !== 'number' || !Number.isFinite(c.latitude) ||
+            c.latitude < -90 || c.latitude > 90 ||
+            typeof c.longitude !== 'number' || !Number.isFinite(c.longitude) ||
+            c.longitude < -180 || c.longitude > 180
+          )))) {
       throw new BadRequestException('Invalid gateway heartbeat payload');
     }
     if (new Set(status.map(c => c.cameraId)).size !== status.length) {
@@ -120,9 +129,14 @@ export class SurveillanceGatewayController {
     const ids = status.map(c => c.cameraId);
     const actual = await prisma.surveillanceCamera.findMany({
       where: { id: { in: ids }, tenantId: gateway.tenantId, siteId: gateway.siteId },
-      select: { id: true },
+      select: { id: true, cameraType: true },
     });
     if (actual.length !== ids.length) throw new ForbiddenException('Camera not assigned to this gateway site');
+    const byId = new Map(actual.map(camera => [camera.id, camera]));
+    if (status.some(camera => camera.latitude !== undefined &&
+        !byId.get(camera.cameraId)?.cameraType.startsWith('DASHCAM'))) {
+      throw new BadRequestException('GPS telemetry is only supported for enrolled dash cameras');
+    }
     const now = new Date();
     await prisma.$transaction(async tx => {
       const active = await tx.surveillanceGateway.updateMany({
@@ -132,7 +146,12 @@ export class SurveillanceGatewayController {
       for (const camera of status) {
         await tx.surveillanceCamera.updateMany({
           where: { id: camera.cameraId, tenantId: gateway.tenantId, siteId: gateway.siteId },
-          data: { connectionStatus: camera.status, lastSeenAt: now },
+          data: { connectionStatus: camera.status, lastSeenAt: now,
+            ...(camera.latitude !== undefined && camera.longitude !== undefined ? {
+              lastLatitude: camera.latitude, lastLongitude: camera.longitude,
+              lastTelemetryAt: now,
+            } : {}),
+          },
         });
       }
     });

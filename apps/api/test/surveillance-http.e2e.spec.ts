@@ -26,6 +26,7 @@ test('HTTP JWT and tenant boundaries for sites, cameras and maintenance', async 
   const key = randomBytes(8).toString('hex');
   const tenantIds: string[] = [];
   const userIds: string[] = [];
+  const vehicleIds: string[] = [];
   const sessionIds: string[] = [];
   let app: any;
   try {
@@ -44,6 +45,18 @@ test('HTTP JWT and tenant boundaries for sites, cameras and maintenance', async 
       sessionIds.push(sid);
       return {u,sid};
     };
+    // Test fixture uses the stable baseline vehicles columns. The broader fleet
+    // Prisma model includes legacy columns not fully reconciled in isolated migrations;
+    // do not change unrelated production fleet schema just to construct this fixture.
+    const aliceVehicle={id:key+'vehicleA'};
+    const bobVehicle={id:key+'vehicleB'};
+    await prisma.$executeRaw`INSERT INTO "vehicles"
+      ("id","tenantId","plateNumber","make","model","createdAt","updatedAt")
+      VALUES (${aliceVehicle.id},${a.id},${key+'A1'},'Test','Truck',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`;
+    await prisma.$executeRaw`INSERT INTO "vehicles"
+      ("id","tenantId","plateNumber","make","model","createdAt","updatedAt")
+      VALUES (${bobVehicle.id},${b.id},${key+'B1'},'Test','Van',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`;
+    vehicleIds.push(aliceVehicle.id,bobVehicle.id);
     const alice = await createUser('alice',a.id);
     const bob = await createUser('bob',b.id);
     const viewer = await createUser('viewer',a.id,'USER');
@@ -66,6 +79,10 @@ test('HTTP JWT and tenant boundaries for sites, cameras and maintenance', async 
       body:body?JSON.stringify(body):undefined,
     });
     const aliceToken=token(alice),bobToken=token(bob),viewerToken=token(viewer);
+    const fleet=await (await send('/surveillance/vehicles',aliceToken)).json() as Array<{id:string}>;
+    assert.ok(fleet.some(v=>v.id===aliceVehicle.id));
+    assert.equal(fleet.some(v=>v.id===bobVehicle.id),false);
+    assert.equal((await send('/surveillance/vehicles',viewerToken)).status,403);
     assert.equal((await send('/surveillance/sites','invalid-token')).status,401);
     assert.equal((await send('/surveillance/sites',viewerToken)).status,403);
     assert.equal((await send('/surveillance/sites',aliceToken,'POST',{name:'X',tenantId:b.id})).status,400);
@@ -86,6 +103,25 @@ test('HTTP JWT and tenant boundaries for sites, cameras and maintenance', async 
     assert.equal(camResponse.status,201);
     const cam=await camResponse.json() as {id:string;connectionStatus:string};
     assert.equal(cam.connectionStatus,'UNCONFIGURED');
+    // Existing company vehicles can be linked to dashcams; other company IDs cannot.
+    assert.equal((await send('/surveillance/cameras',aliceToken,'POST',{
+      siteId,name:'Forged Fleet Cam',cameraType:'DASHCAM_FRONT',vehicleId:bobVehicle.id
+    })).status,404);
+    assert.equal((await send('/surveillance/cameras',aliceToken,'POST',{
+      siteId,name:'Invalid PTZ dashcam',cameraType:'DASHCAM_FRONT',supportsPtz:true
+    })).status,400);
+    assert.equal((await send('/surveillance/cameras',aliceToken,'POST',{
+      siteId,name:'Unknown type',cameraType:'UNKNOWN',
+    })).status,400);
+    const dashResponse=await send('/surveillance/cameras',aliceToken,'POST',{
+      siteId,name:'Vehicle front',cameraType:'DASHCAM_FRONT',
+      connectorType:'DASHCAM_RTSP',vehicleId:aliceVehicle.id,supportsAudio:true,
+    });
+    assert.equal(dashResponse.status,201,await dashResponse.clone().text());
+    const dashcam=await dashResponse.json() as {id:string;cameraType:string;vehicleId:string};
+    assert.equal(dashcam.vehicleId,aliceVehicle.id);
+    assert.equal(dashcam.cameraType,'DASHCAM_FRONT');
+
 
     assert.equal((await send('/surveillance/gateways',bobToken,'POST',
       {siteId,name:'Other tenant unauthorized'})).status,404);
@@ -168,6 +204,26 @@ test('HTTP JWT and tenant boundaries for sites, cameras and maintenance', async 
       if(previousPilot===undefined) delete process.env.SCC_SURVEILLANCE_PTZ_PILOT_ENABLED;
       else process.env.SCC_SURVEILLANCE_PTZ_PILOT_ENABLED=previousPilot;
     }
+    // Cross-tenant/site authenticated gateway checks also apply to mobile GPS reports.
+    assert.equal((await edgeSend(gateway.enrollmentToken,{cameras:[{
+      cameraId:cam.id,status:'ONLINE',latitude:21.5,longitude:39.2
+    }]})).status,400); // Fixed cameras cannot submit GPS.
+    assert.equal((await edgeSend(gateway.enrollmentToken,{cameras:[{
+      cameraId:dashcam.id,status:'ONLINE',latitude:21.5
+    }]})).status,400); // Both coordinates required.
+    assert.equal((await edgeSend(gateway.enrollmentToken,{cameras:[{
+      cameraId:dashcam.id,status:'ONLINE',latitude:91,longitude:39.2
+    }]})).status,400);
+    assert.equal((await edgeSend(gateway.enrollmentToken,{cameras:[{
+      cameraId:dashcam.id,status:'ONLINE',latitude:21.54321,longitude:39.19876
+    }]})).status,201);
+    const enrolledDashcam=await (await send('/surveillance/cameras',aliceToken)).json() as
+      Array<{id:string;cameraType:string;vehicleId:string;lastLatitude:string;lastLongitude:string;lastTelemetryAt:string}>;
+    assert.ok(enrolledDashcam.some(c=>c.id===dashcam.id&&c.cameraType==='DASHCAM_FRONT'&&
+      c.vehicleId===aliceVehicle.id&&Number(c.lastLatitude)===21.54321&&
+      Number(c.lastLongitude)===39.19876&&!!c.lastTelemetryAt));
+    const otherDashcamList=await (await send('/surveillance/cameras',bobToken)).json() as Array<{id:string}>;
+    assert.equal(otherDashcamList.some(c=>c.id===dashcam.id),false);
     const observed=await (await send('/surveillance/cameras',aliceToken)).json() as Array<{id:string;connectionStatus:string;lastSeenAt:string}>;
     assert.ok(observed.some(c=>c.id===cam.id&&c.connectionStatus==='ONLINE'&&!!c.lastSeenAt));
     const freshCamera=await (await send('/surveillance/cameras',aliceToken)).json() as Array<{id:string;effectiveConnectionStatus:string}>;
@@ -235,6 +291,7 @@ test('HTTP JWT and tenant boundaries for sites, cameras and maintenance', async 
       await prisma.surveillanceMaintenance.deleteMany({where:{tenantId:{in:tenantIds}}});
       await prisma.surveillanceCamera.deleteMany({where:{tenantId:{in:tenantIds}}});
       await prisma.surveillanceSite.deleteMany({where:{tenantId:{in:tenantIds}}});
+      await prisma.vehicle.deleteMany({where:{id:{in:vehicleIds}}});
     }
     if(sessionIds.length) await prisma.session.deleteMany({where:{id:{in:sessionIds}}});
     if(userIds.length) await prisma.user.deleteMany({where:{id:{in:userIds}}});

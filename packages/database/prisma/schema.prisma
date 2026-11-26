@@ -3853,6 +3853,12 @@ model SurveillanceCamera {
   supportsTalk      Boolean @default(false)
   supportsPtz       Boolean @default(false)
   supportsWiper     Boolean @default(false)
+  cameraType        String  @default("FIXED")
+  connectorType     String  @default("UNCONFIGURED")
+  vehicleId         String?
+  lastLatitude      Decimal? @db.Decimal(10, 8)
+  lastLongitude     Decimal? @db.Decimal(11, 8)
+  lastTelemetryAt   DateTime?
   connectionStatus  String  @default("UNCONFIGURED")
   lastSeenAt        DateTime?
   createdAt         DateTime @default(now())
@@ -3863,6 +3869,7 @@ model SurveillanceCamera {
 
   @@unique([id, tenantId])
   @@index([tenantId, siteId])
+  @@index([tenantId, vehicleId])
   @@map("surveillance_cameras")
 }
 
