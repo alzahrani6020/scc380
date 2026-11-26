@@ -86,7 +86,7 @@ if (args.length !== 2 || args[0] !== '--config') {
       for(const device of cfg.devices) {
         if(!cameras.some(c=>c.cameraId===device.cameraId) || onvifDevices.has(device.cameraId) ||
            typeof device.cameraId!=='string' || Object.keys(device).some(k=>
-             !['cameraId','host','onvifPort','profileToken','usernameEnv','passwordEnv'].includes(k)))
+             !['cameraId','host','onvifPort','profileToken','usernameEnv','passwordEnv','ptzPath'].includes(k)))
           throw new Error('ONVIF camera not found in this site config');
         onvifDevices.set(device.cameraId,device);
       }
