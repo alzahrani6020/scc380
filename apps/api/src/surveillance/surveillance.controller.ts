@@ -82,6 +82,17 @@ export class SurveillanceController {
     return value.trim();
   }
 
+  @Get('vehicles')
+  vehicles(@Req() req: any) {
+    const { tenantId } = this.scope(req);
+    // Read-only company fleet catalog: no new memberships, vehicles or spaces are created.
+    return prisma.vehicle.findMany({
+      where: { tenantId },
+      select: { id: true, plateNumber: true, make: true, model: true },
+      orderBy: { plateNumber: 'asc' }, take: 500,
+    });
+  }
+
   @Get('sites')
   sites(@Req() req: any) {
     const { tenantId } = this.scope(req);
