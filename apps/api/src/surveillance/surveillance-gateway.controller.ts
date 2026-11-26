@@ -86,7 +86,7 @@ export class SurveillanceGatewayController {
     const token = auth.slice('Bearer '.length);
     const tokenHash = digest(token);
     const gateway = await prisma.surveillanceGateway.findUnique({
-      where: { tokenHash }, select: { id: true, tenantId: true, siteId: true, revokedAt: true },
+      where: { tokenHash }, select: { id: true, tenantId: true, siteId: true, revokedAt: true, tokenHash: true },
     });
     if (!gateway || gateway.revokedAt ||
         !timingSafeEqual(Buffer.from(gateway.tokenHash ?? tokenHash), Buffer.from(tokenHash))) {
@@ -111,9 +111,10 @@ export class SurveillanceGatewayController {
     if (actual.length !== ids.length) throw new ForbiddenException('Camera not assigned to this gateway site');
     const now = new Date();
     await prisma.$transaction(async tx => {
-      await tx.surveillanceGateway.updateMany({
+      const active = await tx.surveillanceGateway.updateMany({
         where: { id: gateway.id, revokedAt: null }, data: { lastSeenAt: now },
       });
+      if (active.count !== 1) throw new ForbiddenException('Gateway revoked');
       for (const camera of status) {
         await tx.surveillanceCamera.updateMany({
           where: { id: camera.cameraId, tenantId: gateway.tenantId, siteId: gateway.siteId },
