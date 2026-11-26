@@ -3929,3 +3929,25 @@ model SurveillanceGateway {
   @@index([tenantId, siteId])
   @@map("surveillance_gateways")
 }
+
+
+// Auditable outbound command envelope. A queue acknowledgment is NOT device execution.
+// Edge adapters must be explicitly installed and validated before using physical controls.
+model SurveillanceDeviceCommand {
+  id             String   @id @default(cuid())
+  tenantId       String
+  siteId         String
+  cameraId       String
+  gatewayId      String
+  action         String
+  status         String   @default("QUEUED")
+  createdById    String
+  createdAt      DateTime @default(now())
+  expiresAt      DateTime
+  acknowledgedAt DateTime?
+  resultCode     String?
+
+  @@index([gatewayId, status, expiresAt])
+  @@index([tenantId, cameraId, createdAt])
+  @@map("surveillance_device_commands")
+}
