@@ -148,6 +148,13 @@ export class SurveillanceController {
   async addCamera(@Req() req: any, @Body() dto: CameraDto) {
     const { tenantId } = this.scope(req, true);
     this.rejectClientScope(dto);
+    const types=['FIXED','PTZ','DASHCAM_FRONT','DASHCAM_REAR','DASHCAM_CABIN','DASHCAM_MULTI'];
+    const connectors=['UNCONFIGURED','RTSP_ONVIF','RTSP','DASHCAM_RTSP','VENDOR_ADAPTER'];
+    // Runtime allowlists protect the API even if DTO decorators are bypassed.
+    if ((dto.cameraType && !types.includes(dto.cameraType)) ||
+        (dto.connectorType && !connectors.includes(dto.connectorType))) {
+      throw new BadRequestException('Unsupported camera or connector type');
+    }
     const site = await prisma.surveillanceSite.findFirst({ where: { id: dto.siteId, tenantId }, select: { id: true } });
     if (!site) throw new NotFoundException('Site not found in tenant');
     if (dto.vehicleId) {
