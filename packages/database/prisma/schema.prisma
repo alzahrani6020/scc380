@@ -36,6 +36,7 @@ model Tenant {
   updatedAt     DateTime  @updatedAt
   deletedAt     DateTime?
 
+  surveillanceDeviceCommands SurveillanceDeviceCommand[]
   surveillanceGateways    SurveillanceGateway[]
   surveillanceSites       SurveillanceSite[]
   surveillanceCameras     SurveillanceCamera[]
@@ -3829,6 +3830,7 @@ model SurveillanceSite {
   updatedAt    DateTime @updatedAt
   cameras      SurveillanceCamera[]
   gateways     SurveillanceGateway[]
+  deviceCommands SurveillanceDeviceCommand[]
 
   @@unique([id, tenantId])
   @@index([tenantId, name])
@@ -3857,6 +3859,7 @@ model SurveillanceCamera {
   updatedAt         DateTime @updatedAt
   maintenances      SurveillanceMaintenance[]
   incidents         SurveillanceIncident[]
+  deviceCommands    SurveillanceDeviceCommand[]
 
   @@unique([id, tenantId])
   @@index([tenantId, siteId])
@@ -3920,6 +3923,7 @@ model SurveillanceGateway {
   name          String
   tokenHash     String   @unique
   tokenPrefix   String
+  deviceCommands SurveillanceDeviceCommand[]
   lastSeenAt    DateTime?
   revokedAt     DateTime?
   createdById   String
@@ -3928,4 +3932,30 @@ model SurveillanceGateway {
 
   @@index([tenantId, siteId])
   @@map("surveillance_gateways")
+}
+
+
+// Auditable outbound command envelope. A queue acknowledgment is NOT device execution.
+// Edge adapters must be explicitly installed and validated before using physical controls.
+model SurveillanceDeviceCommand {
+  id             String   @id @default(cuid())
+  tenantId       String
+  tenant         Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  siteId         String
+  site           SurveillanceSite @relation(fields: [siteId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  cameraId       String
+  camera         SurveillanceCamera @relation(fields: [cameraId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  gatewayId      String
+  gateway        SurveillanceGateway @relation(fields: [gatewayId], references: [id], onDelete: Restrict)
+  action         String
+  status         String   @default("QUEUED")
+  createdById    String
+  createdAt      DateTime @default(now())
+  expiresAt      DateTime
+  acknowledgedAt DateTime?
+  resultCode     String?
+
+  @@index([gatewayId, status, expiresAt])
+  @@index([tenantId, cameraId, createdAt])
+  @@map("surveillance_device_commands")
 }
