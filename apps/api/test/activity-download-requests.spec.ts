@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 const api = readFileSync(join(process.cwd(), 'src/analytics/analytics.controller.ts'), 'utf8');
 const applicant = readFileSync(join(process.cwd(), '../web/src/app/downloads/activity/page.tsx'), 'utf8');
-const owner = readFileSync(join(process.cwd(), '../web/src/app/owner/activity/page.tsx'), 'utf8');
+const owner = readFileSync(join(process.cwd(), '../web/src/components/owner/OwnerActivityPanel.tsx'), 'utf8');
 
 test('applicant identity, tenant and resource scope are attributed server-side', () => {
   assert.match(api, /@Post\('activity\/download-request'\)\s*@UseGuards\(JwtAuthGuard\)/);
