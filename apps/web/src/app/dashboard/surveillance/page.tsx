@@ -48,18 +48,25 @@ export default function SurveillancePage() {
       setCameras(results[1].data);
       setMaintenance(results[2].data);
       setMessage('');
+      return true;
     } catch (error: unknown) {
       const status = (error as { response?: { status?: number } })?.response?.status;
       setMessage(status === 403 ? 'ليس لديك تصريح بالوصول إلى وحدة المراقبة أو لم تُحدد الشركة في الجلسة.' :
         status === 404 ? 'واجهة المراقبة غير متاحة على الخادم حاليًا؛ لا يمكن حفظ البيانات.' :
         'تعذّر الاتصال بخدمة المراقبة. لا يُعتبر عدم ظهور البيانات دليلًا على عدم وجودها.');
+      return false;
     } finally { setLoading(false); }
   }, []);
   useEffect(() => { void refresh(); }, [refresh]);
 
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true); setMessage('');
-    try { await fn(); await refresh(); setMessage('تم حفظ التغيير في قاعدة البيانات عبر API.'); }
+    try {
+      await fn();
+      const verified = await refresh();
+      setMessage(verified ? 'استُلم التغيير وأُعيد تحميل السجلات من قاعدة البيانات.' :
+        'استجاب الخادم لطلب التغيير، لكن تعذّر إعادة قراءة السجلات؛ لا يمكن تأكيد الاسترجاع.');
+    }
     catch (error: unknown) {
       const status = (error as { response?: { status?: number } })?.response?.status;
       setMessage(status === 403 ? 'تم رفض الإجراء بسبب الصلاحيات.' :
