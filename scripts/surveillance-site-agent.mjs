@@ -64,5 +64,27 @@ if (args.length !== 2 || args[0] !== '--config') {
       online:statuses.filter(c=>c.status==='ONLINE').length,
       degraded:statuses.filter(c=>c.status==='DEGRADED').length,
       offline:statuses.filter(c=>c.status==='OFFLINE').length}));
+    // Pilot adapter: inspect and explicitly reject unsupported PTZ intents, NEVER perform movement.
+    // This makes audit state deterministic without trusting camera-side vendor behavior.
+    const pending=await fetch(new URL('/surveillance/device-commands/pending',target),{
+      method:'GET',redirect:'error',signal:AbortSignal.timeout(10000),
+      headers:{Authorization:'Bearer '+token},
+    });
+    if(!pending.ok) throw new Error('Gateway command polling rejected: HTTP '+pending.status);
+    const queue=await pending.json();
+    if(queue.executionEnabled !== false || !Array.isArray(queue.commands) || queue.commands.length>20)
+      throw new Error('Unexpected command queue response; refusing execution');
+    for(const command of queue.commands){
+      if(typeof command.id !== 'string' || !/^[a-zA-Z0-9_-]{10,80}$/.test(command.id) ||
+         !['PTZ_LEFT','PTZ_RIGHT','PTZ_UP','PTZ_DOWN','ZOOM_IN','ZOOM_OUT','PTZ_STOP'].includes(command.action))
+        throw new Error('Invalid command envelope; refusing execution');
+      const rejected=await fetch(new URL('/surveillance/device-commands/'+encodeURIComponent(command.id)+'/reject',target),{
+        method:'POST',redirect:'error',signal:AbortSignal.timeout(10000),
+        headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
+        body:JSON.stringify({resultCode:'UNSUPPORTED'}),
+      });
+      if(!rejected.ok) throw new Error('Command rejection failed: HTTP '+rejected.status);
+      console.log(JSON.stringify({status:'COMMAND_REJECTED_UNSUPPORTED',id:command.id}));
+    }
   } catch (error) { fail(error.message); }
 }
