@@ -105,9 +105,9 @@ export class SurveillanceController {
   }
 
   @Get('cameras')
-  cameras(@Req() req: any) {
+  async cameras(@Req() req: any) {
     const { tenantId } = this.scope(req);
-    return prisma.surveillanceCamera.findMany({
+    const rows = await prisma.surveillanceCamera.findMany({
       where: { tenantId },
       select: { id: true, siteId: true, name: true, manufacturer: true, model: true,
         serialNumber: true, location: true, isOutdoor: true, supportsAudio: true,
@@ -116,6 +116,16 @@ export class SurveillanceController {
         site: { select: { name: true } } },
       orderBy: { createdAt: 'desc' }, take: 200,
     });
+    // The stored RTSP result is a historical sample, not proof that a remote site is live.
+    // Never advertise ONLINE after two minutes without a new successful gateway report.
+    const cutoff = Date.now() - 120_000;
+    return rows.map(camera => ({
+      ...camera,
+      effectiveConnectionStatus:
+        camera.lastSeenAt && camera.lastSeenAt.getTime() < cutoff &&
+        ['ONLINE', 'DEGRADED'].includes(camera.connectionStatus)
+          ? 'STALE' : camera.connectionStatus,
+    }));
   }
 
   @Post('cameras')
