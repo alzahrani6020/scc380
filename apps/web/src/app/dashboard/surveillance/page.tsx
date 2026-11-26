@@ -9,7 +9,7 @@ type Site = { id: string; name: string; city?: string | null; siteType: string; 
 type Camera = { id: string; siteId: string; name: string; manufacturer?: string | null; model?: string | null;
   lastSeenAt?: string | null;
   supportsAudio: boolean; supportsTalk: boolean; supportsPtz: boolean; supportsWiper: boolean;
-  connectionStatus: string; site?: { name: string } };
+  connectionStatus: string; effectiveConnectionStatus?: string; site?: { name: string } };
 type Task = { id: string; cameraId: string; taskType: string; status: string;
   camera?: { name: string; site: { name: string } }; createdAt: string };
 
@@ -139,7 +139,7 @@ export default function SurveillancePage() {
           <td className="p-3">{c.name}</td><td className="p-3">{c.site?.name||'غير متاح'}</td>
           <td className="p-3">{c.manufacturer||'غير متاح'}</td>
           <td className="p-3">{[c.supportsAudio?'صوت':null,c.supportsTalk?'تحدث':null,c.supportsPtz?'PTZ':null,c.supportsWiper?'مسّاحة':null].filter(Boolean).join('، ')||'غير محددة'}</td>
-          <td className="p-3">{c.connectionStatus==='UNCONFIGURED'?'لم يُربط جهاز فعلي':c.connectionStatus} {c.lastSeenAt?'('+new Date(c.lastSeenAt).toLocaleString('ar-SA')+')':''}</td>
+          <td className="p-3">{(c.effectiveConnectionStatus ?? c.connectionStatus)==='STALE'?'الاتصال منقطع أو غير مؤكد (آخر تقرير قديم)':c.connectionStatus==='UNCONFIGURED'?'لم يُربط جهاز فعلي':c.effectiveConnectionStatus ?? c.connectionStatus} {c.lastSeenAt?'('+new Date(c.lastSeenAt).toLocaleString('ar-SA')+')':''}</td>
         </tr>)}</tbody></table></div>
       {!loading&&cameras.length===0&&!message&&<p>لا توجد كاميرات مسجلة.</p>}
     </section>}
