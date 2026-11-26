@@ -38,6 +38,17 @@ class MaintenanceDecisionDto {
   @IsIn(['IN_PROGRESS', 'COMPLETED', 'CANCELLED']) status!: string;
 }
 
+class IncidentDto {
+  @IsString() @MaxLength(80) cameraId!: string;
+  @IsString() @MaxLength(200) title!: string;
+  @IsOptional() @IsString() @MaxLength(2000) description?: string;
+  @IsIn(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']) severity!: string;
+}
+class IncidentDecisionDto {
+  @IsIn(['ACKNOWLEDGED', 'RESOLVED']) status!: 'ACKNOWLEDGED' | 'RESOLVED';
+  @IsOptional() @IsString() @MaxLength(2000) resolution?: string;
+}
+
 @Injectable()
 @Controller('surveillance')
 @UseGuards(JwtAuthGuard)
@@ -167,6 +178,55 @@ export class SurveillanceController {
       where: { id },
       data: { status: dto.status,
         completedAt: dto.status === 'COMPLETED' ? new Date() : null },
+    });
+  }
+
+
+  @Get('incidents')
+  incidents(@Req() req: any) {
+    const { tenantId } = this.scope(req);
+    return prisma.surveillanceIncident.findMany({
+      where: { tenantId },
+      select: { id: true, cameraId: true, title: true, description: true,
+        severity: true, status: true, occurredAt: true, resolution: true, closedAt: true,
+        camera: { select: { name: true, site: { select: { name: true } } } } },
+      orderBy: { occurredAt: 'desc' }, take: 200,
+    });
+  }
+
+  @Post('incidents')
+  async createIncident(@Req() req: any, @Body() dto: IncidentDto) {
+    const { tenantId, userId } = this.scope(req, true);
+    this.rejectClientScope(dto);
+    const camera = await prisma.surveillanceCamera.findFirst({
+      where: { id: dto.cameraId, tenantId }, select: { id: true },
+    });
+    if (!camera) throw new NotFoundException('Camera not found in tenant');
+    return prisma.surveillanceIncident.create({
+      data: { tenantId, cameraId: camera.id, title: this.checkText(dto.title, 'Incident title'),
+        description: dto.description, severity: dto.severity, createdById: userId },
+    });
+  }
+
+  @Patch('incidents/:id')
+  async resolveIncident(@Req() req: any, @Param('id') id: string,
+      @Body() dto: IncidentDecisionDto) {
+    const { tenantId, userId } = this.scope(req, true);
+    this.rejectClientScope(dto);
+    if (dto.status === 'RESOLVED' && !dto.resolution?.trim()) {
+      throw new BadRequestException('Resolution explanation required');
+    }
+    const updated = await prisma.surveillanceIncident.updateMany({
+      where: { id, tenantId, status: dto.status === 'ACKNOWLEDGED' ? 'OPEN' : { in: ['OPEN', 'ACKNOWLEDGED'] } },
+      data: { status: dto.status, ...(dto.status === 'RESOLVED' ?
+        { resolution: dto.resolution?.trim(), closedAt: new Date(), closedById: userId } : {}) },
+    });
+    if (updated.count !== 1) {
+      throw new NotFoundException('Incident not found, already closed or invalid transition');
+    }
+    return prisma.surveillanceIncident.findFirst({
+      where: { id, tenantId },
+      select: { id: true, title: true, status: true, resolution: true, closedAt: true },
     });
   }
 
