@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import api from '@/lib/api';
 
 type Site={id:string;name:string};
-type Gateway={id:string;siteId:string;name:string;tokenPrefix:string;lastSeenAt?:string|null;revokedAt?:string|null};
+type Gateway={id:string;siteId:string;name:string;tokenPrefix:string;lastSeenAt?:string|null;revokedAt?:string|null;connectionState?:'CONNECTED'|'STALE'|'REVOKED'|'NEVER_CONNECTED'};
 export default function SurveillanceGateways({sites}:{sites:Site[]}) {
   const [rows,setRows]=useState<Gateway[]>([]);
   const [siteId,setSiteId]=useState('');
@@ -61,7 +61,7 @@ export default function SurveillanceGateways({sites}:{sites:Site[]}) {
     {message&&<p role="status" className="rounded border border-slate-700 p-3">{message}</p>}
     <div className="space-y-2">{rows.map(g=><article key={g.id} className="flex flex-wrap items-center justify-between gap-2 rounded border border-slate-700 bg-slate-900 p-3">
       <div><p className="font-semibold">{g.name}</p>
-        <p className="text-sm text-slate-400">{sites.find(s=>s.id===g.siteId)?.name||'موقع غير متاح'} — {g.revokedAt?'ملغاة':g.lastSeenAt?'اتصال سابق: '+new Date(g.lastSeenAt).toLocaleString('ar-SA'):'بانتظار اتصال الفرع'}</p>
+        <p className="text-sm text-slate-400">{sites.find(s=>s.id===g.siteId)?.name||'موقع غير متاح'} — {g.connectionState==='REVOKED'||g.revokedAt?'ملغاة':g.connectionState==='STALE'?'الاتصال متقادم — تحقق من البوابة':g.connectionState==='CONNECTED'?'متصلة حديثًا':g.lastSeenAt?'اتصال سابق: '+new Date(g.lastSeenAt).toLocaleString('ar-SA'):'بانتظار اتصال الفرع'}{g.lastSeenAt?' — آخر تقرير: '+new Date(g.lastSeenAt).toLocaleString('ar-SA'):''}</p>
         <p className="text-xs text-slate-500">معرّف المفتاح: {g.tokenPrefix}…</p>
       </div>
       {!g.revokedAt&&<button type="button" disabled={busy} onClick={()=>void revoke(g.id)} className="rounded border border-red-500 px-3 py-2">إلغاء البوابة</button>}

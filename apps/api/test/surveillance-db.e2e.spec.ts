@@ -84,6 +84,6 @@ test('surveillance tenant isolation and maintenance lifecycle', async () => {
 
 test('tenant-free sessions and unprivileged roles cannot access cameras', async () => {
   assert.throws(() => controller.sites(req('', 'SUPER_ADMIN')), /tenant context/);
-  assert.throws(() => controller.cameras(req('random', 'USER')), /role not authorized/);
+  await assert.rejects(() => controller.cameras(req('random', 'USER')), /role not authorized/);
   assert.throws(() => controller.maintenance(req('random', 'USER')), /role not authorized/);
 });
