@@ -3953,6 +3953,8 @@ model SurveillanceDeviceCommand {
   createdAt      DateTime @default(now())
   expiresAt      DateTime
   acknowledgedAt DateTime?
+  claimedAt      DateTime?
+  leaseTokenHash String?
   resultCode     String?
 
   @@index([gatewayId, status, expiresAt])
