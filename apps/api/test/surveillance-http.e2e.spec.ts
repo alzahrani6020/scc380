@@ -84,8 +84,7 @@ test('HTTP JWT and tenant boundaries for sites, cameras and maintenance', async 
     assert.equal(camResponse.status,201);
     const cam=await camResponse.json() as {id:string;connectionStatus:string};
     assert.equal(cam.connectionStatus,'UNCONFIGURED');
-    const persistedCameraList=await (await send('/surveillance/cameras',aliceToken)).json()
-      as Array<{id:string;name:string;siteId:string}>;
+    const persistedCameraList=await (await send('/surveillance/cameras',aliceToken)).json() as Array<{id:string;name:string;siteId:string}>;
     assert.ok(persistedCameraList.some(c=>c.id===cam.id&&c.name==='Entry Camera'&&c.siteId===siteId));
     assert.equal((await send('/surveillance/maintenance',bobToken,'POST',
       {cameraId:cam.id,taskType:'CLEANING'})).status,404);
@@ -99,8 +98,7 @@ test('HTTP JWT and tenant boundaries for sites, cameras and maintenance', async 
       {status:'COMPLETED'})).status,200);
     assert.equal((await send('/surveillance/maintenance/'+task.id,aliceToken,'PATCH',
       {status:'IN_PROGRESS'})).status,400);
-    const persistedTasks=await (await send('/surveillance/maintenance',aliceToken)).json()
-      as Array<{id:string;status:string}>;
+    const persistedTasks=await (await send('/surveillance/maintenance',aliceToken)).json() as Array<{id:string;status:string}>;
     assert.ok(persistedTasks.some(t=>t.id===task.id&&t.status==='COMPLETED'));
     const foreignTasks=await (await send('/surveillance/maintenance',bobToken)).json() as unknown[];
     assert.equal(foreignTasks.length,0);
@@ -120,8 +118,7 @@ test('HTTP JWT and tenant boundaries for sites, cameras and maintenance', async 
       {status:'RESOLVED',resolution:'Resolved by security team'})).status,200);
     assert.equal((await send('/surveillance/incidents/'+incident.id,aliceToken,'PATCH',
       {status:'ACKNOWLEDGED'})).status,404);
-    const persistedIncidents=await (await send('/surveillance/incidents',aliceToken)).json()
-      as Array<{id:string;status:string;resolution:string}>;
+    const persistedIncidents=await (await send('/surveillance/incidents',aliceToken)).json() as Array<{id:string;status:string;resolution:string}>;
     assert.ok(persistedIncidents.some(i=>i.id===incident.id&&i.status==='RESOLVED'&&
       i.resolution==='Resolved by security team'));
     const bobIncidents=await (await send('/surveillance/incidents',bobToken)).json() as unknown[];
