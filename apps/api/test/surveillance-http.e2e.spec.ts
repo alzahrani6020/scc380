@@ -98,9 +98,28 @@ test('HTTP JWT and tenant boundaries for sites, cameras and maintenance', async 
       {status:'IN_PROGRESS'})).status,400);
     const foreignTasks=await (await send('/surveillance/maintenance',bobToken)).json() as unknown[];
     assert.equal(foreignTasks.length,0);
+    assert.equal((await send('/surveillance/incidents',bobToken,'POST',
+      {cameraId:cam.id,title:'Forged incident',severity:'HIGH'})).status,404);
+    const incidentResponse=await send('/surveillance/incidents',aliceToken,'POST',
+      {cameraId:cam.id,title:'Loading bay issue',severity:'HIGH'});
+    assert.equal(incidentResponse.status,201);
+    const incident=await incidentResponse.json() as {id:string};
+    assert.equal((await send('/surveillance/incidents/'+incident.id,bobToken,'PATCH',
+      {status:'RESOLVED',resolution:'Forged'})).status,404);
+    assert.equal((await send('/surveillance/incidents/'+incident.id,aliceToken,'PATCH',
+      {status:'RESOLVED'})).status,400);
+    assert.equal((await send('/surveillance/incidents/'+incident.id,aliceToken,'PATCH',
+      {status:'ACKNOWLEDGED'})).status,200);
+    assert.equal((await send('/surveillance/incidents/'+incident.id,aliceToken,'PATCH',
+      {status:'RESOLVED',resolution:'Resolved by security team'})).status,200);
+    assert.equal((await send('/surveillance/incidents/'+incident.id,aliceToken,'PATCH',
+      {status:'ACKNOWLEDGED'})).status,404);
+    const bobIncidents=await (await send('/surveillance/incidents',bobToken)).json() as unknown[];
+    assert.equal(bobIncidents.length,0);
   } finally {
     if(app) await app.close();
     if(tenantIds.length) {
+      await prisma.surveillanceIncident.deleteMany({where:{tenantId:{in:tenantIds}}});
       await prisma.surveillanceMaintenance.deleteMany({where:{tenantId:{in:tenantIds}}});
       await prisma.surveillanceCamera.deleteMany({where:{tenantId:{in:tenantIds}}});
       await prisma.surveillanceSite.deleteMany({where:{tenantId:{in:tenantIds}}});
