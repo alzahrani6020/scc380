@@ -55,6 +55,14 @@ export class SurveillanceController {
     return { tenantId, userId: req.user.userId };
   }
 
+  private rejectClientScope(value: object) {
+    if (Object.prototype.hasOwnProperty.call(value, 'tenantId') ||
+        Object.prototype.hasOwnProperty.call(value, 'role') ||
+        Object.prototype.hasOwnProperty.call(value, 'userId')) {
+      throw new BadRequestException('Tenant and role are controlled by the authenticated session');
+    }
+  }
+
   private checkText(value: string, label: string) {
     if (!value?.trim()) throw new BadRequestException(label + ' is required');
     return value.trim();
@@ -74,6 +82,7 @@ export class SurveillanceController {
   @Post('sites')
   async addSite(@Req() req: any, @Body() dto: SiteDto) {
     const { tenantId } = this.scope(req, true);
+    this.rejectClientScope(dto);
     if (dto.branchId) {
       const branch = await prisma.branch.findFirst({ where: { id: dto.branchId, tenantId }, select: { id: true } });
       if (!branch) throw new NotFoundException('Branch not found in tenant');
@@ -101,6 +110,7 @@ export class SurveillanceController {
   @Post('cameras')
   async addCamera(@Req() req: any, @Body() dto: CameraDto) {
     const { tenantId } = this.scope(req, true);
+    this.rejectClientScope(dto);
     const site = await prisma.surveillanceSite.findFirst({ where: { id: dto.siteId, tenantId }, select: { id: true } });
     if (!site) throw new NotFoundException('Site not found in tenant');
     if (dto.supportsTalk && !dto.supportsAudio) {
@@ -131,6 +141,7 @@ export class SurveillanceController {
   @Post('maintenance')
   async addMaintenance(@Req() req: any, @Body() dto: MaintenanceDto) {
     const { tenantId, userId } = this.scope(req, true);
+    this.rejectClientScope(dto);
     const camera = await prisma.surveillanceCamera.findFirst({
       where: { id: dto.cameraId, tenantId }, select: { id: true },
     });
