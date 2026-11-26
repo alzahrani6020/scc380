@@ -114,7 +114,13 @@ export class SurveillanceGatewayController {
         status.some(c => !c || typeof c.cameraId !== 'string' ||
           !['ONLINE', 'OFFLINE', 'DEGRADED'].includes(c.status) ||
           Object.keys(c).some(k => !['cameraId', 'status', 'latitude', 'longitude'].includes(k)) ||
-          ((c.latitude === undefined) !== (c.longitude === undefined)))) {
+          ((c.latitude === undefined) !== (c.longitude === undefined)) ||
+          (c.latitude !== undefined && (
+            typeof c.latitude !== 'number' || !Number.isFinite(c.latitude) ||
+            c.latitude < -90 || c.latitude > 90 ||
+            typeof c.longitude !== 'number' || !Number.isFinite(c.longitude) ||
+            c.longitude < -180 || c.longitude > 180
+          )))) {
       throw new BadRequestException('Invalid gateway heartbeat payload');
     }
     if (new Set(status.map(c => c.cameraId)).size !== status.length) {
