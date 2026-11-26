@@ -115,6 +115,9 @@ export const navigation: NavEntry[] = [
   { name: 'دفتر الأستاذ', href: '/dashboard/finance/general-ledger', icon: NotebookText },
   { name: 'دليل الحسابات', href: '/dashboard/finance/chart-of-accounts', icon: ListTree },
 
+  { header: 'المراقبة والأمن' },
+  { name: 'الكاميرات والصيانة', href: '/dashboard/surveillance', icon: Shield },
+
   { header: 'الفروع' },
   { name: 'إدارة الفروع', href: '/dashboard/branches', icon: GitBranch },
 

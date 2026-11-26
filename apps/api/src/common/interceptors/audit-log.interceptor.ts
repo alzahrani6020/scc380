@@ -47,6 +47,7 @@ function getEntityType(path: string): string {
   if (hasPath(path, '/hr/leave-balances')) return 'LEAVE_BALANCE';
   if (hasPath(path, '/hr/payroll-runs')) return 'PAYROLL_RUN';
   if (hasPath(path, '/notifications')) return 'NOTIFICATION';
+  if (hasPath(path, '/surveillance')) return 'SURVEILLANCE';
 
   const segments = path.split('/').filter(Boolean);
   const idx = segments.findIndex((s) =>
@@ -73,6 +74,7 @@ export function deriveAuditAction(method: string, path: string): string {
   if (hasPath(path, '/hr/leave-balances')) return 'LEAVE_BALANCE_' + suffix;
   if (hasPath(path, '/hr/payroll-runs')) return 'PAYROLL_RUN_' + suffix;
   if (hasPath(path, '/notifications')) return 'NOTIFICATION_' + suffix;
+  if (hasPath(path, '/surveillance')) return 'SURVEILLANCE_' + suffix;
   return method;
 }
 

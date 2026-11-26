@@ -7,7 +7,8 @@ const api = read('src/owner-files/owner-files.controller.ts');
 const bootstrap = read('src/main.ts');
 const schema = read('../../packages/database/prisma/schema.prisma');
 const migration = read('../../packages/database/prisma/migrations/20261122010000_owner_file_center/migration.sql');
-const owner = read('../web/src/app/owner/files/page.tsx');
+// Owner operations moved to a shared panel when the console was unified; the old URL redirects here.
+const owner = read('../web/src/components/owner/OwnerFilesPanel.tsx');
 const tenant = read('../web/src/app/downloads/files/page.tsx');
 
 test('file upload parser is scoped to owner-files and large enough for 1 MiB base64 content', () => {

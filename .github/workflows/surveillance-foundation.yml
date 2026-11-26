@@ -1,0 +1,56 @@
+name: Surveillance Foundation Acceptance
+on:
+  pull_request:
+    paths:
+      - 'apps/api/src/surveillance/**'
+      - 'apps/api/src/app.module.ts'
+      - 'apps/api/test/surveillance-db.e2e.spec.ts'
+      - 'apps/api/test/surveillance-http.e2e.spec.ts'
+      - 'apps/web/src/app/dashboard/surveillance/**'
+      - 'apps/web/src/components/layout/Sidebar.tsx'
+      - 'packages/database/prisma/**'
+      - '.github/workflows/surveillance-foundation.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  surveillance-isolation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: surveillance_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test -d surveillance_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://test:test@127.0.0.1:5432/surveillance_ci
+      DIRECT_URL: postgresql://test:test@127.0.0.1:5432/surveillance_ci
+      SCC380_TEST_DATABASE_ISOLATED: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@8.15.0 --activate
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Prisma schema validation and generate
+        run: |
+          pnpm --filter @scc/database exec prisma validate --schema prisma/schema.prisma
+          pnpm --filter @scc/database exec prisma generate --schema prisma/schema.prisma
+      - name: Apply additive migrations to isolated database
+        run: pnpm --filter @scc/database exec prisma migrate deploy --schema prisma/schema.prisma
+      - name: Build API workspace
+        run: pnpm turbo run build --filter=@scc/api... --no-daemon --concurrency=1
+      - name: Verify two-tenant isolation and lifecycle
+        run: pnpm --filter @scc/api exec tsx --test --test-concurrency=1 test/surveillance-db.e2e.spec.ts test/surveillance-http.e2e.spec.ts
