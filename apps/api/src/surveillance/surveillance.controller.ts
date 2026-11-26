@@ -112,7 +112,7 @@ export class SurveillanceController {
       select: { id: true, siteId: true, name: true, manufacturer: true, model: true,
         serialNumber: true, location: true, isOutdoor: true, supportsAudio: true,
         supportsTalk: true, supportsPtz: true, supportsWiper: true,
-        connectionStatus: true, createdAt: true,
+        connectionStatus: true, lastSeenAt: true, createdAt: true,
         site: { select: { name: true } } },
       orderBy: { createdAt: 'desc' }, take: 200,
     });
