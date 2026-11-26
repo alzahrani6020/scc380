@@ -5,6 +5,7 @@ import api from '@/lib/api';
 import SurveillanceIncidents from './SurveillanceIncidents';
 import SurveillanceGateways from './SurveillanceGateways';
 import SurveillanceDeviceCommands from './SurveillanceDeviceCommands';
+import SurveillanceMedia from './SurveillanceMedia';
 
 type Site = { id: string; name: string; city?: string | null; siteType: string; _count?: { cameras: number } };
 type Camera = { id: string; siteId: string; name: string; manufacturer?: string | null; model?: string | null;
@@ -21,7 +22,7 @@ const tasks = [
 ] as const;
 
 export default function SurveillancePage() {
-  const [tab, setTab] = useState<'sites' | 'cameras' | 'maintenance' | 'incidents' | 'gateways' | 'controls'>('sites');
+  const [tab, setTab] = useState<'sites' | 'cameras' | 'maintenance' | 'incidents' | 'gateways' | 'controls' | 'media'>('sites');
   const [sites, setSites] = useState<Site[]>([]);
   const [cameras, setCameras] = useState<Camera[]>([]);
   const [maintenance, setMaintenance] = useState<Task[]>([]);
@@ -84,7 +85,7 @@ export default function SurveillancePage() {
       <p className="mt-2 text-sm text-slate-400">إدارة المواقع والكاميرات والصيانة ضمن الشركة المصرح بها. البث والصوت والتحكم PTZ غير متصلين بأجهزة فعلية في هذه المرحلة.</p>
     </div>
     <div className="flex flex-wrap gap-2" role="navigation" aria-label="أقسام المراقبة">
-      {([{id:'sites',name:'المواقع'},{id:'cameras',name:'الكاميرات'},{id:'maintenance',name:'الصيانة والتنظيف'},{id:'incidents',name:'الحوادث والبلاغات'},{id:'gateways',name:'ربط الفروع'},{id:'controls',name:'سجل طلبات PTZ'}] as const).map(t=>
+      {([{id:'sites',name:'المواقع'},{id:'cameras',name:'الكاميرات'},{id:'maintenance',name:'الصيانة والتنظيف'},{id:'incidents',name:'الحوادث والبلاغات'},{id:'gateways',name:'ربط الفروع'},{id:'controls',name:'طلبات PTZ'},{id:'media',name:'البث والتسجيلات'}] as const).map(t=>
         <button key={t.id} type="button" aria-current={tab===t.id?'page':undefined}
           onClick={()=>setTab(t.id)} className={`rounded-lg border px-4 py-2 ${tab===t.id?'bg-blue-700 border-blue-500':'bg-slate-900 border-slate-700'}`}>{t.name}</button>)}
       <button type="button" onClick={()=>void refresh()} disabled={loading} className="rounded-lg border border-slate-600 px-4 py-2 disabled:opacity-50">
@@ -147,6 +148,7 @@ export default function SurveillancePage() {
     {tab==='incidents' && <SurveillanceIncidents cameras={cameras} />}
     {tab==='gateways' && <SurveillanceGateways sites={sites} />}
     {tab==='controls' && <SurveillanceDeviceCommands cameras={cameras} />}
+    {tab==='media' && <SurveillanceMedia cameras={cameras} />}
     {tab==='maintenance' && <section className="space-y-4">
       <h2 className="text-lg font-semibold">أوامر صيانة وتنظيف الكاميرات</h2>
       <form className="flex flex-wrap gap-2" onSubmit={e=>{e.preventDefault();void run(async ()=>{

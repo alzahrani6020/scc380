@@ -21,12 +21,12 @@ export default function SurveillanceDeviceCommands({cameras}:{cameras:Camera[]})
   },[]);
   useEffect(()=>{void load();},[load]);
   const create=async()=>{
-    if(!window.confirm('هذا يسجل طلب تحكم تجريبيًا فقط، ولن يحرك الكاميرا. متابعة؟'))return;
+    if(!window.confirm('إرسال طلب PTZ؟ قد تتحرك الكاميرا فقط إذا فُعّل التشغيل الميداني في الخادم والفرع. متابعة؟'))return;
     setBusy(true);setMessage('');
     try{
       const r=await api.post<{deviceExecuted:boolean;status:string}>('/surveillance/device-commands',{cameraId,action});
       if(r.data.deviceExecuted!==false||r.data.status!=='QUEUED')throw new Error('Unexpected result');
-      setMessage(await load()?'سُجل الطلب للتدقيق فقط. لا يوجد محوّل جهاز معتمد، ولم تُنفذ حركة.':'استجاب الخادم ولكن لم يتأكد استرجاع الطلب.');
+      setMessage(await load()?'سُجل الطلب، لكن لم يتأكد تنفيذ حركة. افحص نتيجة الطلب من سجل أوامر الفرع.':'استجاب الخادم ولكن لم يتأكد استرجاع الطلب.');
     }catch{setMessage('لم يثبت تسجيل الطلب. تحقق من اتصال البوابة وقدرات الكاميرا والصلاحية.');}
     finally{setBusy(false);}
   };
@@ -34,10 +34,11 @@ export default function SurveillanceDeviceCommands({cameras}:{cameras:Camera[]})
   const eligible=camera?.supportsPtz&&
     (camera.effectiveConnectionStatus??camera.connectionStatus)==='ONLINE';
   return <section className="space-y-4">
-    <h2 className="text-lg font-semibold">تجهيز أوامر PTZ — سجل طلبات، لا تحكم فعلي</h2>
+    <h2 className="text-lg font-semibold">أوامر PTZ — التفعيل مشروط بالمحوّل الميداني</h2>
     <p className="rounded border border-amber-600 p-3 text-sm text-amber-200">
-      هذه الواجهة لا تحرّك أي كاميرا ولا تعرض صوتًا أو فيديو. تُحفظ طلبات تشخيصية قصيرة المدة (15 ثانية)
-      لتجربة العزل والتوجيه، ويرفضها وكيل الفرع بنتيجة UNSUPPORTED حتى تركيب محوّل ONVIF معتمد واختباره.
+      تُرسل هذه الواجهة طلبات قصيرة المدة (15 ثانية). لا تعني حالة QUEUED أن الكاميرا تحركت.
+      قد ينفّذ محوّل ONVIF الحركة فقط بعد تفعيل التشغيل بشكل منفصل في الخادم والفرع. تُعد SOAP_ACKNOWLEDGED
+      استجابة بروتوكولية لا إثبات حركة مرئية؛ ويجب تأكيد الأداء ميدانيًا.
     </p>
     <form className="flex flex-wrap gap-2" onSubmit={e=>{e.preventDefault();void create();}}>
       <select required value={cameraId} onChange={e=>setCameraId(e.target.value)}
@@ -50,7 +51,7 @@ export default function SurveillanceDeviceCommands({cameras}:{cameras:Camera[]})
         {actions.map(([id,label])=><option value={id} key={id}>{label}</option>)}
       </select>
       <button disabled={busy||!eligible} className="rounded bg-blue-700 px-3 py-2 disabled:opacity-50">
-        تسجيل طلب اختبار دون تنفيذ
+        إرسال طلب PTZ
       </button>
     </form>
     {message&&<p role="status" className="rounded border border-slate-700 p-3">{message}</p>}
