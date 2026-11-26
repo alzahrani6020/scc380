@@ -26,6 +26,9 @@ class CameraDto {
   @IsOptional() @IsBoolean() supportsTalk?: boolean;
   @IsOptional() @IsBoolean() supportsPtz?: boolean;
   @IsOptional() @IsBoolean() supportsWiper?: boolean;
+  @IsOptional() @IsIn(['FIXED','PTZ','DASHCAM_FRONT','DASHCAM_REAR','DASHCAM_CABIN','DASHCAM_MULTI']) cameraType?: string;
+  @IsOptional() @IsIn(['UNCONFIGURED','RTSP_ONVIF','RTSP','DASHCAM_RTSP','VENDOR_ADAPTER']) connectorType?: string;
+  @IsOptional() @IsString() @MaxLength(80) vehicleId?: string;
 }
 
 class MaintenanceDto {
@@ -112,6 +115,8 @@ export class SurveillanceController {
       select: { id: true, siteId: true, name: true, manufacturer: true, model: true,
         serialNumber: true, location: true, isOutdoor: true, supportsAudio: true,
         supportsTalk: true, supportsPtz: true, supportsWiper: true,
+        cameraType: true, connectorType: true, vehicleId: true,
+        lastLatitude: true, lastLongitude: true, lastTelemetryAt: true,
         connectionStatus: true, lastSeenAt: true, createdAt: true,
         site: { select: { name: true } } },
       orderBy: { createdAt: 'desc' }, take: 200,
@@ -134,6 +139,18 @@ export class SurveillanceController {
     this.rejectClientScope(dto);
     const site = await prisma.surveillanceSite.findFirst({ where: { id: dto.siteId, tenantId }, select: { id: true } });
     if (!site) throw new NotFoundException('Site not found in tenant');
+    if (dto.vehicleId) {
+      const vehicle = await prisma.vehicle.findFirst({
+        where: { id: dto.vehicleId, tenantId }, select: { id: true },
+      });
+      if (!vehicle) throw new NotFoundException('Vehicle not found in this company');
+    }
+    if (dto.cameraType?.startsWith('DASHCAM') && dto.supportsPtz) {
+      throw new BadRequestException('Dashcam may not be registered with PTZ control without a verified adapter');
+    }
+    if (dto.cameraType?.startsWith('DASHCAM') && dto.connectorType === 'RTSP_ONVIF') {
+      throw new BadRequestException('Choose dashcam-compatible connector, not ONVIF PTZ');
+    }
     if (dto.supportsTalk && !dto.supportsAudio) {
       throw new BadRequestException('Two-way audio requires audio support');
     }
@@ -143,6 +160,8 @@ export class SurveillanceController {
         location: dto.location, isOutdoor: dto.isOutdoor ?? false,
         supportsAudio: dto.supportsAudio ?? false, supportsTalk: dto.supportsTalk ?? false,
         supportsPtz: dto.supportsPtz ?? false, supportsWiper: dto.supportsWiper ?? false,
+        cameraType: dto.cameraType ?? 'FIXED', connectorType: dto.connectorType ?? 'UNCONFIGURED',
+        vehicleId: dto.vehicleId ?? null,
         connectionStatus: 'UNCONFIGURED' },
     });
   }
@@ -240,6 +259,6 @@ export class SurveillanceController {
     });
   }
 
-  // Not implemented: media credentials, outbound audio, PTZ, recordings.
-  // These require verified device capabilities and an independently secured gateway.
+  // Device media credentials remain local to the authorized site gateway.
+  // Vendor-specific dashcam compatibility requires an explicit tested adapter.
 }
