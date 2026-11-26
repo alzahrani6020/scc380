@@ -5,6 +5,7 @@ on:
       - 'apps/api/src/surveillance/**'
       - 'apps/api/src/app.module.ts'
       - 'apps/api/test/surveillance-db.e2e.spec.ts'
+      - 'apps/api/test/surveillance-http.e2e.spec.ts'
       - 'apps/web/src/app/dashboard/surveillance/**'
       - 'apps/web/src/components/layout/Sidebar.tsx'
       - 'packages/database/prisma/**'
@@ -52,4 +53,4 @@ jobs:
       - name: Build API workspace
         run: pnpm turbo run build --filter=@scc/api... --no-daemon --concurrency=1
       - name: Verify two-tenant isolation and lifecycle
-        run: pnpm --filter @scc/api exec tsx --test test/surveillance-db.e2e.spec.ts
+        run: pnpm --filter @scc/api exec tsx --test --test-concurrency=1 test/surveillance-db.e2e.spec.ts test/surveillance-http.e2e.spec.ts
