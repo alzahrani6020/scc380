@@ -62,3 +62,23 @@ Gateway requirements:
 - Idempotent event delivery and disconnected buffering; recording retention remains local/site-level according to policy.
 
 **Release checkpoint:** distinguish GitHub merge, API image LIVE, Prisma migration completion, Vercel READY + alias, authenticated production tenant workflows, and physical camera acceptance. All are separate conditions; do not infer one from another.
+
+## Outbound-only site agent (new)
+
+1. In SCC380 /dashboard/surveillance -> **ربط الفروع**, create a gateway for a company-owned site. Copy the one-time key to a protected machine at that site.
+2. From the same tenant, register cameras and copy their SCC380 camera IDs. On the site machine, create a local, **not committed to Git**, config file:
+
+```json
+{
+  "cameras": [
+    {"cameraId":"REPLACE_WITH_SCC380_CAMERA_ID","host":"192.168.1.20","port":554}
+  ]
+}
+```
+
+3. Set `SCC_GATEWAY_TOKEN` in a protected machine/environment secret (not a command-line argument). Then run `node scripts/surveillance-site-agent.mjs --config /private/site-cameras.json` locally within the authorized LAN. Schedule repeat runs through the site's operating system only after checking network and device load.
+4. Verify the gateway's `lastSeenAt` and camera's `lastSeenAt` in SCC380 and repeat after restart and network interruption. Revoke the gateway in the UI if its token is lost.
+5. **This initial agent reports RTSP OPTIONS availability only.** A 200 or 401 response indicates RTSP service reachability, NOT viewable video, ONVIF compliance, or availability of audio, PTZ, wiper, records, two-way talk and AI. Nothing in this script reads or sends camera credentials.
+6. Do not interpret the last reported `ONLINE` status as live availability when heartbeat timestamps are stale. A site can lose its network without being able to tell the server it went offline.
+
+Security: never expose device ports publicly; restrict the gateway host to appropriate LAN devices; do not store secrets in config or SCC380's camera inventory; retain TLS verification, server-side site/tenant validation and explicit revocation. For a true VMS connection use an approved secure gateway with authenticated ONVIF/RTSP, WebRTC media relay, PTZ safety stops and audio/legal controls.

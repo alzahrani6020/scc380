@@ -10,6 +10,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { prisma } from '@scc/database';
 import { JwtStrategy } from '../src/auth/strategies/jwt.strategy';
 import { SurveillanceController } from '../src/surveillance/surveillance.controller';
+import { SurveillanceGatewayController } from '../src/surveillance/surveillance-gateway.controller';
 
 const uri = new URL(process.env.DATABASE_URL || 'postgresql://invalid:invalid@localhost/invalid');
 if (process.env.SCC380_TEST_DATABASE_ISOLATED !== 'YES' ||
@@ -47,7 +48,7 @@ test('HTTP JWT and tenant boundaries for sites, cameras and maintenance', async 
     const viewer = await createUser('viewer',a.id,'USER');
     const moduleRef = await Test.createTestingModule({
       imports:[PassportModule],
-      controllers:[SurveillanceController],
+      controllers:[SurveillanceController,SurveillanceGatewayController],
       providers:[JwtStrategy,{provide:ConfigService,useValue:{get:(k:string)=>k==='JWT_SECRET'?secret:undefined}}],
     }).compile();
     app = moduleRef.createNestApplication();
@@ -84,6 +85,36 @@ test('HTTP JWT and tenant boundaries for sites, cameras and maintenance', async 
     assert.equal(camResponse.status,201);
     const cam=await camResponse.json() as {id:string;connectionStatus:string};
     assert.equal(cam.connectionStatus,'UNCONFIGURED');
+
+    assert.equal((await send('/surveillance/gateways',bobToken,'POST',
+      {siteId,name:'Other tenant unauthorized'})).status,404);
+    assert.equal((await send('/surveillance/gateways',viewerToken,'POST',
+      {siteId,name:'Forbidden role'})).status,403);
+    const gatewayResponse=await send('/surveillance/gateways',aliceToken,'POST',
+      {siteId,name:'Local edge'});
+    assert.equal(gatewayResponse.status,201);
+    const gateway=await gatewayResponse.json() as {id:string;enrollmentToken:string};
+    assert.match(gateway.enrollmentToken,/^sccg_[A-Za-z0-9_-]{43}$/);
+    assert.equal((await send('/surveillance/gateways',bobToken)).status,200);
+    assert.equal(((await (await send('/surveillance/gateways',bobToken)).json()) as Array<{id:string}>)
+      .some(g=>g.id===gateway.id),false);
+    const localGatewayList=await (await send('/surveillance/gateways',aliceToken)).json() as Array<{id:string;enrollmentToken?:string;tokenHash?:string}>;
+    assert.equal(localGatewayList[0].id,gateway.id);
+    assert.equal(localGatewayList[0].enrollmentToken,undefined);
+    assert.equal(localGatewayList[0].tokenHash,undefined);
+    const edgeSend=(edgeToken:string,body:unknown)=>send('/surveillance/gateways/heartbeat',edgeToken,'POST',body);
+    const forged=await edgeSend('sccg_'+'A'.repeat(43),{cameras:[{cameraId:cam.id,status:'ONLINE'}]});
+    assert.equal(forged.status,403);
+    assert.equal((await edgeSend(gateway.enrollmentToken,
+      {cameras:[{cameraId:cam.id,status:'ONLINE',tenantId:b.id}]})).status,400);
+    assert.equal((await edgeSend(gateway.enrollmentToken,
+      {cameras:[{cameraId:cam.id,status:'ONLINE'}]})).status,201);
+    const observed=await (await send('/surveillance/cameras',aliceToken)).json() as Array<{id:string;connectionStatus:string;lastSeenAt:string}>;
+    assert.ok(observed.some(c=>c.id===cam.id&&c.connectionStatus==='ONLINE'&&!!c.lastSeenAt));
+    assert.equal((await send('/surveillance/gateways/'+gateway.id+'/revoke',bobToken,'POST')).status,404);
+    assert.equal((await send('/surveillance/gateways/'+gateway.id+'/revoke',aliceToken,'POST')).status,201);
+    assert.equal((await edgeSend(gateway.enrollmentToken,
+      {cameras:[{cameraId:cam.id,status:'OFFLINE'}]})).status,403);
     const persistedCameraList=await (await send('/surveillance/cameras',aliceToken)).json() as Array<{id:string;name:string;siteId:string}>;
     assert.ok(persistedCameraList.some(c=>c.id===cam.id&&c.name==='Entry Camera'&&c.siteId===siteId));
     assert.equal((await send('/surveillance/maintenance',bobToken,'POST',
@@ -126,6 +157,7 @@ test('HTTP JWT and tenant boundaries for sites, cameras and maintenance', async 
   } finally {
     if(app) await app.close();
     if(tenantIds.length) {
+      await prisma.surveillanceGateway.deleteMany({where:{tenantId:{in:tenantIds}}});
       await prisma.surveillanceIncident.deleteMany({where:{tenantId:{in:tenantIds}}});
       await prisma.surveillanceMaintenance.deleteMany({where:{tenantId:{in:tenantIds}}});
       await prisma.surveillanceCamera.deleteMany({where:{tenantId:{in:tenantIds}}});

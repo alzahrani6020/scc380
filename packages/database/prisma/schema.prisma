@@ -36,6 +36,7 @@ model Tenant {
   updatedAt     DateTime  @updatedAt
   deletedAt     DateTime?
 
+  surveillanceGateways    SurveillanceGateway[]
   surveillanceSites       SurveillanceSite[]
   surveillanceCameras     SurveillanceCamera[]
   surveillanceMaintenance SurveillanceMaintenance[]
@@ -3827,6 +3828,7 @@ model SurveillanceSite {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   cameras      SurveillanceCamera[]
+  gateways     SurveillanceGateway[]
 
   @@unique([id, tenantId])
   @@index([tenantId, name])
@@ -3850,6 +3852,7 @@ model SurveillanceCamera {
   supportsPtz       Boolean @default(false)
   supportsWiper     Boolean @default(false)
   connectionStatus  String  @default("UNCONFIGURED")
+  lastSeenAt        DateTime?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
   maintenances      SurveillanceMaintenance[]
@@ -3904,4 +3907,25 @@ model SurveillanceIncident {
   @@index([tenantId, status, occurredAt])
   @@index([tenantId, cameraId])
   @@map("surveillance_incidents")
+}
+
+
+// Outbound-only site agent. A high-entropy bearer token is displayed once and only its digest is persisted.
+model SurveillanceGateway {
+  id            String   @id @default(cuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  siteId        String
+  site          SurveillanceSite @relation(fields: [siteId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  name          String
+  tokenHash     String   @unique
+  tokenPrefix   String
+  lastSeenAt    DateTime?
+  revokedAt     DateTime?
+  createdById   String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([tenantId, siteId])
+  @@map("surveillance_gateways")
 }
