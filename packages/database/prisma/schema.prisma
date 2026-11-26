@@ -36,6 +36,9 @@ model Tenant {
   updatedAt     DateTime  @updatedAt
   deletedAt     DateTime?
 
+  surveillanceSites       SurveillanceSite[]
+  surveillanceCameras     SurveillanceCamera[]
+  surveillanceMaintenance SurveillanceMaintenance[]
   ownerFiles    OwnerFile[]
   ownerFileRequests OwnerFileRequest[]
   users         User[]
@@ -3807,4 +3810,70 @@ model OwnerFileRequest {
   @@index([tenantId, requesterId, createdAt])
   @@index([status, createdAt])
   @@map("owner_file_requests")
+}
+
+
+// SCC380 Surveillance foundation: metadata only; never store camera credentials or video blobs.
+model SurveillanceSite {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  name         String
+  city         String?
+  address      String?
+  siteType     String   @default("BRANCH")
+  branchId     String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  cameras      SurveillanceCamera[]
+
+  @@unique([id, tenantId])
+  @@index([tenantId, name])
+  @@map("surveillance_sites")
+}
+
+model SurveillanceCamera {
+  id                String @id @default(cuid())
+  tenantId          String
+  tenant            Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  siteId            String
+  site              SurveillanceSite @relation(fields: [siteId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  name              String
+  manufacturer      String?
+  model             String?
+  serialNumber      String?
+  location          String?
+  isOutdoor         Boolean @default(false)
+  supportsAudio     Boolean @default(false)
+  supportsTalk      Boolean @default(false)
+  supportsPtz       Boolean @default(false)
+  supportsWiper     Boolean @default(false)
+  connectionStatus  String  @default("UNCONFIGURED")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  maintenances      SurveillanceMaintenance[]
+
+  @@unique([id, tenantId])
+  @@index([tenantId, siteId])
+  @@map("surveillance_cameras")
+}
+
+model SurveillanceMaintenance {
+  id          String @id @default(cuid())
+  tenantId    String
+  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  cameraId    String
+  camera      SurveillanceCamera @relation(fields: [cameraId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  taskType    String
+  description String?
+  status      String @default("OPEN")
+  dueAt       DateTime?
+  completedAt DateTime?
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId, status, dueAt])
+  @@index([tenantId, cameraId])
+  @@map("surveillance_maintenance")
 }
