@@ -45,12 +45,17 @@ test('HTTP JWT and tenant boundaries for sites, cameras and maintenance', async 
       sessionIds.push(sid);
       return {u,sid};
     };
-    const aliceVehicle=await prisma.vehicle.create({
-      data:{tenantId:a.id,plateNumber:key+'A1',make:'Test',model:'Truck'},
-    });
-    const bobVehicle=await prisma.vehicle.create({
-      data:{tenantId:b.id,plateNumber:key+'B1',make:'Test',model:'Van'},
-    });
+    // Test fixture uses the stable baseline vehicles columns. The broader fleet
+    // Prisma model includes legacy columns not fully reconciled in isolated migrations;
+    // do not change unrelated production fleet schema just to construct this fixture.
+    const aliceVehicle={id:key+'vehicleA'};
+    const bobVehicle={id:key+'vehicleB'};
+    await prisma.$executeRaw`INSERT INTO "vehicles"
+      ("id","tenantId","plateNumber","make","model","createdAt","updatedAt")
+      VALUES (${aliceVehicle.id},${a.id},${key+'A1'},'Test','Truck',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`;
+    await prisma.$executeRaw`INSERT INTO "vehicles"
+      ("id","tenantId","plateNumber","make","model","createdAt","updatedAt")
+      VALUES (${bobVehicle.id},${b.id},${key+'B1'},'Test','Van',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`;
     vehicleIds.push(aliceVehicle.id,bobVehicle.id);
     const alice = await createUser('alice',a.id);
     const bob = await createUser('bob',b.id);
