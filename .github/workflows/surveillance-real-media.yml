@@ -99,7 +99,7 @@ jobs:
           ok=0
           for i in $(seq 1 30); do
             status=$(curl --silent --output "$RUNNER_TEMP/public-hls" \
-              --write-out '%{http_code}' --max-time 5 \
+              --location --max-redirs 3 --write-out '%{http_code}' --max-time 5 \
               "http://127.0.0.1:8888/camera12345/index.m3u8" || true)
             if [ "$i" -eq 1 ] || [ $((i % 10)) -eq 0 ]; then
               echo "HLS_ATTEMPT=$i ANON_HTTP=$status PRODUCER_ALIVE=$(kill -0 \"$producer\" 2>/dev/null && echo YES || echo NO)"
@@ -109,7 +109,7 @@ jobs:
               echo "FAIL: anonymous HLS playback exposed"
               exit 1
             fi
-            if curl --silent --show-error --fail --max-time 5 \
+            if curl --location --max-redirs 3 --silent --show-error --fail --max-time 5 \
               -u testViewer:testViewerSecret \
               "http://127.0.0.1:8888/camera12345/index.m3u8" \
               -o "$RUNNER_TEMP/playlist.m3u8" 2>/dev/null &&
@@ -120,7 +120,7 @@ jobs:
             sleep 1
           done
           if [ "$ok" != "1" ]; then
-            echo "AUTHORIZED_STATUS=$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 5 -u testViewer:testViewerSecret http://127.0.0.1:8888/camera12345/index.m3u8 || true)"
+            echo "AUTHORIZED_STATUS=$(curl --location --max-redirs 3 --silent --output /dev/null --write-out '%{http_code}' --max-time 5 -u testViewer:testViewerSecret http://127.0.0.1:8888/camera12345/index.m3u8 || true)"
             cat "$RUNNER_TEMP/synthetic-ffmpeg.log"
             docker logs scc380-synthetic-media
             exit 1
