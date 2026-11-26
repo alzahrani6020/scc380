@@ -31,7 +31,7 @@ export function buildMediaConfig(data, env=process.env) {
     const url=new URL(raw);
     if(url.protocol!=='rtsp:' || url.hash || !url.hostname || url.hostname.includes(':'))
       throw new Error('RTSP input must be LAN rtsp://IPv4:port/path');
-    const m=/^(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})$/.exec(url.hostname);
+    const m=/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(url.hostname);
     if(!m) throw new Error('Camera RTSP host must be numeric RFC1918 IPv4');
     const x=m.slice(1).map(Number);
     if(x.some(n=>n>255)||!(x[0]===10||(x[0]===172&&x[1]>=16&&x[1]<=31)||(x[0]===192&&x[1]===168)))
@@ -56,7 +56,7 @@ export function buildMediaConfig(data, env=process.env) {
     '    recordPath: '+quote(resolve(data.recordingDirectory||'/var/lib/scc380/recordings')+'/%path/%Y-%m-%d_%H-%M-%S-%f_%z'),
     '    recordFormat: fmp4',
     '    recordDeleteAfter: 24h');
-  return lines.join('\\n')+'\\n';
+  return lines.join('\n')+'\n';
 }
 async function main(){
   const args=process.argv.slice(2);
