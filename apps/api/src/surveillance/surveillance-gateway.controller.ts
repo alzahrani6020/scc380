@@ -100,6 +100,13 @@ export class SurveillanceGatewayController {
       @Body() dto: EdgeHeartbeatDto) {
     const gateway = await this.verifyGateway(authorization);
     const status = dto.cameras || [];
+    if (Object.keys(dto).some(k => k !== 'cameras') ||
+        !Array.isArray(status) || status.length > 100 ||
+        status.some(c => !c || typeof c.cameraId !== 'string' ||
+          !['ONLINE', 'OFFLINE', 'DEGRADED'].includes(c.status) ||
+          Object.keys(c).some(k => !['cameraId', 'status'].includes(k)))) {
+      throw new BadRequestException('Invalid gateway heartbeat payload');
+    }
     if (new Set(status.map(c => c.cameraId)).size !== status.length) {
       throw new BadRequestException('Duplicate camera IDs');
     }
