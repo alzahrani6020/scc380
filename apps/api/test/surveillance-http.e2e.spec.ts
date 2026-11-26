@@ -111,6 +111,19 @@ test('HTTP JWT and tenant boundaries for sites, cameras and maintenance', async 
       {cameras:[{cameraId:cam.id,status:'ONLINE'}]})).status,201);
     const observed=await (await send('/surveillance/cameras',aliceToken)).json() as Array<{id:string;connectionStatus:string;lastSeenAt:string}>;
     assert.ok(observed.some(c=>c.id===cam.id&&c.connectionStatus==='ONLINE'&&!!c.lastSeenAt));
+    const freshCamera=await (await send('/surveillance/cameras',aliceToken)).json() as Array<{id:string;effectiveConnectionStatus:string}>;
+    assert.equal(freshCamera.find(c=>c.id===cam.id)?.effectiveConnectionStatus,'ONLINE');
+    const freshGateway=await (await send('/surveillance/gateways',aliceToken)).json() as Array<{id:string;connectionState:string}>;
+    assert.equal(freshGateway.find(g=>g.id===gateway.id)?.connectionState,'CONNECTED');
+    // Simulate a real branch network outage: no heartbeat arrives for over two minutes.
+    const staleTime=new Date(Date.now()-180_000);
+    await prisma.surveillanceCamera.update({where:{id:cam.id},data:{lastSeenAt:staleTime}});
+    await prisma.surveillanceGateway.update({where:{id:gateway.id},data:{lastSeenAt:staleTime}});
+    const staleCamera=await (await send('/surveillance/cameras',aliceToken)).json() as Array<{id:string;connectionStatus:string;effectiveConnectionStatus:string}>;
+    assert.equal(staleCamera.find(c=>c.id===cam.id)?.connectionStatus,'ONLINE');
+    assert.equal(staleCamera.find(c=>c.id===cam.id)?.effectiveConnectionStatus,'STALE');
+    const staleGateway=await (await send('/surveillance/gateways',aliceToken)).json() as Array<{id:string;connectionState:string}>;
+    assert.equal(staleGateway.find(g=>g.id===gateway.id)?.connectionState,'STALE');
     assert.equal((await send('/surveillance/gateways/'+gateway.id+'/revoke',bobToken,'POST')).status,404);
     assert.equal((await send('/surveillance/gateways/'+gateway.id+'/revoke',aliceToken,'POST')).status,201);
     assert.equal((await edgeSend(gateway.enrollmentToken,
