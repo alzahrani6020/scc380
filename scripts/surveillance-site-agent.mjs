@@ -27,11 +27,15 @@ if (args.length !== 2 || args[0] !== '--config') {
           typeof camera.host !== 'string' || !/^[a-zA-Z0-9.:-]{1,253}$/.test(camera.host) ||
           camera.host.startsWith('-') || camera.host.includes('..') ||
           !Number.isInteger(camera.port ?? 554) || (camera.port ?? 554) < 1 || (camera.port ?? 554) > 65535 ||
-          seen.has(camera.cameraId) || Object.keys(camera).some(k => !['cameraId','host','port'].includes(k))) {
+          seen.has(camera.cameraId) || Object.keys(camera).some(k => !['cameraId','host','port','telemetryFile'].includes(k)) ||
+          (camera.telemetryFile!==undefined &&
+           (typeof camera.telemetryFile!=='string' || !camera.telemetryFile.startsWith('/') ||
+             camera.telemetryFile.length>240))) {
         throw new Error('Invalid camera entry; only cameraId, host and port are allowed');
       }
       seen.add(camera.cameraId);
-      return { cameraId: camera.cameraId, host: camera.host, port: camera.port ?? 554 };
+      return { cameraId: camera.cameraId, host: camera.host, port: camera.port ?? 554,
+        telemetryFile: camera.telemetryFile };
     });
     const probe = async (camera) => new Promise(resolve => {
       const socket = net.createConnection({ host: camera.host, port: camera.port });
@@ -52,7 +56,23 @@ if (args.length !== 2 || args[0] !== '--config') {
     });
     const statuses=[];
     // Sequential by default: avoids spikes against constrained site networks.
-    for (const camera of cameras) statuses.push(await probe(camera));
+    for (const camera of cameras) {
+      const report=await probe(camera);
+      if(camera.telemetryFile){
+        // Device GPS adapter writes a fresh local JSON file; no credentials or external API URLs.
+        try{
+          const geo=JSON.parse(await readFile(camera.telemetryFile,'utf8'));
+          const recordedAt=Date.parse(geo.timestamp);
+          if(Number.isFinite(recordedAt) && Math.abs(Date.now()-recordedAt)<=120_000 &&
+             typeof geo.latitude==='number' && geo.latitude>=-90 && geo.latitude<=90 &&
+             typeof geo.longitude==='number' && geo.longitude>=-180 && geo.longitude<=180 &&
+             Object.keys(geo).every(k=>['latitude','longitude','timestamp'].includes(k))) {
+            report.latitude=geo.latitude;report.longitude=geo.longitude;
+          } else console.warn('GPS_TELEMETRY_SKIPPED: stale or invalid format for camera '+camera.cameraId);
+        }catch{console.warn('GPS_TELEMETRY_SKIPPED: unavailable local file for camera '+camera.cameraId);}
+      }
+      statuses.push(report);
+    }
     const response=await fetch(new URL('/surveillance/gateways/heartbeat',target),{
       method:'POST',redirect:'error',signal:AbortSignal.timeout(10000),
       headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
