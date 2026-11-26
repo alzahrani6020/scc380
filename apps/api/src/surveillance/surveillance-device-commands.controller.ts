@@ -4,7 +4,7 @@ import {
 } from '@nestjs/common';
 import { IsIn, IsString, MaxLength } from 'class-validator';
 import { prisma } from '@scc/database';
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 // This is an audited *request* protocol; it does not enable PTZ, audio or media playback.
@@ -16,6 +16,10 @@ class RequestDeviceCommandDto {
 }
 class RejectCommandDto {
   @IsIn(['UNSUPPORTED', 'FAILED']) resultCode!: 'UNSUPPORTED' | 'FAILED';
+}
+class CompleteCommandDto {
+  @IsString() @MaxLength(100) leaseToken!: string;
+  @IsIn(['SOAP_ACKNOWLEDGED', 'FAILED']) resultCode!: 'SOAP_ACKNOWLEDGED' | 'FAILED';
 }
 const digest = (raw: string) => createHash('sha256').update(raw, 'utf8').digest('hex');
 
@@ -96,7 +100,48 @@ export class SurveillanceDeviceCommandsController {
       select: { id: true, cameraId: true, action: true, expiresAt: true },
       orderBy: { createdAt: 'asc' }, take: 20,
     });
-    return { commands: rows, executionEnabled: false };
+    return { commands: rows, executionEnabled: process.env.SCC_SURVEILLANCE_PTZ_PILOT_ENABLED === 'YES' };
+  }
+
+  @Post(':id/claim')
+  async claim(@Headers('authorization') authorization: string, @Param('id') id: string) {
+    if (process.env.SCC_SURVEILLANCE_PTZ_PILOT_ENABLED !== 'YES')
+      throw new ForbiddenException('Physical PTZ pilot is disabled');
+    const gateway = await this.gateway(authorization);
+    const now = new Date();
+    const leaseToken = randomBytes(32).toString('base64url');
+    // Atomic compare-and-set; only one agent can take a command before its deadline.
+    const claimed = await prisma.surveillanceDeviceCommand.updateMany({
+      where: { id, tenantId: gateway.tenantId, siteId: gateway.siteId,
+        gatewayId: gateway.id, status: 'QUEUED', expiresAt: { gt: now } },
+      data: { status: 'CLAIMED', claimedAt: now, leaseTokenHash: digest(leaseToken) },
+    });
+    if (claimed.count !== 1) throw new NotFoundException('Command unavailable or expired');
+    const command = await prisma.surveillanceDeviceCommand.findFirst({
+      where: { id, tenantId: gateway.tenantId, gatewayId: gateway.id },
+      select: { id: true, cameraId: true, action: true, expiresAt: true },
+    });
+    if (!command) throw new NotFoundException('Command unavailable');
+    return { ...command, leaseToken, deviceExecuted: false };
+  }
+
+  @Post(':id/complete')
+  async complete(@Headers('authorization') authorization: string,
+    @Param('id') id: string, @Body() dto: CompleteCommandDto) {
+    const gateway = await this.gateway(authorization);
+    if (!/^[A-Za-z0-9_-]{43}$/.test(dto.leaseToken))
+      throw new ForbiddenException('Invalid command lease');
+    const now = new Date();
+    const done = await prisma.surveillanceDeviceCommand.updateMany({
+      where: { id, tenantId: gateway.tenantId, siteId: gateway.siteId,
+        gatewayId: gateway.id, status: 'CLAIMED',
+        leaseTokenHash: digest(dto.leaseToken), expiresAt: { gt: now } },
+      data: { status: dto.resultCode === 'SOAP_ACKNOWLEDGED' ? 'ACKNOWLEDGED' : 'FAILED',
+        resultCode: dto.resultCode, acknowledgedAt: now, leaseTokenHash: null },
+    });
+    if (done.count !== 1) throw new NotFoundException('Command lease expired or already consumed');
+    return { status: dto.resultCode === 'SOAP_ACKNOWLEDGED' ? 'ACKNOWLEDGED' : 'FAILED',
+      deviceMovementVerified: false };
   }
 
   @Post(':id/reject')
