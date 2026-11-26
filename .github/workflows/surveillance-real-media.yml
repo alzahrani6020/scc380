@@ -1,0 +1,131 @@
+name: Surveillance Real Media Pipeline (Synthetic Camera)
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/surveillance-real-media.yml'
+      - 'scripts/surveillance-media-config*.mjs'
+      - 'docs/surveillance-on-prem-runbook.md'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  local-media:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Validate media configuration generator
+        run: node --test scripts/surveillance-media-config.spec.mjs
+      - name: Provision isolated synthetic RTSP camera relay
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/scc380-media/recordings"
+          cat > "$RUNNER_TEMP/scc380-media/mediamtx.yml" <<'YAML'
+          logLevel: warn
+          api: false
+          metrics: false
+          pprof: false
+          authMethod: internal
+          authInternalUsers:
+            - user: "testPublisher"
+              pass: "testPublisherSecret"
+              ips: ["127.0.0.1", "::1"]
+              permissions:
+                - action: publish
+                  path: "camera12345"
+            - user: "testViewer"
+              pass: "testViewerSecret"
+              ips: ["127.0.0.1", "::1"]
+              permissions:
+                - action: read
+                  path: "camera12345"
+                - action: playback
+                  path: "camera12345"
+          rtspTransports: [tcp]
+          rtspAddress: 127.0.0.1:8554
+          rtmp: false
+          hls: true
+          hlsAddress: 127.0.0.1:8888
+          hlsVariant: mpegts
+          hlsSegmentDuration: 1s
+          hlsAlwaysRemux: true
+          webrtc: false
+          playback: true
+          playbackAddress: 127.0.0.1:9996
+          paths:
+            camera12345:
+              source: publisher
+              record: true
+              recordPath: /recordings/%path/%Y-%m-%d_%H-%M-%S-%f_%z
+              recordFormat: fmp4
+              recordSegmentDuration: 1s
+              recordDeleteAfter: 24h
+          YAML
+          docker run -d --name scc380-synthetic-media --network host \
+            -v "$RUNNER_TEMP/scc380-media/mediamtx.yml:/mediamtx.yml:ro" \
+            -v "$RUNNER_TEMP/scc380-media/recordings:/recordings" \
+            bluenviron/mediamtx:1.21.4 >/dev/null
+          echo "$RUNNER_TEMP/scc380-media" > "$RUNNER_TEMP/scc380_media_path"
+          for i in $(seq 1 35); do
+            if bash -c 'echo >/dev/tcp/127.0.0.1/8554' 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          docker logs scc380-synthetic-media
+          exit 1
+      - name: Check HLS authorization, synthetic video with audio and recorded segments
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v ffmpeg
+          ffmpeg -hide_banner -loglevel warning -re \
+            -f lavfi -i "testsrc=size=160x120:rate=10" \
+            -f lavfi -i "sine=frequency=440:sample_rate=16000" \
+            -t 22 -c:v libx264 -preset ultrafast -tune zerolatency \
+            -pix_fmt yuv420p -g 10 -c:a aac -b:a 32k \
+            -f rtsp -rtsp_transport tcp \
+            "rtsp://testPublisher:testPublisherSecret@127.0.0.1:8554/camera12345" \
+            > "$RUNNER_TEMP/synthetic-ffmpeg.log" 2>&1 &
+          producer=$!
+          trap 'kill "$producer" 2>/dev/null || true' EXIT
+          ok=0
+          for i in $(seq 1 30); do
+            status=$(curl --silent --output "$RUNNER_TEMP/public-hls" \
+              --write-out '%{http_code}' --max-time 5 \
+              "http://127.0.0.1:8888/camera12345/index.m3u8" || true)
+            if [ "$status" = "200" ]; then
+              echo "FAIL: anonymous HLS playback exposed"
+              exit 1
+            fi
+            if curl --silent --show-error --fail --max-time 5 \
+              -u testViewer:testViewerSecret \
+              "http://127.0.0.1:8888/camera12345/index.m3u8" \
+              -o "$RUNNER_TEMP/playlist.m3u8" 2>/dev/null &&
+              grep -q '#EXTM3U' "$RUNNER_TEMP/playlist.m3u8"; then
+              ok=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ok" != "1" ]; then
+            cat "$RUNNER_TEMP/synthetic-ffmpeg.log"
+            docker logs scc380-synthetic-media
+            exit 1
+          fi
+          wait "$producer"
+          trap - EXIT
+          MEDIA_ROOT="$(cat "$RUNNER_TEMP/scc380_media_path")"
+          if ! find "$MEDIA_ROOT/recordings" -type f -name '*.mp4' -size +0c | grep -q .; then
+            echo "FAIL: no recorded video segment"
+            find "$MEDIA_ROOT/recordings" -type f || true
+            exit 1
+          fi
+          echo "PASS: synthetic camera video+audio ingested, authenticated HLS produced, anonymous HLS blocked, MP4 recorded"
+      - name: Remove isolated media stack
+        if: always()
+        run: |
+          docker logs scc380-synthetic-media || true
+          docker rm -f scc380-synthetic-media || true
