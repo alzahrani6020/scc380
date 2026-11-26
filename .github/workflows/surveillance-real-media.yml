@@ -134,6 +134,51 @@ jobs:
             exit 1
           fi
           echo "PASS: synthetic camera video+audio ingested, authenticated HLS produced, anonymous HLS blocked, MP4 recorded"
+      - name: Verify private recording index and actual playback recovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          unauthorized=$(curl --silent --location --max-redirs 2 --output /dev/null --write-out '%{http_code}' \
+            'http://127.0.0.1:9996/list?path=camera12345' || true)
+          if [ "$unauthorized" = "200" ]; then
+            echo "FAIL: recording index accessible anonymously"
+            exit 1
+          fi
+          curl --silent --show-error --fail --location --max-redirs 2 \
+            -u testViewer:testViewerSecret \
+            'http://127.0.0.1:9996/list?path=camera12345' \
+            -o "$RUNNER_TEMP/recording-index.json"
+          python3 - "$RUNNER_TEMP/recording-index.json" "$RUNNER_TEMP/playback-url.txt" <<'PY'
+          import json,sys
+          from urllib.parse import urlencode
+          with open(sys.argv[1]) as f:
+              segments=json.load(f)
+          assert isinstance(segments,list) and segments, 'No recorded timespans returned'
+          start=segments[0]['start']
+          duration=float(segments[0]['duration'])
+          assert 0 < duration <= 60, 'Recording duration out of expected bound'
+          url='http://127.0.0.1:9996/get?'+urlencode({
+              'path':'camera12345','start':start,'duration':duration,'format':'mp4'})
+          with open(sys.argv[2],'w') as f:
+              f.write(url)
+          PY
+          PLAYBACK_URL="$(cat "$RUNNER_TEMP/playback-url.txt")"
+          unauthorized_clip=$(curl --silent --location --max-redirs 2 --output /dev/null \
+            --write-out '%{http_code}' "$PLAYBACK_URL" || true)
+          if [ "$unauthorized_clip" = "200" ]; then
+            echo "FAIL: recorded clip downloadable anonymously"
+            exit 1
+          fi
+          curl --silent --show-error --fail --location --max-redirs 2 --max-time 20 \
+            -u testViewer:testViewerSecret "$PLAYBACK_URL" \
+            -o "$RUNNER_TEMP/recovered-recording.mp4"
+          test -s "$RUNNER_TEMP/recovered-recording.mp4"
+          ffprobe -v error -show_entries stream=codec_type \
+            -of default=noprint_wrappers=1 "$RUNNER_TEMP/recovered-recording.mp4" \
+            > "$RUNNER_TEMP/recovered-codecs.txt"
+          grep -q 'codec_type=video' "$RUNNER_TEMP/recovered-codecs.txt"
+          grep -q 'codec_type=audio' "$RUNNER_TEMP/recovered-codecs.txt"
+          echo "PASS: recording index private, MP4 recovered via playback API, video/audio streams verified"
       - name: Remove isolated media stack
         if: always()
         run: |
