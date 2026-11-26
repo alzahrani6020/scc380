@@ -13,7 +13,7 @@ test('on-prem HLS, WebRTC, recordings require auth and loopback listeners',()=>{
   assert.match(cfg,/sourceOnDemand: false/);
   assert.match(cfg,/action: playback/);
   assert.match(cfg,/source: "rtsp:\/\//);
-  assert.equal(cfg.includes('permissions:\n      - action: read\n'),false);
+  assert.match(cfg,/ips: \["127\.0\.0\.1", "::1"\]\n    permissions:\n      - action: api/);
 });
 test('reject public camera addresses, missing secrets and duplicate sources',()=>{
   assert.throws(()=>buildMediaConfig({devices:[{cameraId:'camera12345',rtspUrlEnv:'SCC_MEDIA_TEST_RTSP'}]},
