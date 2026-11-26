@@ -139,6 +139,35 @@ test('HTTP JWT and tenant boundaries for sites, cameras and maintenance', async 
     assert.equal(hiddenHistory.length,0);
     assert.equal((await send('/surveillance/device-commands/'+command.id+'/reject',
       gateway.enrollmentToken,'POST',{resultCode:'FAILED'})).status,404);
+    // Physical pilot gate: default off, atomic claim and one-use completion lease.
+    const physicalCommand=await (await send('/surveillance/device-commands',aliceToken,'POST',
+      {cameraId:cam.id,action:'PTZ_STOP'})).json() as {id:string};
+    assert.equal((await send('/surveillance/device-commands/'+physicalCommand.id+'/claim',
+      gateway.enrollmentToken,'POST')).status,403);
+    const previousPilot=process.env.SCC_SURVEILLANCE_PTZ_PILOT_ENABLED;
+    try {
+      process.env.SCC_SURVEILLANCE_PTZ_PILOT_ENABLED='YES';
+      assert.equal((await send('/surveillance/device-commands/'+physicalCommand.id+'/claim',
+        'sccg_'+'Z'.repeat(43),'POST')).status,403);
+      const claimResponse=await send('/surveillance/device-commands/'+physicalCommand.id+'/claim',
+        gateway.enrollmentToken,'POST');
+      assert.equal(claimResponse.status,201,await claimResponse.clone().text());
+      const lease=await claimResponse.json() as {leaseToken:string;deviceExecuted:boolean};
+      assert.equal(lease.deviceExecuted,false);
+      assert.equal((await send('/surveillance/device-commands/'+physicalCommand.id+'/claim',
+        gateway.enrollmentToken,'POST')).status,404);
+      assert.equal((await send('/surveillance/device-commands/'+physicalCommand.id+'/complete',
+        gateway.enrollmentToken,'POST',{leaseToken:'a'.repeat(43),resultCode:'SOAP_ACKNOWLEDGED'})).status,404);
+      const completed=await send('/surveillance/device-commands/'+physicalCommand.id+'/complete',
+        gateway.enrollmentToken,'POST',{leaseToken:lease.leaseToken,resultCode:'SOAP_ACKNOWLEDGED'});
+      assert.equal(completed.status,201);
+      assert.equal(((await completed.json()) as {deviceMovementVerified:boolean}).deviceMovementVerified,false);
+      assert.equal((await send('/surveillance/device-commands/'+physicalCommand.id+'/complete',
+        gateway.enrollmentToken,'POST',{leaseToken:lease.leaseToken,resultCode:'FAILED'})).status,404);
+    } finally {
+      if(previousPilot===undefined) delete process.env.SCC_SURVEILLANCE_PTZ_PILOT_ENABLED;
+      else process.env.SCC_SURVEILLANCE_PTZ_PILOT_ENABLED=previousPilot;
+    }
     const observed=await (await send('/surveillance/cameras',aliceToken)).json() as Array<{id:string;connectionStatus:string;lastSeenAt:string}>;
     assert.ok(observed.some(c=>c.id===cam.id&&c.connectionStatus==='ONLINE'&&!!c.lastSeenAt));
     const freshCamera=await (await send('/surveillance/cameras',aliceToken)).json() as Array<{id:string;effectiveConnectionStatus:string}>;
