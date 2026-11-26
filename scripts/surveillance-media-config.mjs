@@ -51,7 +51,7 @@ export function buildMediaConfig(data, env=process.env) {
   );
   for(const e of entries) lines.push('  '+quote(e.id)+':',
     '    source: '+quote(e.url),
-    '    sourceOnDemand: true',
+    '    sourceOnDemand: false',
     '    record: true',
     '    recordPath: '+quote(resolve(data.recordingDirectory||'/var/lib/scc380/recordings')+'/%path/%Y-%m-%d_%H-%M-%S-%f_%z'),
     '    recordFormat: fmp4',
