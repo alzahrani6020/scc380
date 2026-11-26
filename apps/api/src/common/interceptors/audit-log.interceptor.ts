@@ -7,7 +7,7 @@ const SENSITIVE_FIELDS = new Set([
   'password', 'passwordhash', 'accesstoken', 'refreshtoken', 'resettoken',
   'token', 'authorization', 'twofactorsecret', 'twofactorbackupcodes',
   'backupcodes', 'apikey', 'apikeys', 'secret', 'otp', 'csid',
-  'privatekey', 'cookie', 'cookies', 'contentbase64',
+  'privatekey', 'cookie', 'cookies', 'contentbase64', 'enrollmenttoken',
 ]);
 
 export function sanitizeBody(value: any): any {
@@ -122,6 +122,8 @@ export class AuditLogInterceptor implements NestInterceptor {
     const path = request.originalUrl || request.url;
     const body = sanitizeBody(request.body);
     const entityType = getEntityType(path);
+    // High-frequency, unauthenticated-to-user gateway status reports must not create unbounded audit rows.
+    if (method === 'POST' && hasPath(path, '/surveillance/gateways/heartbeat')) return next.handle();
 
     return from(loadPreviousValue(request, method, path)).pipe(
       switchMap((previous) =>
