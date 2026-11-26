@@ -50,13 +50,16 @@ function envelope(inner, user, password) {
 }
 async function send(camera, creds, action, inner) {
   // Static trusted ONVIF service path, no user-provided URL, no redirects, no proxy.
-  const url = 'http://'+camera.host+':'+camera.onvifPort+'/onvif/ptz_service';
+  const path = camera.ptzPath ?? '/onvif/ptz_service';
+  if(!/^\/onvif\/[A-Za-z0-9/_-]{1,100}$/.test(path) || path.includes('..'))
+    throw new Error('ONVIF_PATH_NOT_ALLOWED');
+  const url = 'http://'+camera.host+':'+camera.onvifPort+path;
   const response=await fetch(url,{method:'POST',redirect:'error',signal:AbortSignal.timeout(3000),
     headers:{'Content-Type':'application/soap+xml; charset=utf-8; action="http://www.onvif.org/ver20/ptz/wsdl/'+action+'"'},
     body:envelope(inner,creds.user,creds.password)});
   const body=await response.text();
   if (!response.ok || /<(?:[\w-]+:)?Fault(?:\s|>)/i.test(body) ||
-      !new RegExp('(?:<|:)' + action + 'Response(?:\\s|>)').test(body))
+      !new RegExp('(?:<|:)' + action + 'Response(?:\\s|/|>)').test(body))
     throw new Error('ONVIF_'+action.toUpperCase()+'_REJECTED');
 }
 export async function executePtz(camera, action) {
