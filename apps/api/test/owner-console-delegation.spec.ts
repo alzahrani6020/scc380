@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const controller = readFileSync(join(process.cwd(), 'src/analytics/analytics.controller.ts'), 'utf8');
-const ownerPage = readFileSync(join(process.cwd(), '../web/src/app/owner/activity/page.tsx'), 'utf8');
+const ownerPage = readFileSync(join(process.cwd(), '../web/src/app/owner/page.tsx'), 'utf8');
 const ownerLayout = readFileSync(join(process.cwd(), '../web/src/app/owner/layout.tsx'), 'utf8');
 const middleware = readFileSync(join(process.cwd(), '../web/src/middleware.ts'), 'utf8');
 const ownerRecovery = readFileSync(join(process.cwd(), '../web/src/app/auth/owner-resume/page.tsx'), 'utf8');
@@ -29,8 +29,8 @@ test('delegation remains scoped to owner console, without role updates', () => {
   assert.doesNotMatch(controller, /req\.user\.role\s*=\s*'SUPER_ADMIN'/);
 });
 test('owner UI uses server-backed authorization, not a local browser role', () => {
-  assert.match(ownerPage, /analytics\/activity\/owner\/status/);
-  assert.match(ownerPage, /setOwnerAuthorized\(result\.data\?\.authorized === true\)/);
+  assert.match(ownerLayout, /analytics\/activity\/owner\/status/);
+  assert.match(ownerLayout, /if \(!authorized\) notFound\(\)/);
   assert.doesNotMatch(ownerPage, /getRole\(/);
 });
 
@@ -47,12 +47,12 @@ test('owner layout must enforce authenticated API authorization on server before
 });
 
 test('owner recovery requires existing HttpOnly refresh session and rechecks private route', () => {
-  assert.match(middleware, /path\.startsWith\('\/owner\/'\) && !sessionValid && mayRefresh/);
+  assert.match(middleware, /\(path === '\/owner' \|\| path\.startsWith\('\/owner\/'\)\) && !sessionValid && mayRefresh/);
   assert.match(middleware, /new URL\('\/auth\/owner-resume', request\.url\)/);
   assert.match(ownerRecovery, /sessionAuth\('refresh'/);
   assert.match(ownerRecovery, /setAuth\(/);
   // Recovery may return to the two fixed, server-protected owner routes only.
-  assert.match(ownerRecovery, /next === '\/owner\/files' \? '\/owner\/files' : '\/owner\/activity'/);
+  assert.match(ownerRecovery, /next === '\/owner\/files' \? '\/owner\/files' : next === '\/owner' \? '\/owner' : '\/owner\/activity'/);
   assert.doesNotMatch(ownerRecovery, /window\.location\.replace\(next\)/);
   assert.doesNotMatch(ownerRecovery, /SUPER_ADMIN/);
   assert.doesNotMatch(ownerRecovery, /localStorage\.setItem\('role'/);
