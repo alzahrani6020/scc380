@@ -9,6 +9,7 @@ on:
       - 'apps/api/test/surveillance-real-edge.e2e.spec.ts'
       - 'scripts/surveillance-site-agent.mjs'
       - 'scripts/surveillance-gateway-error*.mjs'
+      - 'scripts/surveillance-physical-camera-preflight*.mjs'
       - 'scripts/surveillance-rtsp-simulator*.mjs'
       - 'scripts/surveillance-windows-simulation.ps1'
       - 'scripts/surveillance-windows-watch.ps1'
@@ -65,6 +66,7 @@ jobs:
         run: |
           node --check scripts/surveillance-site-agent.mjs
           node --test scripts/surveillance-gateway-error.spec.mjs
+          node --test scripts/surveillance-physical-camera-preflight.spec.mjs
           node --test scripts/surveillance-rtsp-simulator.spec.mjs
           node --check scripts/surveillance-onvif-ptz.mjs
           node --check scripts/surveillance-media-config.mjs

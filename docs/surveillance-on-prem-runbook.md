@@ -2,6 +2,28 @@
 
 This is an opt-in **site-local** integration. It is not a hosted cloud VMS and it does not add an audio talkback channel. End-to-end customer-site acceptance is required.
 
+
+## A0. Private-network RTSP discovery (read-only)
+
+Before enrolling a physical camera, run a **local-only** RTSP preflight from an authorized PC on the same LAN or approved VPN. This script probes exactly one numeric RFC1918 address; it refuses public addresses, loopback, hostnames and URL credentials. It does not authenticate to the camera, stream video, create SCC380 records, or send a production heartbeat.
+
+```powershell
+$repo = "C:\Users\vip\scc380-camera-agent"
+git -C $repo pull --ff-only origin main
+$cameraIP = Read-Host "Authorized camera private IPv4"
+$cameraPort = Read-Host "RTSP port (usually 554)"
+node (Join-Path $repo "scripts\surveillance-physical-camera-preflight.mjs") $cameraIP $cameraPort
+```
+
+Expected possible results:
+
+- `RTSP_200`: device RTSP protocol accepted OPTIONS (video not proven)
+- `RTSP_AUTH_REQUIRED`: RTSP server responds but credentials may be required for media
+- `UNREACHABLE` / `TIMEOUT`: routing, IP, port, firewall or device service still need verification
+- `RTSP_404` or other RTSP code: server responded but this is not a compatible successful preflight
+
+Do not copy device passwords or RTSP URLs into this command or the chat. Do not replace the existing simulation camera with a physical device. Once preflight passes, enroll the actual camera under the correct site and gateway and test source video separately under the media section below.
+
 ## A. Enroll site cameras
 
 1. In SCC380 > Surveillance, create the site, camera IDs, and one site gateway. Use only a camera and network you are authorized to administer.
