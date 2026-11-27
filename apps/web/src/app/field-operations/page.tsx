@@ -16,6 +16,15 @@ type Gateway = { id: string; siteId: string; name: string;
 type Incident = { id: string; cameraId: string; title: string; severity: string;
   status: string; description: string | null; occurredAt: string;
   resolution: string | null; camera: { name: string; site: { name: string } } };
+type ProcurementReview = {
+  invoicesScanned: number;
+  purchaseOrdersRecorded: number;
+  matchToPurchaseOrders: string;
+  matchToGoodsReceipts: string;
+  sampleLimited: boolean;
+  findings: { invoiceId: string; invoiceNumber: string; supplierName: string;
+    code: string; severity: string; explanation: string }[];
+};
 type Maintenance = { id: string; cameraId: string; taskType: string; status: string;
   description: string | null; createdAt: string; camera: { name: string;
     site: { name: string } } };
@@ -26,6 +35,7 @@ export default function FieldOperationsCenterPage() {
   const [gateways, setGateways] = useState<Gateway[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [maintenance, setMaintenance] = useState<Maintenance[]>([]);
+  const [procurement, setProcurement] = useState<ProcurementReview | null>(null);
   const [siteFilter, setSiteFilter] = useState('');
   const [cameraId, setCameraId] = useState('');
   const [issueTitle, setIssueTitle] = useState('');
@@ -38,7 +48,7 @@ export default function FieldOperationsCenterPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [resultMessage, setResultMessage] = useState('');
-  const [tab, setTab] = useState<'cameras' | 'incidents' | 'maintenance'>('cameras');
+  const [tab, setTab] = useState<'cameras' | 'incidents' | 'maintenance' | 'procurement'>('cameras');
 
   const refresh = useCallback(async () => {
     setError('');
@@ -52,6 +62,10 @@ export default function FieldOperationsCenterPage() {
       ]);
       setSites(s.data); setCameras(c.data); setGateways(g.data);
       setIncidents(i.data); setMaintenance(m.data);
+      try {
+        const review = await api.get<ProcurementReview>('/field-procurement-review/exceptions');
+        setProcurement(review.data);
+      } catch { setProcurement(null); }
     } catch (err: any) {
       setError(err.response?.status === 403
         ? 'ليس لهذا الحساب تصريح بمتابعة كاميرات هذه الشركة.'
@@ -182,6 +196,7 @@ export default function FieldOperationsCenterPage() {
             ['cameras', 'الكاميرات والفروع'],
             ['incidents', 'بلاغات الحوادث'],
             ['maintenance', 'الصيانة والتنظيف'],
+            ['procurement', 'مؤشرات المشتريات'],
           ] as const).map(([value, label]) => (
             <button key={value} role="tab" aria-selected={tab === value} onClick={() => setTab(value)}
               className={'rounded-lg border px-4 py-2 text-sm ' + (tab === value ? 'border-sky-500 bg-sky-950' : 'border-slate-600')}>
@@ -274,6 +289,29 @@ export default function FieldOperationsCenterPage() {
             </article>)}
             {incidents.length === 0 && <p className="text-sm text-slate-300">لا توجد حوادث مسجلة.</p>}
           </div>
+        </section>}
+
+        {tab === 'procurement' && <section className="space-y-3 rounded-xl border border-slate-700 bg-slate-900 p-5">
+          <h2 className="font-semibold">مراجعة استثناءات فواتير الموردين</h2>
+          <p className="text-xs text-slate-300">مؤشرات مراجعة محاسبية فقط، وليست إثباتًا للاحتيال أو مخالفة موظف. لا توجد عقوبات آلية.</p>
+          {!procurement ? <p className="text-sm text-amber-300">هذه البيانات غير متاحة للحساب الحالي أو لم يكتمل ربط API.</p> : <>
+            <div className="flex flex-wrap gap-4 text-sm">
+              <span>الفواتير المفحوصة: {procurement.invoicesScanned}</span>
+              <span>أوامر الشراء المسجلة: {procurement.purchaseOrdersRecorded}</span>
+              <span>الملاحظات: {procurement.findings.length}</span>
+            </div>
+            {procurement.sampleLimited && <p className="text-xs text-amber-300">الفحص محدود بأحدث 500 فاتورة؛ النتائج ليست شاملة.</p>}
+            <p className="text-xs text-amber-300">ربط الفواتير بأوامر الشراء ومحاضر الاستلام: غير متحقق في البنية الحالية؛ لم تُختلق أي مطابقة.</p>
+            <ul className="space-y-2">
+              {procurement.findings.map((finding, index) => <li key={finding.invoiceId + finding.code + index}
+                className="rounded-lg border border-slate-700 p-3">
+                <p className="font-medium">{finding.supplierName} — فاتورة {finding.invoiceNumber}</p>
+                <p className="text-sm text-slate-300">{finding.explanation}</p>
+                <p className="text-xs text-slate-400">{finding.code} — {finding.severity}</p>
+              </li>)}
+              {procurement.findings.length === 0 && <li className="text-sm text-slate-300">لم تظهر استثناءات ضمن البيانات التي فُحصت؛ هذه النتيجة لا تثبت خلو جميع المعاملات من المخاطر.</li>}
+            </ul>
+          </>}
         </section>}
 
         {tab === 'maintenance' && <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
