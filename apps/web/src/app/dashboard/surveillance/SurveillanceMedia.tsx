@@ -1,10 +1,25 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 type Camera={id:string;name:string;siteId:string;supportsAudio:boolean;supportsTalk:boolean;connectionStatus:string;effectiveConnectionStatus?:string};
 export default function SurveillanceMedia({cameras}:{cameras:Camera[]}) {
   const [cameraId,setCameraId]=useState('');
   const [showLocalPilot,setShowLocalPilot]=useState(false);
   const [showLocalPreview,setShowLocalPreview]=useState(false);
+  const [localClipUrl,setLocalClipUrl]=useState<string | null>(null);
+  const [localClipName,setLocalClipName]=useState('');
+  const [localClipError,setLocalClipError]=useState('');
+  useEffect(()=>()=>{if(localClipUrl) URL.revokeObjectURL(localClipUrl);},[localClipUrl]);
+  const selectLocalClip=(file?:File)=>{
+    setLocalClipError('');
+    if(!file){setLocalClipUrl(null);setLocalClipName('');return;}
+    if(!file.name.toLowerCase().endsWith('.mp4') || (file.type && file.type!=='video/mp4')){
+      setLocalClipError('اختر ملف MP4 فقط.');return;
+    }
+    if(file.size===0 || file.size>250*1024*1024){
+      setLocalClipError('يجب أن يكون الملف غير فارغ وألا يتجاوز 250 MB.');return;
+    }
+    setLocalClipUrl(URL.createObjectURL(file));setLocalClipName(file.name);
+  };
   const camera=cameras.find(x=>x.id===cameraId);
   const path=camera?encodeURIComponent(camera.id):'';
   // Browser-to-site access is deliberately loopback-only. An operator must have
@@ -37,6 +52,17 @@ export default function SurveillanceMedia({cameras}:{cameras:Camera[]}) {
           <p className="text-xs text-slate-400">قد يمنع المتصفح المعاينة المضمنة من صفحة HTTPS إلى خادم HTTP محلي. استخدم «فتح المشاهدة المباشرة المحلية» إن لم تظهر الصورة. لا يُعد غياب الصورة دليلًا على انقطاع الكاميرا.</p>
           <iframe title="معاينة فيديو اللابتوب المحلي" src={laptopLocalHls} loading="lazy" referrerPolicy="no-referrer" allow="autoplay" className="aspect-video w-full rounded border border-slate-700 bg-black" />
         </div>}
+        <div className="space-y-3 rounded-lg border border-emerald-700/60 bg-slate-950 p-3" data-testid="local-mp4-player">
+          <h4 className="font-semibold">تشغيل تسجيل MP4 من جهازك — دون رفعه إلى الإنترنت</h4>
+          <p className="text-xs text-slate-300">اختر المقطع الذي استرجعته سابقًا عبر PowerShell. يتولى المتصفح تشغيل الملف محليًا دون اتصال بخادم التسجيلات أو طلب كلمة مرور. هذا ليس استعراضًا سحابيًا للتسجيلات ولا يمنح صلاحيات MediaMTX.</p>
+          <input type="file" accept=".mp4,video/mp4" aria-label="اختيار تسجيل MP4 محلي" className="block w-full text-sm" onChange={e=>selectLocalClip(e.target.files?.[0])}/>
+          {localClipError&&<p role="alert" className="text-sm text-amber-200">{localClipError}</p>}
+          {localClipUrl&&<div className="space-y-2">
+            <p className="break-all text-xs text-slate-300">الملف المحلي: {localClipName}</p>
+            <video key={localClipUrl} src={localClipUrl} controls playsInline preload="metadata" className="aspect-video w-full rounded bg-black" aria-label="تشغيل تسجيل الكاميرا المحلي"/>
+            <button type="button" className="rounded border border-slate-500 px-3 py-2 text-sm" onClick={()=>{setLocalClipUrl(null);setLocalClipName('');}}>إغلاق التسجيل المحلي</button>
+          </div>}
+        </div>
         <p className="text-xs text-slate-400">بعد انتهاء إرسال FFmpeg يتوقف البث المباشر، بينما تبقى التسجيلات المحلية حتى انتهاء سياسة الاحتفاظ. واجهة فهرس التسجيلات تعرض بيانات JSON؛ تنزيل المقاطع يتم من MediaMTX المحلي باستخدام حساب المشاهدة، وليس صلاحيات SCC380 السحابية.</p>
       </div>}
     </div>

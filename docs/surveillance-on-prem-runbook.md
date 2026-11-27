@@ -96,3 +96,9 @@ In SCC380 Surveillance > **البث والتسجيلات** choose **فتح اخ�
 
 **Live viewing requires an actively publishing FFmpeg process.** The earlier bounded 15-second webcam feed has stopped, so recorded videos can still be enumerated, but no live frames are expected until the operator manually starts the camera publisher again with protected credentials. Never store RTSP credentials in the SCC380 SaaS application, browser localStorage, public URLs, chat or screenshot. Cloud SCC380 auth **does not govern** MediaMTX recordings; this remains a separate site-local authentication boundary. The trial proves local media routing only, not remote viewing, SSO, or a production live video service.
 
+
+## F. Local MP4 playback when Chrome rejects MediaMTX HTTP Basic Auth
+
+In SCC380 > المراقبة والكاميرات > البث والتسجيلات > فتح اختبار كاميرا اللابتوب, use **تشغيل تسجيل MP4 من جهازك** and select the already recovered MP4 from the local Windows TEMP directory. This uses a browser-created object URL and the native video element. It does not send the file, its metadata, or credentials to SCC380 or MediaMTX. The player is a separate fallback from the MediaMTX playback API, intended for **locally held recordings** after an authenticated download. It does not grant access to new recordings, replace MediaMTX authentication, or provide remote live streaming.
+
+The MediaMTX 9996 Basic Auth browser error remains a separate, not-yet-root-caused issue; the successful PowerShell authenticated API download is not affected. Do not change local viewer secrets, drop recording files or open public ports to work around this issue. For a local user to browse new recordings they must use the separately authenticated API or otherwise obtain the file through authorized access.
