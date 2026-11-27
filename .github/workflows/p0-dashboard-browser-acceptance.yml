@@ -6,6 +6,7 @@ on:
       - "apps/web/src/app/dashboard/**"
       - "apps/web/src/lib/dashboard-data-integrity.ts"
       - "apps/web/test/dashboard-browser-acceptance.cjs"
+      - "apps/web/test/hr-browser-acceptance.cjs"
       - ".github/workflows/p0-dashboard-browser-acceptance.yml"
       - "pnpm-lock.yaml"
       - "package.json"
@@ -68,6 +69,7 @@ jobs:
             exit 1
           fi
           node apps/web/test/dashboard-browser-acceptance.cjs
+          node apps/web/test/hr-browser-acceptance.cjs
           echo 'PASS: isolated Chromium dashboard browser acceptance'
       - name: Publish visual evidence (synthetic local API ONLY)
         if: always()
