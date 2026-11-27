@@ -101,6 +101,15 @@ async function main() {
     await page.getByText('P0 Employee Revised', { exact: true }).waitFor({ timeout: 12000 });
     assert.equal(employee.lastName, 'Employee Revised');
     assert.equal(businessWrites.filter(r => r.type === 'PATCH').length, 1);
+    const employeeName = page.getByRole('link', { name: 'P0 Employee Revised' });
+    const nameFits = await employeeName.evaluate(el => {
+      const css = getComputedStyle(el);
+      return css.textOverflow !== 'ellipsis' &&
+        el.getBoundingClientRect().width >= 100 &&
+        el.scrollWidth <= el.clientWidth + 1;
+    });
+    assert.ok(nameFits, 'employee full name must not be clipped by adjacent action buttons');
+
     await page.screenshot({ path: 'apps/web/test/artifacts/SIMULATION-hr-employee-reopened.png', fullPage: true, animations: 'disabled' });
     console.log('PASS P0_HR_CREATE_EDIT_SAVE_RELOAD_SIMULATED_API');
 
