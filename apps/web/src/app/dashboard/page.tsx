@@ -119,6 +119,8 @@ export default function DashboardPage() {
         )}
       </div>
 
+      <a href="/field-devices" className="inline-flex rounded-lg border border-sky-600 bg-slate-900 px-4 py-2 text-sm text-sky-200 hover:bg-slate-800">مركز أجهزة الشركة — السجل وحالة التهيئة</a>
+
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {cards.map((card, i) => (
