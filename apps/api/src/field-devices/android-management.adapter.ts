@@ -179,11 +179,17 @@ export class AndroidManagementAdapter implements MdmAdapter {
     }
     if (!(await this.verifyTenantConnection(tenantId))) throw new MdmNotConfiguredError();
     const result = await this.api('GET', operationName);
-    if (result?.name !== operationName || typeof result.done !== 'boolean') {
+    if (result?.name !== operationName ||
+      (result.done !== undefined && typeof result.done !== 'boolean')) {
       throw new Error('INVALID_PROVIDER_OPERATION_RESPONSE');
     }
-    if (!result.done) return 'PROVIDER_PENDING';
-    return result.error ? 'PROVIDER_FAILED' : 'PROVIDER_COMPLETED';
+    // Protobuf JSON may omit a default-false `done` field.
+    if (result.done !== true) return 'PROVIDER_PENDING';
+    const code = result.metadata?.errorCode;
+    if (result.error || (typeof code === 'string' &&
+      code !== 'COMMAND_ERROR_CODE_UNSPECIFIED')) return 'PROVIDER_FAILED';
+    if (!result.response) throw new Error('INVALID_PROVIDER_OPERATION_RESPONSE');
+    return 'PROVIDER_COMPLETED';
   }
 
   async submitCommand(tenantId: string, providerDeviceId: string, action: DeviceCommandAction):
