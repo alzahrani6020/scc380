@@ -22,6 +22,8 @@ CREATE TABLE "field_managed_devices" (
 
 CREATE UNIQUE INDEX "field_managed_devices_tenantId_assetTag_key"
   ON "field_managed_devices" ("tenantId", "assetTag");
+CREATE UNIQUE INDEX "field_managed_devices_tenantId_providerDeviceId_key"
+  ON "field_managed_devices" ("tenantId", "providerDeviceId");
 CREATE UNIQUE INDEX "field_managed_devices_id_tenantId_key"
   ON "field_managed_devices" ("id", "tenantId");
 CREATE INDEX "field_managed_devices_tenantId_employeeId_idx"
