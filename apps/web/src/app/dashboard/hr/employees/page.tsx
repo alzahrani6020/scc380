@@ -41,6 +41,7 @@ export default function HrPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [formLoading, setFormLoading] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const [formData, setFormData] = useState<any>({});
 
   const [lookupError, setLookupError] = useState<string | null>(null);
@@ -105,12 +106,14 @@ export default function HrPage() {
   };
 
   const openCreate = () => {
+    setFormError(null);
     setEditing(null);
     setFormData({ employmentType: 'FULL_TIME', status: 'ACTIVE', nationality: 'SA' });
     setIsModalOpen(true);
   };
 
   const openEdit = (item: any) => {
+    setFormError(null);
     setEditing(item);
     setFormData({
       employeeCode: item.employeeCode,
@@ -142,6 +145,7 @@ export default function HrPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError(null);
     setFormLoading(true);
     try {
       const payload = {
@@ -194,7 +198,7 @@ export default function HrPage() {
       setPage(1);
       fetchData();
     } catch (err) {
-      alert('تعذر حفظ بيانات الموظف');
+      setFormError('تعذر حفظ بيانات الموظف. لم يتم تأكيد الحفظ؛ تحقق من البيانات والاتصال ثم أعد المحاولة.');
     } finally {
       setFormLoading(false);
     }
@@ -354,6 +358,7 @@ export default function HrPage() {
             <Input label="هاتف الطوارئ" value={formData.emergencyContactPhone || ''} onChange={(e) => setFormData({ ...formData, emergencyContactPhone: e.target.value })} />
             <Select label="حساب الخدمة الذاتية" options={userOptions} value={formData.userId || ''} onChange={(e) => setFormData({ ...formData, userId: e.target.value })} />
           </div>
+          {formError && <p role="alert" className="text-sm text-red-300">{formError}</p>}
           <div className="flex justify-end gap-3 pt-2">
             <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}><X className="h-4 w-4" /> إلغاء</Button>
             <Button type="submit" isLoading={formLoading}>{editing ? 'حفظ' : 'إنشاء'}</Button>
