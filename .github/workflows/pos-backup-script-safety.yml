@@ -43,6 +43,7 @@ jobs:
           fi
           cid="${{ job.services.postgres.id }}"
           docker exec -e PGPASSWORD=fixture-only "$cid" psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE scc_ci_fixture'
+          docker exec -e PGPASSWORD=fixture-only "$cid" psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE scc_main_qbf1'
           docker exec -e PGPASSWORD=fixture-only "$cid" psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE scc380_restore_acceptance'
           docker exec -e PGPASSWORD=fixture-only "$cid" psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE scc380_nonempty'
           docker exec -e PGPASSWORD=fixture-only "$cid" psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE scc380_restore_failure'
@@ -66,6 +67,16 @@ jobs:
           source_url='postgresql://postgres:fixture-only@localhost:5432/scc_ci_fixture'
           restore_url='postgresql://postgres:fixture-only@localhost:5432/scc380_restore_acceptance'
           nonempty_url='postgresql://postgres:fixture-only@localhost:5432/scc380_nonempty'
+          # Production-named fixture must fail if restore is on the same
+          # PostgreSQL server, even when the target database is empty.
+          # This is disposable CI only, NOT an actual production connection.
+          production_fixture_url='postgresql://postgres:fixture-only@localhost:5432/scc_main_qbf1'
+          if docker exec -e DATABASE_URL="$production_fixture_url" -e RESTORE_DATABASE_URL="$restore_url" -e BACKUP_DIR=/tmp/prod-isolation-negative "$cid" bash /verify-scc380.sh; then
+            echo 'FAIL: production guard accepted a same-server restore target' >&2
+            exit 1
+          fi
+          docker exec -e PGPASSWORD=fixture-only "$cid" psql -h localhost -U postgres -d scc380_restore_acceptance -tAc "SELECT count(*) FROM pg_tables WHERE schemaname='public'" | grep -qx 0
+          echo 'PASS: production same-server restore rejected without data writes'
           # Must reject backup into the source database itself.
           if docker exec -e EXPECTED_SOURCE_DB=scc_ci_fixture -e DATABASE_URL="$source_url" -e RESTORE_DATABASE_URL="$source_url" -e BACKUP_DIR=/tmp/fixture-backup "$cid" bash /verify-scc380.sh; then
             echo 'FAIL: script allowed restore onto source' >&2; exit 1
