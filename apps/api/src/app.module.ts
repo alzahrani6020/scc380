@@ -41,6 +41,7 @@ import { AlertsModule } from './alerts/alerts.module';
 import { ComplianceModule } from './compliance/compliance.module';
 import { RealEstateModule } from './real-estate/real-estate.module';
 import { SurveillanceModule } from './surveillance/surveillance.module';
+import { FieldDevicesModule } from './field-devices/field-devices.module';
 import { OwnerFilesController } from './owner-files/owner-files.controller';
 
 @Module({
@@ -89,6 +90,7 @@ import { OwnerFilesController } from './owner-files/owner-files.controller';
     ComplianceModule,
     RealEstateModule,
     SurveillanceModule,
+    FieldDevicesModule,
     ScheduleModule.forRoot(),
   ],
   controllers: [AppController, OwnerFilesController],
