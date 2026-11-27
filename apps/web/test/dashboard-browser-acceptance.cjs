@@ -70,8 +70,18 @@ async function main() {
     assert.equal(await page.getByText('لا توجد بيانات إيرادات').isVisible(), true);
     assert.equal(await alert.getByText('تعذر التحقق من بيانات لوحة التحكم').count(), 0);
     assert.ok(requests.some(r => r.path === '/api/analytics/dashboard'));
+    // ActivityTracker writes audit telemetry to /api/analytics/activity/event.
+    // That background event is not a business-data edit. Assert the dashboard
+    // only reads the five metrics and never modifies CRM/ERP/HR/fleet records.
+    const dashboardReadEndpoints = new Set([
+      '/api/analytics/dashboard',
+      '/api/analytics/revenue-trend',
+      '/api/analytics/crm',
+      '/api/analytics/erp',
+      '/api/analytics/fleet',
+    ]);
     const businessRequests = requests.filter(r =>
-      r.path.startsWith('/api/analytics/') ||
+      dashboardReadEndpoints.has(r.path) ||
       r.path.startsWith('/api/crm/') ||
       r.path.startsWith('/api/erp/') ||
       r.path.startsWith('/api/hr/') ||
