@@ -119,6 +119,7 @@ export default function DashboardPage() {
         )}
       </div>
 
+      <a href="/field-operations" className="inline-flex rounded-lg border border-sky-600 bg-slate-900 px-4 py-2 text-sm text-sky-200 hover:bg-slate-800">مركز العمليات والكاميرات</a>
       <a href="/field-devices" className="inline-flex rounded-lg border border-sky-600 bg-slate-900 px-4 py-2 text-sm text-sky-200 hover:bg-slate-800">مركز أجهزة الشركة — السجل وحالة التهيئة</a>
 
       {/* Stats Grid */}
