@@ -59,6 +59,8 @@ test('Android command returns provider acceptance, never device-confirmed succes
     'enterprises/another/devices/device-one', 'LOCK'), /DEVICE_NOT_IN_TENANT_ENTERPRISE/);
   await assert.rejects(() => adapter.submitCommand('tenant-a',
     'enterprises/example-one/devices/device-one', 'SYNC_POLICY'), /ANDROID_COMMAND_NOT_SUPPORTED/);
+  await assert.rejects(() => adapter.submitCommand('tenant-a',
+    'enterprises/example-one/devices/device-one', 'WIPE'), /ANDROID_COMMAND_NOT_SUPPORTED/);
 });
 
 test('missing binding and denied provider stay NOT_CONFIGURED', async () => {
