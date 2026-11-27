@@ -23,7 +23,7 @@ export class FieldProcurementReviewController {
         where: { tenantId },
         select: { id: true, invoiceNumber: true, supplierId: true,
           total: true, paidAmount: true, currency: true, dueDate: true,
-          status: true, supplier: { select: { name: true, isActive: true } } },
+          status: true, supplier: { select: { tenantId: true, name: true, isActive: true } } },
         orderBy: { createdAt: 'desc' }, take: 500,
       }),
       prisma.purchaseOrder.count({ where: { tenantId } }),
@@ -33,6 +33,9 @@ export class FieldProcurementReviewController {
       supplierName: string; code: string; severity: 'INFO' | 'REVIEW';
       explanation: string; requiresHumanReview: true }[] = [];
     for (const invoice of invoices) {
+      // The existing invoice->supplier FK is not composite-tenant-bound.
+      // Never expose a supplier record belonging to another tenant.
+      if (invoice.supplier.tenantId !== tenantId) continue;
       const amount = Number(invoice.total.toString());
       const paid = Number(invoice.paidAmount.toString());
       if (!Number.isFinite(amount) || !Number.isFinite(paid)) continue;
