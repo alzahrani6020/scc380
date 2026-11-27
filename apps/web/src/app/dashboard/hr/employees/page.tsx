@@ -325,7 +325,9 @@ export default function HrPage() {
           ))}
         </div>
       )}
-      <PaginationControls page={page} totalPages={totalPages} total={total} onPageChange={setPage} />
+      {!loading && !listError && (
+        <PaginationControls page={page} totalPages={totalPages} total={total} onPageChange={setPage} />
+      )}
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editing ? 'تعديل موظف' : 'موظف جديد'} size="xl">
         <form onSubmit={handleSubmit} className="space-y-4">
