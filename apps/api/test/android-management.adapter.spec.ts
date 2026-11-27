@@ -18,7 +18,7 @@ const transport: AndroidManagementTransport = {
       ? { name: binding.enterpriseName }
       : url.endsWith('/enrollmentTokens')
         ? { name: binding.enterpriseName + '/enrollmentTokens/id-1',
-          expirationTimestamp: '2026-11-27T20:00:00Z' }
+          expirationTimestamp: '2026-11-27T20:00:00Z', qrCode: '{\"android.app.extra.PROVISIONING_DEVICE_ADMIN_COMPONENT_NAME\":\"test\"}' }
         : { name: binding.enterpriseName + '/devices/device-one/operations/operation-one' };
     return { ok: true, status: 200, async json() { return body; } };
   },
@@ -41,9 +41,11 @@ test('Android enrollment binds tenant and never reports a managed physical devic
   const response = await adapter.requestEnrollment('tenant-a', 'ANDROID', 'ASSET-1');
   assert.match(response.providerEnrollmentId, /enrollmentTokens\/id-1/);
   assert.equal(response.enrollmentUrl, undefined);
+  assert.ok(response.enrollmentQrData?.includes('PROVISIONING_DEVICE_ADMIN'));
   const request = calls.find(c => c.url.endsWith('/enrollmentTokens'));
   assert.equal(request?.data.policyName, binding.policyName);
   assert.equal(request?.data.oneTimeOnly, true);
+  assert.equal(request?.data.allowPersonalUsage, 'PERSONAL_USAGE_DISALLOWED');
   assert.equal(request?.data.duration, '1800s');
 });
 
