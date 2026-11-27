@@ -9,6 +9,13 @@ const quote = x => JSON.stringify(String(x));
 export function buildMediaConfig(data, env=process.env) {
   if(!Array.isArray(data.devices) || !data.devices.length || data.devices.length>100)
     throw new Error('Expected 1..100 cameras');
+  // Explicit site-local retention control; never delete existing files on generation.
+  // MediaMTX applies its own deletion policy only when its config is activated.
+  const retention = data.recordingRetentionHours ?? 24;
+  if (!Number.isSafeInteger(retention) || retention < 1 || retention > 720)
+    throw new Error('Recording retention must be 1..720 whole hours');
+  if (Object.keys(data).some(k => !['devices','recordingDirectory','recordingRetentionHours'].includes(k)))
+    throw new Error('Unexpected media configuration field');
   const user=env.SCC_MEDIA_VIEWER_USER, pass=env.SCC_MEDIA_VIEWER_PASSWORD;
   if(!user || !pass || user.length<8 || pass.length<24)
     throw new Error('Missing strong local media viewer credentials');
@@ -55,7 +62,7 @@ export function buildMediaConfig(data, env=process.env) {
     '    record: true',
     '    recordPath: '+quote(resolve(data.recordingDirectory||'/var/lib/scc380/recordings')+'/%path/%Y-%m-%d_%H-%M-%S-%f_%z'),
     '    recordFormat: fmp4',
-    '    recordDeleteAfter: 24h');
+    '    recordDeleteAfter: '+retention+'h');
   return lines.join('\n')+'\n';
 }
 async function main(){
