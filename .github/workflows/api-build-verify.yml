@@ -126,6 +126,13 @@ jobs:
       - name: Run DB-backed CRM, HR and Accounting E2E
         run: pnpm --filter @scc/api test:db-e2e
 
+      - name: Lint backup/restore safety gate
+        run: |
+          bash -n scripts/pos-production-backup-restore-verify.sh
+          grep -Fq 'production restore requires a distinct, verified PostgreSQL server endpoint' scripts/pos-production-backup-restore-verify.sh
+          grep -Fq 'target_tables' scripts/pos-production-backup-restore-verify.sh
+          echo 'SCC380_RESTORE_GUARD_SOURCE_CHECK_PASS'
+
       - name: Simulate SCC380 production-like backup and restore with populated data
         shell: bash
         run: |
