@@ -15,6 +15,19 @@ type Device = {
   branchId: string | null;
   lastSeenAt: string | null;
 };
+type OperationsSummary = {
+  asOf: string;
+  cameraCoverage: { total: number; freshOnline: number; degraded: number;
+    staleOrOffline: number; sites: number; gateways: number;
+    connectedGateways: number; vehicleCameras: number; ptzCapable: number;
+    audioCapable: number; talkCapable: number };
+  fieldDevices: { total: number; android: number; ios: number;
+    managedRecords: number; recentlyReported: number; unconfigured: number };
+  workflow: { openIncidents: number; pendingMaintenance: number;
+    unconfirmedCommands: number };
+  acceptance: { playableStreamsVerified: boolean; liveDeviceControlVerified: boolean;
+    gpsIngestionVerified: boolean; liveMediaSessionVerified: boolean };
+};
 type DeviceCommand = {
   id: string;
   action: string;
@@ -35,6 +48,8 @@ type Capabilities = {
 
 export default function FieldDeviceCommandCenter() {
   const [devices, setDevices] = useState<Device[]>([]);
+  const [operations, setOperations] = useState<OperationsSummary | null>(null);
+  const [operationsError, setOperationsError] = useState('');
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
   const [assetTag, setAssetTag] = useState('');
   const [platform, setPlatform] = useState<'ANDROID' | 'IOS'>('ANDROID');
@@ -59,6 +74,14 @@ export default function FieldDeviceCommandCenter() {
         api.get<Capabilities>('/field-devices/capabilities'),
       ]);
       setDevices(inventory.data);
+      try {
+        const response = await api.get<OperationsSummary>('/field-operations/overview');
+        setOperations(response.data);
+        setOperationsError('');
+      } catch {
+        setOperations(null);
+        setOperationsError('تعذر تحميل المؤشرات التشغيلية. لم يتم افتراض أن أي كاميرا أو جهاز متصل.');
+      }
       setCapabilities(readiness.data);
       try {
         const connection = await api.get<{status: string}>('/field-devices/android/connection');
@@ -187,6 +210,40 @@ export default function FieldDeviceCommandCenter() {
 
       {error && <div role="alert" className="rounded-lg border border-red-600 bg-red-950 p-4 text-sm">{error}</div>}
       {notice && <div role="status" className="rounded-lg border border-green-700 bg-green-950 p-4 text-sm">{notice}</div>}
+
+      <section aria-label="العمليات الموحدة" className="space-y-3 rounded-xl border border-slate-700 bg-slate-900 p-5">
+        <h2 className="font-semibold">ملخص الشركات والفروع والأجهزة والكاميرات</h2>
+        <p className="text-xs text-slate-300">هذه المؤشرات تخص شركتك الحالية فقط؛ حالة الاتصال تستند إلى أحدث نبضات الأجهزة، ولا تثبت إمكانية تشغيل الفيديو أو الصوت.</p>
+        {operationsError && <p role="status" className="text-sm text-amber-300">{operationsError}</p>}
+        {!operations && !operationsError && <p className="text-sm text-slate-300">جار تحميل المؤشرات...</p>}
+        {operations && (
+          <>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              {([
+                ['المواقع', operations.cameraCoverage.sites],
+                ['الكاميرات المسجلة', operations.cameraCoverage.total],
+                ['كاميرات اتصال حديث', operations.cameraCoverage.freshOnline],
+                ['كاميرات غير مؤكدة الاتصال', operations.cameraCoverage.staleOrOffline],
+                ['بوابات المواقع المتصلة', operations.cameraCoverage.connectedGateways],
+                ['كاميرات المركبات', operations.cameraCoverage.vehicleCameras],
+                ['الأجهزة المُدارة في السجل', operations.fieldDevices.managedRecords],
+                ['أجهزة أرسلت حالة حديثة', operations.fieldDevices.recentlyReported],
+                ['حوادث مفتوحة', operations.workflow.openIncidents],
+                ['صيانة معلقة', operations.workflow.pendingMaintenance],
+                ['أوامر غير محسومة', operations.workflow.unconfirmedCommands],
+                ['جوالات تحتاج تهيئة', operations.fieldDevices.unconfigured],
+              ] as const).map(([label, count]) => (
+                <div key={label} className="rounded-lg border border-slate-700 p-3">
+                  <p className="text-xs text-slate-300">{label}</p>
+                  <p className="mt-1 text-xl font-semibold">{count}</p>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-amber-300">حالات القبول غير المثبتة: تشغيل البث المباشر، التحكم الفعلي بالأجهزة، وصول GPS، وجلسات الصوت/الفيديو الميدانية.</p>
+            <p className="text-xs text-slate-400">آخر تجميع للمؤشرات: {new Date(operations.asOf).toLocaleString('ar-SA')}</p>
+          </>
+        )}
+      </section>
 
       <section aria-label="حالة الخدمات" className="grid grid-cols-1 gap-3 md:grid-cols-4">
         {[
