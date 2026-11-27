@@ -30,7 +30,7 @@ jobs:
       - name: Generate Prisma client
         run: pnpm --filter @scc/api run db:generate
       - name: Run focused device access tests
-        run: pnpm --filter @scc/api exec tsx --test test/field-device-access.policy.spec.ts test/field-devices.controller.spec.ts test/field-device-inventory.controller.spec.ts test/field-device-assignments.controller.spec.ts test/field-device-shifts.controller.spec.ts test/procurement-risk.rules.spec.ts test/field-device-commands.controller.spec.ts test/field-device-locations.controller.spec.ts test/android-management.runtime.spec.ts test/field-device-enrollment.controller.spec.ts test/android-management.adapter.spec.ts
+        run: pnpm --filter @scc/api exec tsx --test test/field-device-access.policy.spec.ts test/field-devices.controller.spec.ts test/field-device-inventory.controller.spec.ts test/field-device-assignments.controller.spec.ts test/field-device-shifts.controller.spec.ts test/procurement-risk.rules.spec.ts test/field-device-commands.controller.spec.ts test/field-device-locations.controller.spec.ts test/android-management.runtime.spec.ts test/field-device-enrollment.controller.spec.ts test/field-device-dispatch.controller.spec.ts test/android-management.adapter.spec.ts
       - name: Build shared workspace dependencies
         run: pnpm --filter @scc/api^... build
       - name: Compile API
