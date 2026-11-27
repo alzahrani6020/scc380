@@ -19,7 +19,7 @@ test('shift actions fail closed on identity injection and missing reason', async
   await assert.rejects(() => controller.end(admin, 'device-a', { reason: 'Work', tenantId: 'tenant-b' } as any), BadRequestException);
 });
 
-test('shift read requires a valid management session', () => {
-  assert.throws(() => controller.list({ user: { role: 'ADMIN', userId: 'u1' } }, 'device-a'), ForbiddenException);
-  assert.throws(() => controller.list({ user: { ...admin.user, role: 'USER' } }, 'device-a'), ForbiddenException);
+test('shift read requires a valid management session', async () => {
+  await assert.rejects(() => controller.list({ user: { role: 'ADMIN', userId: 'u1' } }, 'device-a'), ForbiddenException);
+  await assert.rejects(() => controller.list({ user: { ...admin.user, role: 'USER' } }, 'device-a'), ForbiddenException);
 });
