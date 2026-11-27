@@ -61,7 +61,7 @@ MediaMTX is an external free/open-source service; **this repository does not ins
 Private `/private/media-devices.json`:
 
 ```json
-{"recordingDirectory":"/var/lib/scc380/recordings","devices":[{"cameraId":"CAMERA_ID_FROM_SCC380","rtspUrlEnv":"SCC_MEDIA_RTSP_1"}]}
+{"recordingDirectory":"/var/lib/scc380/recordings","recordingRetentionHours":24,"devices":[{"cameraId":"CAMERA_ID_FROM_SCC380","rtspUrlEnv":"SCC_MEDIA_RTSP_1"}]}
 ```
 
 Set `SCC_MEDIA_RTSP_1` to the camera RTSP URL (on a private IP, including credentials if required), set strong `SCC_MEDIA_VIEWER_USER` and `SCC_MEDIA_VIEWER_PASSWORD` in the protected local environment. Generate config **outside the repository**:
@@ -71,7 +71,7 @@ node scripts/surveillance-media-config.mjs --config /private/media-devices.json 
 mediamtx /private/mediamtx.yml
 ```
 
-The generator writes a **new, mode 0600** file and refuses to overwrite an existing config. The service reads RTSP camera feeds locally, serves authenticated HLS on `127.0.0.1:8888`, WebRTC on `127.0.0.1:8889`, and recorded footage lists/downloads on `127.0.0.1:9996`. It records continuously when a camera is reachable and expires local media after 24 hours. Sound **from** the camera is available only if that camera exposes a browser-supported audio codec. Talking **to** the camera is not implemented.
+The generator writes a **new, mode 0600** file and refuses to overwrite an existing config. Set `recordingRetentionHours` to a whole number from **1 to 720** (default: 24). This setting changes the retention directive only in the generated local config; it does **not** delete files when generating. Activating MediaMTX with a shorter retention can cause existing recordings to expire, so audit current recordings and preservation requirements before applying the new config. To change the policy, create a new private config path and review it before restarting MediaMTX; never overwrite or erase the old config as part of this generator. The service reads RTSP camera feeds locally, serves authenticated HLS on `127.0.0.1:8888`, WebRTC on `127.0.0.1:8889`, and recorded footage lists/downloads on `127.0.0.1:9996`. It records continuously when a camera is reachable and expires local media after 24 hours. Sound **from** the camera is available only if that camera exposes a browser-supported audio codec. Talking **to** the camera is not implemented.
 
 To access from an authorized computer outside the branch, establish an **authenticated private tunnel/VPN** with your network administrator, then forward the necessary on-prem endpoints to loopback. For example, forward `8888` and `9996` through an authenticated SSH tunnel; these numbers alone do not enable any public streaming. Open the new SCC380 Surveillance > `البث والتسجيلات` tab and use the camera's local links. A WebRTC connection may require additional UDP/ICE network configuration even with port forwarding; use HLS for the simpler tunnel-based pilot.
 
