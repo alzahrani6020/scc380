@@ -3996,6 +3996,7 @@ model FieldManagedDevice {
   commands           FieldDeviceCommand[]
 
   @@unique([tenantId, assetTag])
+  @@unique([tenantId, providerDeviceId])
   @@unique([id, tenantId])
   @@index([tenantId, employeeId])
   @@index([tenantId, managementState])
