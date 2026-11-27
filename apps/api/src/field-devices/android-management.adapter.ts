@@ -113,6 +113,55 @@ export class AndroidManagementAdapter implements MdmAdapter {
       enrollmentQrData: token.qrCode };
   }
 
+
+  /**
+   * Confirm actual fully-managed corporate enrollment against Google.
+   * An asset is managed only when its enrollmentTokenData matches exactly,
+   * the policy is applied and compliance / recent status are reported.
+   */
+  async findVerifiedDevice(tenantId: string, assetTag: string):
+    Promise<{ providerDeviceId: string; lastSeenAt: Date } | null> {
+    if (!assetTag || assetTag.length > 100) return null;
+    const binding = this.binding(tenantId);
+    if (!(await this.verifyTenantConnection(tenantId))) throw new MdmNotConfiguredError();
+    const matches: Array<{ providerDeviceId: string; lastSeenAt: Date }> = [];
+    let pageToken = '';
+    for (let page = 0; page < 20; page++) {
+      const url = binding.enterpriseName + '/devices?pageSize=100' +
+        (pageToken ? '&pageToken=' + encodeURIComponent(pageToken) : '');
+      const result = await this.api('GET', url);
+      if (!result || (result.devices !== undefined && !Array.isArray(result.devices))) {
+        throw new Error('ANDROID_DEVICE_LIST_INVALID');
+      }
+      for (const device of (result.devices ?? [])) {
+        if (device.enrollmentTokenData !== assetTag) continue;
+        const name = device.name;
+        if (typeof name !== 'string' ||
+          !name.startsWith(binding.enterpriseName + '/devices/') || !DEVICE.test(name) ||
+          device.managementMode !== 'DEVICE_OWNER' ||
+          device.ownership !== 'COMPANY_OWNED' ||
+          device.appliedState !== 'ACTIVE' ||
+          device.policyCompliant !== true ||
+          device.appliedPolicyName !== binding.policyName) {
+          continue;
+        }
+        const reported = Date.parse(device.lastStatusReportTime);
+        if (!Number.isFinite(reported) || reported > Date.now() + 5 * 60_000 ||
+          reported < Date.now() - 24 * 60 * 60_000) continue;
+        matches.push({ providerDeviceId: name, lastSeenAt: new Date(reported) });
+      }
+      if (!result.nextPageToken) {
+        if (matches.length > 1) throw new Error('DUPLICATE_ENROLLED_DEVICES_FOR_ASSET');
+        return matches[0] ?? null;
+      }
+      if (typeof result.nextPageToken !== 'string' || result.nextPageToken.length > 4096) {
+        throw new Error('ANDROID_DEVICE_PAGINATION_INVALID');
+      }
+      pageToken = result.nextPageToken;
+    }
+    throw new Error('ANDROID_DEVICE_INVENTORY_PAGINATION_LIMIT');
+  }
+
   async submitCommand(tenantId: string, providerDeviceId: string, action: DeviceCommandAction):
     Promise<ProviderCommandResult> {
     if (!['LOCK', 'WIPE'].includes(action)) throw new Error('ANDROID_COMMAND_NOT_SUPPORTED');
