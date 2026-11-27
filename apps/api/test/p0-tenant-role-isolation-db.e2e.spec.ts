@@ -31,6 +31,10 @@ test('P0: platform owner, company admin, manager and worker cannot cross company
     const manager = users.find(u => u.role === 'MANAGER')!;
     const worker = users.find(u => u.role === 'USER')!;
 
+    await assert.rejects(() => tenantService.findAll({ role: 'ADMIN' }), ForbiddenException);
+    await assert.rejects(() => tenantService.findAll({ role: 'MANAGER', tenantId: undefined }), ForbiddenException);
+    await assert.rejects(() => tenantService.findAll({ role: 'USER', tenantId: null }), ForbiddenException);
+    await assert.rejects(() => tenantService.findOne({ role: 'USER' }, tenantA.id), ForbiddenException);
     // The platform owner can read across tenants; local users only their own.
     assert.equal((await tenantService.findAll(owner)).some(t => t.id === tenantB.id), true);
     for (const actor of [admin, manager, worker]) {
