@@ -69,7 +69,7 @@ async function main() {
       .waitFor({ timeout: 12000 });
     assert.equal(await page.getByText('لا يوجد موظفون مطابقون.').count(), 0,
       'HTTP 500 must never be treated as an empty HR department');
-    await page.screenshot({ path: 'apps/web/test/artifacts/SIMULATION-hr-data-unavailable.png', fullPage: true });
+    await page.screenshot({ path: 'apps/web/test/artifacts/SIMULATION-hr-data-unavailable.png', fullPage: true, animations: 'disabled' });
 
     mode = 'healthy';
     await page.getByRole('button', { name: 'إعادة المحاولة' }).click();
@@ -98,7 +98,7 @@ async function main() {
     await page.getByText('P0 Employee Revised', { exact: true }).waitFor({ timeout: 12000 });
     assert.equal(employee.lastName, 'Employee Revised');
     assert.equal(businessWrites.filter(r => r.type === 'PATCH').length, 1);
-    await page.screenshot({ path: 'apps/web/test/artifacts/SIMULATION-hr-employee-reopened.png', fullPage: true });
+    await page.screenshot({ path: 'apps/web/test/artifacts/SIMULATION-hr-employee-reopened.png', fullPage: true, animations: 'disabled' });
     console.log('PASS P0_HR_CREATE_EDIT_SAVE_RELOAD_SIMULATED_API');
 
     mode = 'malformed';
