@@ -13,7 +13,7 @@ This is the authoritative acceptance coverage matrix for the user-requested comb
 | A05 | Continuous device compliance and app policies | BLOCKED | Live MDM app install, noncompliance alert, offline/reboot and policy restoration |
 | A06 | Field worker assignment, shifts and fleet integration | CODE_ONLY | Employee, branch, asset, vehicle and job relationships visible in a live work cycle |
 | A07 | Location and route history during working hours | BLOCKED | Device-attested positions, accuracy and timestamps, active shift, no off-shift collection |
-| A08 | Geofences and operational alerts | UNKNOWN | Enter/exit alert tests on real routes and offline replay |
+| A08 | Geofences and operational alerts | CODE_ONLY | Enter/exit alert tests on real routes and offline replay |
 | A09 | Resilient offline events and sync | UNKNOWN | Airplane mode, time ordering, idempotency and backfill checks |
 | A10 | Corporate device lock, wipe and lost mode | CODE_ONLY | Independently approved commands and verified provider/device receipts; remote wipe requires special recovery gate |
 | A11 | Visible and accepted field media support | BLOCKED | Worker-side prompt, mic/camera OS indicator, valid WebRTC/ TURN, stop controls, audio sync |
@@ -38,3 +38,11 @@ This is the authoritative acceptance coverage matrix for the user-requested comb
 ## Mandatory release gate
 
 **DO NOT MERGE / DO NOT CLAIM COMPLETE** until every applicable acceptance row is PASS or a requirement is explicitly removed by the user. Even successful CI is only one evidence layer. Real device, real company, recovery and production verification remain separate gates. Keep external connection blockers explicit; do not create fake accounts, tokens, enrollments or provider receipts.
+
+## Work added in this round (not yet accepted)
+
+- Tenant-authenticated `GET /field-operations/overview` joins read-only camera, site, gateway, device, maintenance, incident and queued command metadata in one response, each Prisma query scoped by the JWT tenant.
+- Arabic `/field-devices` now displays multi-site/branch connectivity summaries, device readiness, operational incidents and alerts for stale devices, gateway heartbeats and offline/stale cameras.
+- The two-company PostgreSQL device E2E test includes overview isolation; the unit test rejects unauthorized users before database reads.
+- The alert module provides **read-time warnings**, not persisted cases, geofences, push notifications, playable video, or physical device controls. A08 remains CODE_ONLY and incomplete.
+- The latest commit requires its own GitHub Actions acceptance. Do not reuse old CI success or assume missing heartbeat is equivalent to documented device malfunction.
