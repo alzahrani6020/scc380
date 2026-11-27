@@ -79,6 +79,8 @@ async function main() {
       .waitFor({ timeout: 12000 });
     assert.equal(await page.getByText('لا يوجد موظفون مطابقون.').count(), 0,
       'HTTP 500 must never be treated as an empty HR department');
+    assert.equal(await page.getByText('0 سجل', { exact: false }).count(), 0,
+      'HR list outage must not show a fabricated zero in pagination');
     await page.screenshot({ path: 'apps/web/test/artifacts/SIMULATION-hr-data-unavailable.png', fullPage: true, animations: 'disabled' });
 
     mode = 'healthy';
