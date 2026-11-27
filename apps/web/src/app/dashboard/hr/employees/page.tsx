@@ -237,7 +237,7 @@ export default function HrPage() {
             <Briefcase className="h-6 w-6 text-primary-400" />
             مكين - الموارد البشرية
           </h1>
-          <p className="text-slate-400 text-sm mt-1">منصة مكين لإدارة الموارد البشرية داخل SCC 380 — {listError ? 'عدد الموظفين غير متحقق' : total + ' موظف'}</p>
+          <p className="text-slate-400 text-sm mt-1">منصة مكين لإدارة الموارد البشرية داخل SCC 380 — {listError ? 'عدد الموظفين غير متحقق' : loading ? 'جار تحميل الموظفين' : total + ' موظف'}</p>
         </div>
         <Button onClick={openCreate}><Plus className="h-5 w-5" /> إضافة موظف</Button>
       </div>
@@ -275,15 +275,15 @@ export default function HrPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {employees.map((emp) => (
             <div key={emp.id} className="scc-card-hover group">
-              <div className="flex items-start gap-4">
+              <div className="flex flex-wrap items-start gap-3">
                 <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg shrink-0">
                   {emp.firstName?.charAt(0)}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <Link href={`/dashboard/hr/employees/${emp.id}`} className="font-bold text-white truncate hover:text-primary-400 block">{emp.firstName} {emp.lastName}</Link>
+                  <Link href={`/dashboard/hr/employees/${emp.id}`} className="font-bold text-white break-words hover:text-primary-400 block">{emp.firstName} {emp.lastName}</Link>
                   <p className="text-slate-400 text-sm">{emp.jobTitle || '—'}</p>
                 </div>
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="flex w-full flex-wrap items-center justify-end gap-2 opacity-100 transition-opacity">
                   <Link href={`/dashboard/hr/documents?employeeId=${emp.id}`} className="p-1.5 rounded-lg hover:bg-emerald-500/10 text-emerald-400" title="مستندات الموظف"><FolderOpen className="h-4 w-4" /></Link>
                   <button type="button" aria-label="فتح نموذج عقد العمل" onClick={() => window.open('/dashboard/templates?search=عقد+عمل', '_blank')} className="p-1.5 rounded-lg hover:bg-blue-500/10 text-blue-400" title="تصدير كنموذج"><FileText className="h-4 w-4" /></button>
                   <button type="button" aria-label="تعديل موظف" onClick={() => openEdit(emp)} className="p-1.5 rounded-lg hover:bg-primary-500/10 text-primary-400"><Pencil className="h-4 w-4" /></button>
