@@ -1,10 +1,12 @@
 // SCC380 P0 disposable browser acceptance. LOCALHOST ONLY, mocked API.
 // This does not authenticate to production or claim a real production session.
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const { chromium } = require(process.env.SCC_PLAYWRIGHT_PATH || '/tmp/scc-browser-test/node_modules/playwright');
 const { Buffer } = require('node:buffer');
 
 async function main() {
+  fs.mkdirSync('apps/web/test/artifacts', { recursive: true });
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
@@ -62,6 +64,7 @@ async function main() {
     await alert.getByText('تعذر التحقق من بيانات لوحة التحكم').waitFor({ timeout: 65000 });
     assert.equal(await page.getByText('جهات الاتصال', { exact: true }).count(), 0,
       'must not render a fabricated 0 while stats are unknown');
+    await page.screenshot({ path: 'apps/web/test/artifacts/SIMULATION-dashboard-outage.png', fullPage: true });
     const refresh = page.getByRole('button', { name: 'إعادة المحاولة' });
     assert.equal(await refresh.isVisible(), true, 'retry button must be usable');
     failing = false;
@@ -92,6 +95,7 @@ async function main() {
     // ActivityTracker may submit an instrumented event. All requests above
     // were intercepted inside this disposable local test: no production API.
 
+    await page.screenshot({ path: 'apps/web/test/artifacts/SIMULATION-dashboard-recovered.png', fullPage: true });
     console.log('PASS P0_BROWSER_ERROR_RETRY_REAL_ZERO_LOCAL_SIMULATION');
     await page.setViewportSize({ width: 390, height: 740 });
     await page.reload({ waitUntil: 'domcontentloaded' });
@@ -99,6 +103,7 @@ async function main() {
     const overflow = await page.evaluate(() =>
       document.documentElement.scrollWidth - document.documentElement.clientWidth);
     assert.ok(overflow <= 1, 'dashboard must not overflow mobile viewport: ' + overflow);
+    await page.screenshot({ path: 'apps/web/test/artifacts/SIMULATION-dashboard-mobile.png', fullPage: true });
     console.log('PASS P0_BROWSER_MOBILE_NO_OVERFLOW');
   } finally {
     await browser.close();
