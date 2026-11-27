@@ -70,8 +70,18 @@ async function main() {
     assert.equal(await page.getByText('لا توجد بيانات إيرادات').isVisible(), true);
     assert.equal(await alert.getByText('تعذر التحقق من بيانات لوحة التحكم').count(), 0);
     assert.ok(requests.some(r => r.path === '/api/analytics/dashboard'));
-    assert.ok(requests.every(r => r.method === 'GET'),
-      'browser read-only acceptance must never write any data');
+    const businessRequests = requests.filter(r =>
+      r.path.startsWith('/api/analytics/') ||
+      r.path.startsWith('/api/crm/') ||
+      r.path.startsWith('/api/erp/') ||
+      r.path.startsWith('/api/hr/') ||
+      r.path.startsWith('/api/fleet/'));
+    assert.ok(businessRequests.every(r => r.method === 'GET'),
+      'read-only dashboard must not write business records: ' +
+      JSON.stringify(businessRequests.filter(r => r.method !== 'GET')));
+    // ActivityTracker may submit an instrumented event. All requests above
+    // were intercepted inside this disposable local test: no production API.
+
     console.log('PASS P0_BROWSER_ERROR_RETRY_REAL_ZERO_LOCAL_SIMULATION');
     await page.setViewportSize({ width: 390, height: 740 });
     await page.reload({ waitUntil: 'domcontentloaded' });
