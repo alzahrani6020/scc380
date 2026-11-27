@@ -24,6 +24,7 @@ async function main() {
     });
 
     let mode = 'fail';
+    let lookupFailure = false;
     let employee = null;
     const businessWrites = [];
     await page.route('**/api/**', async route => {
@@ -36,8 +37,10 @@ async function main() {
       if (path === '/api/auth/me' && method === 'GET') return respond({
         role: 'ADMIN', tenantId: 'tenant-a-simulated', email: 'ci-hr@example.test',
       });
-      if (path === '/api/hr/departments' && method === 'GET') return respond({ data: [] });
-      if (path === '/api/users' && method === 'GET') return respond({ data: [] });
+      if (path === '/api/hr/departments' && method === 'GET') return lookupFailure
+        ? respond({ message: 'Simulated lookup permission error' }, 403) : respond({ data: [] });
+      if (path === '/api/users' && method === 'GET') return lookupFailure
+        ? respond({ message: 'Simulated lookup permission error' }, 403) : respond({ data: [] });
       if (path === '/api/hr/employees' && method === 'GET') {
         if (mode === 'fail') return respond({ message: 'Simulated HTTP 500' }, 500);
         if (mode === 'malformed') return respond({ data: [], totalPages: 1 });
@@ -100,6 +103,18 @@ async function main() {
     assert.equal(businessWrites.filter(r => r.type === 'PATCH').length, 1);
     await page.screenshot({ path: 'apps/web/test/artifacts/SIMULATION-hr-employee-reopened.png', fullPage: true, animations: 'disabled' });
     console.log('PASS P0_HR_CREATE_EDIT_SAVE_RELOAD_SIMULATED_API');
+
+    // Lookups must never appear as a genuinely empty company/department
+    // selector if the reference-data endpoint returned an HTTP error.
+    lookupFailure = true;
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    const lookupAlert = page.getByRole('alert').filter({ hasText: 'تعذر تحميل خيارات' });
+    await lookupAlert.waitFor({ timeout: 12000 });
+    await page.screenshot({ path: 'apps/web/test/artifacts/SIMULATION-hr-dropdown-options-error.png', fullPage: true, animations: 'disabled' });
+    lookupFailure = false;
+    await page.getByRole('button', { name: 'إعادة تحميل الخيارات' }).click();
+    await lookupAlert.waitFor({ state: 'detached', timeout: 12000 });
+    console.log('PASS P0_HR_LOOKUP_ERRORS_VISIBLE_AND_RETRYABLE');
 
     mode = 'malformed';
     await page.reload({ waitUntil: 'domcontentloaded' });
