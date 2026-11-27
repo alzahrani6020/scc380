@@ -4,14 +4,21 @@ import { prisma } from '@scc/database';
 @Injectable()
 export class TenantService {
   async findAll(user: any) {
+    if (!user || !user.role) throw new ForbiddenException('Authenticated role is required');
     if (user.role === 'SUPER_ADMIN') {
       return prisma.tenant.findMany();
+    }
+    // Prisma omits undefined where values; never allow a missing tenantId to
+    // turn company-specific listing into an unscoped all-company query.
+    if (!user.tenantId || typeof user.tenantId !== 'string') {
+      throw new ForbiddenException('Company context required');
     }
     return prisma.tenant.findMany({ where: { id: user.tenantId } });
   }
 
   async findOne(user: any, id: string) {
-    if (user.role !== 'SUPER_ADMIN' && user.tenantId !== id) {
+    if (!user || !user.role || !id || 
+      (user.role !== 'SUPER_ADMIN' && (!user.tenantId || user.tenantId !== id))) {
       throw new ForbiddenException('Not authorized for this tenant');
     }
     const tenant = await prisma.tenant.findUnique({ where: { id } });
