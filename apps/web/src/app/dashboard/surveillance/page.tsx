@@ -141,7 +141,7 @@ export default function SurveillancePage() {
       <div className="overflow-x-auto"><table className="w-full min-w-[620px] text-right text-sm">
         <thead><tr className="border-b border-slate-700"><th className="p-3">الكاميرا</th><th className="p-3">الموقع</th><th className="p-3">الصانع</th><th className="p-3">الإمكانات المسجلة</th><th className="p-3">حالة الاتصال</th></tr></thead>
         <tbody>{cameras.map(c=><tr key={c.id} className="border-b border-slate-800">
-          <td className="p-3">{c.name}</td><td className="p-3">{c.site?.name||'غير متاح'}</td>
+          <td className="p-3"><div className="space-y-1"><div>{c.name}</div><button type="button" onClick={()=>{void navigator.clipboard.writeText(c.id);}} className="text-xs text-blue-300 underline" title="نسخ معرّف الكاميرا للربط المحلي">نسخ cameraId</button></div></td><td className="p-3">{c.site?.name||'غير متاح'}</td>
           <td className="p-3">{c.manufacturer||'غير متاح'}</td>
           <td className="p-3">{[c.supportsAudio?'صوت':null,c.supportsTalk?'تحدث':null,c.supportsPtz?'PTZ':null,c.supportsWiper?'مسّاحة':null].filter(Boolean).join('، ')||'غير محددة'}</td>
           <td className="p-3">{(c.effectiveConnectionStatus ?? c.connectionStatus)==='STALE'?'الاتصال منقطع أو غير مؤكد (آخر تقرير قديم)':c.connectionStatus==='UNCONFIGURED'?'لم يُربط جهاز فعلي':c.effectiveConnectionStatus ?? c.connectionStatus} {c.lastSeenAt?'('+new Date(c.lastSeenAt).toLocaleString('ar-SA')+')':''}</td>
