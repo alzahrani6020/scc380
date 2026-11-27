@@ -36,6 +36,7 @@ model Tenant {
   updatedAt     DateTime  @updatedAt
   deletedAt     DateTime?
 
+  fieldManagedDevices FieldManagedDevice[]
   surveillanceDeviceCommands SurveillanceDeviceCommand[]
   surveillanceGateways    SurveillanceGateway[]
   surveillanceSites       SurveillanceSite[]
@@ -3967,4 +3968,106 @@ model SurveillanceDeviceCommand {
   @@index([gatewayId, status, expiresAt])
   @@index([tenantId, cameraId, createdAt])
   @@map("surveillance_device_commands")
+}
+
+
+// Field Command Center: metadata only; no personal messages or hidden media access.
+model FieldManagedDevice {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  tenant             Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  assetTag           String
+  platform           String
+  managementState    String   @default("UNCONFIGURED")
+  provider           String   @default("UNCONFIGURED")
+  providerDeviceId   String?
+  employeeId         String?
+  branchId           String?
+  noticeVersion      String?
+  noticeAcknowledgedAt DateTime?
+  assignedAt         DateTime?
+  lastSeenAt         DateTime?
+  createdById        String
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  shifts             FieldDeviceShift[]
+  locations          FieldDeviceLocation[]
+  auditEvents        FieldDeviceAudit[]
+  commands           FieldDeviceCommand[]
+
+  @@unique([tenantId, assetTag])
+  @@unique([id, tenantId])
+  @@index([tenantId, employeeId])
+  @@index([tenantId, managementState])
+  @@map("field_managed_devices")
+}
+
+model FieldDeviceShift {
+  id          String   @id @default(cuid())
+  tenantId    String
+  deviceId    String
+  device      FieldManagedDevice @relation(fields: [deviceId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  startedAt   DateTime @default(now())
+  endedAt     DateTime?
+  startedById String
+  endedById   String?
+  locations   FieldDeviceLocation[]
+
+  @@unique([id, tenantId])
+  @@index([tenantId, deviceId, endedAt])
+  @@map("field_device_shifts")
+}
+
+model FieldDeviceLocation {
+  id             String @id @default(cuid())
+  tenantId       String
+  deviceId       String
+  device         FieldManagedDevice @relation(fields: [deviceId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  shiftId        String
+  shift          FieldDeviceShift @relation(fields: [shiftId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  latitude       Decimal @db.Decimal(10, 8)
+  longitude      Decimal @db.Decimal(11, 8)
+  accuracyMeters Float
+  recordedAt     DateTime
+  receivedAt     DateTime @default(now())
+  source         String
+
+  @@index([tenantId, deviceId, recordedAt])
+  @@index([tenantId, shiftId, recordedAt])
+  @@map("field_device_locations")
+}
+
+model FieldDeviceCommand {
+  id            String @id @default(cuid())
+  tenantId      String
+  deviceId      String
+  device        FieldManagedDevice @relation(fields: [deviceId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  action        String
+  status        String @default("NOT_DISPATCHED")
+  requestedById String
+  approvedById  String?
+  reason        String
+  idempotencyKey String
+  providerReceipt String?
+  createdAt     DateTime @default(now())
+  completedAt   DateTime?
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, deviceId, createdAt])
+  @@map("field_device_commands")
+}
+
+model FieldDeviceAudit {
+  id          String @id @default(cuid())
+  tenantId    String
+  deviceId    String
+  device      FieldManagedDevice @relation(fields: [deviceId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  actorUserId String
+  action      String
+  decision    String
+  reason      String?
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, deviceId, createdAt])
+  @@map("field_device_audit")
 }
