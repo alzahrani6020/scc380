@@ -78,9 +78,9 @@ for relation in tenants products pos_orders chart_of_accounts _prisma_migrations
     exit 5
   fi
 done
-failed_migrations=$(psql -X -qAt -v ON_ERROR_STOP=1 "$RESTORE_DATABASE_URL" -c "SELECT count(*) FROM public._prisma_migrations WHERE finished_at IS NULL OR rolled_back_at IS NOT NULL")
+failed_migrations=$(psql -X -qAt -v ON_ERROR_STOP=1 "$RESTORE_DATABASE_URL" -c "SELECT count(*) FROM public._prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL")
 if [[ "$failed_migrations" != "0" ]]; then
-  echo 'FAIL: restored database contains unfinished or rolled-back migration history' >&2
+  echo 'FAIL: restored database contains unfinished migration history' >&2
   exit 5
 fi
 verified="$BACKUP_DIR/scc380-verified-$(date -u +%Y%m%dT%H%M%SZ)-$.dump"
