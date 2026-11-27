@@ -43,9 +43,37 @@ export default function HrPage() {
   const [formLoading, setFormLoading] = useState(false);
   const [formData, setFormData] = useState<any>({});
 
+  const [lookupError, setLookupError] = useState<string | null>(null);
+
+  const loadLookups = async () => {
+    setLookupError(null);
+    const [departmentResult, userResult] = await Promise.allSettled([
+      api.get('/hr/departments'),
+      api.get('/users?status=ACTIVE'),
+    ]);
+    const failures: string[] = [];
+    if (departmentResult.status === 'fulfilled' &&
+        Array.isArray(departmentResult.value.data?.data)) {
+      setDepartments(departmentResult.value.data.data);
+    } else {
+      setDepartments([]);
+      failures.push('الإدارات');
+    }
+    if (userResult.status === 'fulfilled' &&
+        Array.isArray(userResult.value.data?.data)) {
+      setUsers(userResult.value.data.data);
+    } else {
+      setUsers([]);
+      failures.push('حسابات المستخدمين');
+    }
+    if (failures.length) setLookupError(
+      'تعذر تحميل خيارات ' + failures.join(' و ') +
+      '. عدم ظهور الخيارات لا يثبت عدم وجودها.'
+    );
+  };
+
   useEffect(() => {
-    api.get('/hr/departments').then(r => setDepartments(r.data.data || [])).catch(console.error);
-    api.get('/users?status=ACTIVE').then(r => setUsers(r.data.data || [])).catch(console.error);
+    void loadLookups();
   }, []);
 
   useEffect(() => {
@@ -221,6 +249,12 @@ export default function HrPage() {
         <Select aria-label="تصفية الموظفين حسب الحالة" label="" options={[{ value: '', label: 'كل الحالات' }, ...empStatuses]} value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }} />
         <Select aria-label="تصفية الموظفين حسب الإدارة" label="" options={[{ value: '', label: 'كل الإدارات' }, ...deptOptions]} value={departmentFilter} onChange={(e) => { setDepartmentFilter(e.target.value); setPage(1); }} />
       </div>
+      {lookupError && (
+        <div role="alert" className="rounded-xl border border-amber-700 bg-slate-900 p-4 text-sm text-amber-300">
+          <p>{lookupError}</p>
+          <Button type="button" variant="ghost" onClick={() => void loadLookups()}>إعادة تحميل الخيارات</Button>
+        </div>
+      )}
       {actionError && <div role="alert" className="rounded-xl border border-red-700 p-4 text-sm text-red-300">{actionError}</div>}
       {loading ? (
         <div className="flex items-center justify-center h-64">
