@@ -1,6 +1,6 @@
 import {
   BadRequestException, Body, Controller, ForbiddenException, Get, Injectable,
-  NotFoundException, Param, Patch, Post, Req, UseGuards,
+  NotFoundException, Param, Patch, Post, Query, Req, UseGuards,
 } from '@nestjs/common';
 import { IsBoolean, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 import { prisma } from '@scc/database';
@@ -116,6 +116,56 @@ export class SurveillanceController {
       data: { tenantId, name: this.checkText(dto.name, 'Site name'), city: dto.city,
         address: dto.address, siteType: dto.siteType ?? 'BRANCH', branchId: dto.branchId },
     });
+  }
+
+  // Paginated read-only fleet inventory: every query is constrained to the JWT tenant.
+  // Unlike the legacy camera dropdown (first 200), this endpoint can walk an arbitrary fleet.
+  @Get('fleet')
+  async fleet(@Req() req: any, @Query() query: Record<string, string | undefined>) {
+    const { tenantId } = this.scope(req);
+    const permitted = ['page', 'size', 'siteId', 'search'];
+    if (Object.keys(query).some(k => !permitted.includes(k)))
+      throw new BadRequestException('Unsupported fleet filter');
+    const pageRaw = query.page ?? '1';
+    const sizeRaw = query.size ?? '50';
+    if (!/^[1-9]\d{0,4}$/.test(pageRaw) || !/^[1-9]\d{0,2}$/.test(sizeRaw))
+      throw new BadRequestException('Invalid fleet pagination');
+    const page = Number(pageRaw);
+    const size = Number(sizeRaw);
+    if (size > 100 || page > 10000) throw new BadRequestException('Fleet pagination out of bounds');
+    const siteId = query.siteId ?? '';
+    const search = (query.search ?? '').trim();
+    if (typeof siteId !== 'string' || siteId.length > 80 ||
+        typeof search !== 'string' || search.length > 120)
+      throw new BadRequestException('Invalid fleet filter');
+    const where = {
+      tenantId,
+      ...(siteId ? { siteId } : {}),
+      ...(search ? { name: { contains: search, mode: 'insensitive' as const } } : {}),
+    };
+    const [total, rows] = await Promise.all([
+      prisma.surveillanceCamera.count({ where }),
+      prisma.surveillanceCamera.findMany({
+        where,
+        select: { id: true, siteId: true, name: true, manufacturer: true,
+          supportsAudio: true, supportsTalk: true, supportsPtz: true,
+          connectionStatus: true, lastSeenAt: true, createdAt: true,
+          site: { select: { name: true } } },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip: (page - 1) * size, take: size,
+      }),
+    ]);
+    const cutoff = Date.now() - 120_000;
+    return {
+      page, size, total, totalPages: Math.ceil(total / size),
+      cameras: rows.map(camera => ({
+        ...camera,
+        effectiveConnectionStatus: camera.lastSeenAt &&
+          camera.lastSeenAt.getTime() < cutoff &&
+          ['ONLINE', 'DEGRADED'].includes(camera.connectionStatus)
+          ? 'STALE' : camera.connectionStatus,
+      })),
+    };
   }
 
   @Get('cameras')

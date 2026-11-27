@@ -8,6 +8,7 @@ import SurveillanceDeviceCommands from './SurveillanceDeviceCommands';
 import SurveillanceMedia from './SurveillanceMedia';
 import SurveillanceDashcams from './SurveillanceDashcams';
 import SurveillanceOperations from './SurveillanceOperations';
+import SurveillanceFleet from './SurveillanceFleet';
 
 type Site = { id: string; name: string; city?: string | null; siteType: string; _count?: { cameras: number } };
 type Camera = { id: string; siteId: string; name: string; manufacturer?: string | null; model?: string | null;
@@ -26,7 +27,7 @@ const tasks = [
 ] as const;
 
 export default function SurveillancePage() {
-  const [tab, setTab] = useState<'operations' | 'sites' | 'cameras' | 'maintenance' | 'incidents' | 'gateways' | 'controls' | 'media' | 'dashcams'>('operations');
+  const [tab, setTab] = useState<'operations' | 'fleet' | 'sites' | 'cameras' | 'maintenance' | 'incidents' | 'gateways' | 'controls' | 'media' | 'dashcams'>('operations');
   const [sites, setSites] = useState<Site[]>([]);
   const [cameras, setCameras] = useState<Camera[]>([]);
   const [maintenance, setMaintenance] = useState<Task[]>([]);
@@ -89,13 +90,14 @@ export default function SurveillancePage() {
       <p className="mt-2 text-sm text-slate-400">إدارة كاميرات المنشآت والمركبات ضمن مساحة العمل الحالية للشركة. يعمل الربط الفعلي فقط مع الأجهزة التي ثبت دعم بروتوكولاتها وتتوفر بوابتها.</p>
     </div>
     <div className="flex flex-wrap gap-2" role="navigation" aria-label="أقسام المراقبة">
-      {([{id:'operations',name:'مركز التشغيل'},{id:'sites',name:'المواقع'},{id:'cameras',name:'الكاميرات'},{id:'maintenance',name:'الصيانة والتنظيف'},{id:'incidents',name:'الحوادث والبلاغات'},{id:'gateways',name:'ربط الفروع'},{id:'controls',name:'طلبات PTZ'},{id:'media',name:'البث والتسجيلات'},{id:'dashcams',name:'داش كام المركبات'}] as const).map(t=>
+      {([{id:'operations',name:'مركز التشغيل'},{id:'fleet',name:'جميع الكاميرات'},{id:'sites',name:'المواقع'},{id:'cameras',name:'الكاميرات'},{id:'maintenance',name:'الصيانة والتنظيف'},{id:'incidents',name:'الحوادث والبلاغات'},{id:'gateways',name:'ربط الفروع'},{id:'controls',name:'طلبات PTZ'},{id:'media',name:'البث والتسجيلات'},{id:'dashcams',name:'داش كام المركبات'}] as const).map(t=>
         <button key={t.id} type="button" aria-current={tab===t.id?'page':undefined}
           onClick={()=>setTab(t.id)} className={`rounded-lg border px-4 py-2 ${tab===t.id?'bg-blue-700 border-blue-500':'bg-slate-900 border-slate-700'}`}>{t.name}</button>)}
       <button type="button" onClick={()=>void refresh()} disabled={loading} className="rounded-lg border border-slate-600 px-4 py-2 disabled:opacity-50">
         {loading?'جارٍ التحميل...':'تحديث'}</button>
     </div>
     {message && <p role="alert" className="rounded-lg border border-amber-600 p-3 text-amber-200">{message}</p>}
+    {tab==='fleet' && <SurveillanceFleet sites={sites} />}
     {tab==='operations' && <SurveillanceOperations sites={sites} cameras={cameras} maintenance={maintenance} onNavigate={setTab} />}
     {tab==='sites' && <section className="space-y-4">
       <h2 className="text-lg font-semibold">مواقع المراقبة</h2>
