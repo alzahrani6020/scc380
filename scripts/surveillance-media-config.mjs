@@ -11,7 +11,7 @@ export function buildMediaConfig(data, env=process.env) {
     throw new Error('Expected 1..100 cameras');
   // Explicit site-local retention control; never delete existing files on generation.
   // MediaMTX applies its own deletion policy only when its config is activated.
-  const retention = data.recordingRetentionHours ?? 24;
+  const retention = data.recordingRetentionHours === undefined ? 24 : data.recordingRetentionHours;
   if (!Number.isSafeInteger(retention) || retention < 1 || retention > 720)
     throw new Error('Recording retention must be 1..720 whole hours');
   if (Object.keys(data).some(k => !['devices','recordingDirectory','recordingRetentionHours'].includes(k)))
