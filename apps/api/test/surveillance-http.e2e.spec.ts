@@ -103,6 +103,23 @@ test('HTTP JWT and tenant boundaries for sites, cameras and maintenance', async 
     assert.equal(camResponse.status,201);
     const cam=await camResponse.json() as {id:string;connectionStatus:string};
     assert.equal(cam.connectionStatus,'UNCONFIGURED');
+
+    // The paginated fleet must remain scoped to the signed-in company on every page.
+    const ownFleetRes=await send('/surveillance/fleet?page=1&size=1',aliceToken);
+    assert.equal(ownFleetRes.status,200);
+    const ownFleet=await ownFleetRes.json() as {total:number;page:number;cameras:Array<{id:string}>};
+    assert.equal(ownFleet.total,1);
+    assert.equal(ownFleet.page,1);
+    assert.deepEqual(ownFleet.cameras.map(c=>c.id),[cam.id]);
+    const otherFleet=await (await send('/surveillance/fleet?page=1&size=50',bobToken)).json() as
+      {total:number;cameras:Array<{id:string}>};
+    assert.equal(otherFleet.total,0);
+    assert.equal(otherFleet.cameras.some(c=>c.id===cam.id),false);
+    assert.equal((await send('/surveillance/fleet?page=0',aliceToken)).status,400);
+    assert.equal((await send('/surveillance/fleet?size=101',aliceToken)).status,400);
+    assert.equal((await send('/surveillance/fleet?tenantId='+b.id,aliceToken)).status,400);
+    assert.equal((await send('/surveillance/fleet',viewerToken)).status,403);
+
     // Existing company vehicles can be linked to dashcams; other company IDs cannot.
     assert.equal((await send('/surveillance/cameras',aliceToken,'POST',{
       siteId,name:'Forged Fleet Cam',cameraType:'DASHCAM_FRONT',vehicleId:bobVehicle.id
