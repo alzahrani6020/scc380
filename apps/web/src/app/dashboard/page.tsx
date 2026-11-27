@@ -41,6 +41,7 @@ export default function DashboardPage() {
   const [erpData, setErpData] = useState<any>(null);
   const [fleetData, setFleetData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const vip = typeof window !== 'undefined' && isVIP();
 
   useEffect(() => {
@@ -58,7 +59,7 @@ export default function DashboardPage() {
         setErpData(erp.data);
         setFleetData(fleet.data);
       })
-      .catch(console.error)
+      .catch(() => setLoadError(true))
       .finally(() => setLoading(false));
   }, []);
 
@@ -93,6 +94,24 @@ export default function DashboardPage() {
       <div className="flex items-center justify-center h-64">
         <div className="w-10 h-10 border-4 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
       </div>
+    );
+  }
+
+  // P0 data integrity: missing API data is UNKNOWN, never silently a company-wide zero.
+  // Promise.all is all-or-nothing; refuse to show misleading partial statistics.
+  if (loadError || !stats || !crmData || !erpData || !fleetData) {
+    return (
+      <section role="alert" dir="rtl" className="rounded-xl border border-amber-700 bg-slate-900 p-6 text-slate-100">
+        <h1 className="text-xl font-bold">تعذر التحقق من بيانات لوحة التحكم</h1>
+        <p className="mt-2 text-sm text-slate-300">
+          لم تكتمل استجابة خدمات التحليلات. القيم غير المتاحة مجهولة، وليست صفرًا.
+          لم نغيّر أو نحذف أي بيانات.
+        </p>
+        <button type="button" onClick={() => window.location.reload()}
+          className="mt-4 rounded-lg border border-sky-600 px-4 py-2 text-sm">
+          إعادة المحاولة
+        </button>
+      </section>
     );
   }
 
