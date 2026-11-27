@@ -49,3 +49,18 @@ This PR did not create, copy, access, overwrite, delete or restore a production 
 - P0 dashboard fail-closed zero-vs-unknown work is separate in PR #262, CI passed as of 2026-11-27; main/production confirmation remains pending.
 - Vercel has READY deployments, but currently returned web/API deployment SHAs do not match the new P0 branches. Render web builds were blocked by depleted build minutes. Neither proves current P0 changes have shipped.
 - **UI acceptance remains OPEN**: buttons, dropdowns, company creation/edit, record save/reopen and role-specific sessions must be validated on the actual published environment after safe release.
+
+## P0 acceptance checkpoint — current implementation and evidence
+
+| P0 requirement | Evidence | Status |
+| --- | --- | --- |
+| Safe recovery script | POS Backup Script Safety PASS on CI 46064850764 and 46066480872; production-name same-server denial tested | CODE + CI PASS |
+| Genuine production archive & offline restore (2026-11-23) | Historical user-provided `V:` artifact SHA256 and 109-table offline Docker restore | HISTORICAL PASS (freshness UNKNOWN) |
+| Fresh verified encrypted copy and restore/migration test | Current `V:` inaccessible here; Render direct SQL blocked by IP allowlist; no current isolated restore | BLOCKED |
+| Authenticated two-company company selection | JWT guard rejects different `X-Tenant-Slug` after session verification. PostgreSQL session A -> B selector E2E in API Build Verify run 46066480872 | CODE + CI PASS |
+| Four company roles and supervisor | SUPER_ADMIN/ADMIN/MANAGER/USER tests pass; separate SUPERVISOR enum and its production role UI acceptance absent | PARTIAL |
+| All production UI actions, save/reopen and recovery | PR #262 dashboard truthfulness CI PASS; browser read tool lacks host permission; alternative browser blocked by service wallet | BLOCKED |
+| Production API, web, data, camera health | Render service metadata available; production Vercel READY deployment SHA differs from P0 branches; actual authenticated data not checked | UNKNOWN |
+| Safe release and regression | PR #262 and #263 unmerged; no production mutation; current head passes CI but no acceptance deployment | BLOCKED |
+
+**Required next production acceptance evidence:** fresh encrypted production backup artifact and SHA256; isolated restore of latest data; migration rehearsals; real authenticated two-company role sessions; read/edit/save/reopen every P0 route on the exact deployed commit; rollback and endpoint data smoke. Keep P0 open until then.
