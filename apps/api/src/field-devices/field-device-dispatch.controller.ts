@@ -1,5 +1,5 @@
 import {
-  ConflictException, Controller, ForbiddenException, Get, NotFoundException, Param,
+  ConflictException, Controller, ForbiddenException, NotFoundException, Param,
   Post, Req, ServiceUnavailableException, UseGuards,
 } from '@nestjs/common';
 import { prisma } from '@scc/database';
@@ -84,7 +84,7 @@ export class FieldDeviceDispatchController {
     }
   }
 
-  @Get(':deviceId/:commandId/verify')
+  @Post(':deviceId/:commandId/verify')
   async verify(@Req() req: any, @Param('deviceId') deviceId: string,
     @Param('commandId') commandId: string) {
     const { tenantId, actorId } = this.admin(req);
