@@ -9,6 +9,10 @@ test('tenant bindings reject malformed and unscoped environment configuration', 
   assert.throws(() => configuredAndroidTenants('[]'), /ANDROID_TENANT_BINDINGS_INVALID/);
   assert.throws(() => configuredAndroidTenants('{"x":{}}'), /ANDROID_TENANT_BINDING_INVALID/);
   assert.throws(() => configuredAndroidTenants('{"tenant-a":{"enterpriseName":4,"policyName":"p"}}'), /ANDROID_TENANT_BINDING_INVALID/);
+  assert.throws(() => configuredAndroidTenants(JSON.stringify({
+    'tenant-a': { enterpriseName: 'enterprises/same', policyName: 'enterprises/same/policies/p1' },
+    'tenant-b': { enterpriseName: 'enterprises/same', policyName: 'enterprises/same/policies/p2' },
+  })), /ANDROID_ENTERPRISE_TENANT_ISOLATION_CONFLICT/);
 });
 
 test('Android verification fails closed without configured MDM tenant', async () => {
