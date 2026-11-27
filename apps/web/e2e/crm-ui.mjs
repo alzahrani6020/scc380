@@ -286,6 +286,15 @@ async function installApiMock(page) {
       await route.fulfill(json(created, 201));
       return;
     }
+    if (method === 'PATCH' && path === '/crm/contacts/ct-life') {
+      if (!lifecycleMode || !lifecycle.contact) {
+        await route.fulfill(json({ message: 'Fixture missing' }, 404));
+        return;
+      }
+      lifecycle.contact = { ...lifecycle.contact, ...req.postDataJSON() };
+      await route.fulfill(json(lifecycle.contact));
+      return;
+    }
     if (method === 'PATCH' && path === '/crm/contacts/ct1') {
       contactPatch = req.postDataJSON();
       await route.fulfill(json({ ...contact, ...contactPatch }));
@@ -1127,6 +1136,20 @@ async function testCrmLifecycle(page) {
   await page.getByRole('button', { name: 'إنشاء', exact: true }).click();
   await waitUntil(() => lifecycle.contact?.id === 'ct-life', 'Lifecycle contact was not created');
   assert.equal(lifecycle.contact.companyId, 'co-life');
+  // The original requirement is not merely a successful POST: the created
+  // contact must survive an actual browser reload and be editable/retrievable.
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  const createdContactCard = page.locator('.scc-card-hover').filter({ hasText: 'Lifecycle Contact' }).first();
+  await createdContactCard.waitFor();
+  await createdContactCard.hover();
+  await createdContactCard.getByRole('button', { name: 'تعديل جهة اتصال' }).click();
+  await fieldByLabel(page, 'الاسم الأخير', 'input').fill('Contact Revised');
+  await page.getByRole('button', { name: 'حفظ التعديلات', exact: true }).click();
+  await waitUntil(() => lifecycle.contact?.lastName === 'Contact Revised',
+    'Contact edit was not persisted by the mocked isolated API');
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.getByText('Lifecycle Contact Revised', { exact: true }).waitFor();
+  assert.equal(lifecycle.contact.companyId, 'co-life', 'Company assignment must survive contact update');
 
   await page.goto(`${BASE}/dashboard/crm/pipelines`);
   await page.getByRole('button', { name: 'مسار جديد', exact: true }).click();
