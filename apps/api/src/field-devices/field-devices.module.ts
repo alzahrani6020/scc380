@@ -7,6 +7,7 @@ import { FieldDeviceCommandsController } from './field-device-commands.controlle
 import { FieldDeviceLocationsController } from './field-device-locations.controller';
 import { FieldDeviceEnrollmentController } from './field-device-enrollment.controller';
 import { FieldDeviceDispatchController } from './field-device-dispatch.controller';
+import { FieldOperationsController } from './field-operations.controller';
 
-@Module({ controllers: [FieldDevicesController, FieldDeviceInventoryController, FieldDeviceAssignmentsController, FieldDeviceShiftsController, FieldDeviceCommandsController, FieldDeviceLocationsController, FieldDeviceEnrollmentController, FieldDeviceDispatchController] })
+@Module({ controllers: [FieldDevicesController, FieldDeviceInventoryController, FieldDeviceAssignmentsController, FieldDeviceShiftsController, FieldDeviceCommandsController, FieldDeviceLocationsController, FieldDeviceEnrollmentController, FieldDeviceDispatchController, FieldOperationsController] })
 export class FieldDevicesModule {}
