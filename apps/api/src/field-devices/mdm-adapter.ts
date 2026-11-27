@@ -31,7 +31,7 @@ export interface MdmAdapter {
     Partial<Record<ProviderFeature, FeatureSupport>>
   >;
   requestEnrollment(tenantId: string, platform: ManagedPlatform, assetTag: string):
-    Promise<{ providerEnrollmentId: string; enrollmentUrl?: string; expiresAt: string }>;
+    Promise<{ providerEnrollmentId: string; enrollmentUrl?: string; enrollmentQrData?: string; expiresAt: string }>;
   submitCommand(tenantId: string, providerDeviceId: string, action: DeviceCommandAction):
     Promise<ProviderCommandResult>;
 }
