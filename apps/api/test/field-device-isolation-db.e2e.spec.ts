@@ -33,11 +33,24 @@ test('field devices: two tenant DB isolation, notice identity and fail-closed co
       tenantId: a.id, supplierId: supplier.id, invoiceNumber: 'inv-'+marker,
       subtotal: '100.00', total: '100.00', paidAmount: '120.00',
     } });
+    // Legacy SupplierInvoice FK is not tenant-composite; a malicious/malformed
+    // cross-tenant supplier relationship must not expose supplier B.
+    const foreignSupplier = await prisma.supplier.create({ data: {
+      tenantId: b.id, name: 'FOREIGN COMPANY PRIVATE SUPPLIER',
+      code: 'foreign-supplier-'+marker,
+    } });
+    await prisma.supplierInvoice.create({ data: {
+      tenantId: a.id, supplierId: foreignSupplier.id,
+      invoiceNumber: 'foreign-invoice-'+marker,
+      subtotal: '500.00', total: '500.00', paidAmount: '700.00',
+    } });
     const reviewA = await procurement.exceptions(reqA);
     const reviewB = await procurement.exceptions(reqB);
-    assert.equal(reviewA.invoicesScanned, 1);
+    assert.equal(reviewA.invoicesScanned, 2);
     assert.equal(reviewB.invoicesScanned, 0);
     assert.ok(reviewA.findings.some(x => x.code === 'PAYMENTS_ABOVE_INVOICE_TOTAL'));
+    assert.ok(reviewA.findings.every(x => x.supplierName !== 'FOREIGN COMPANY PRIVATE SUPPLIER'));
+    assert.equal(reviewA.findings.filter(x => x.code === 'PAYMENTS_ABOVE_INVOICE_TOTAL').length, 1);
     assert.equal(reviewB.findings.length, 0);
     assert.equal(reviewA.matchToPurchaseOrders, 'NOT_VERIFIED');
     const employee = await prisma.employee.create({ data: {
@@ -94,7 +107,7 @@ test('field devices: two tenant DB isolation, notice identity and fail-closed co
     await prisma.fieldDeviceShift.deleteMany({ where: { tenantId: a.id } });
     await prisma.fieldManagedDevice.deleteMany({ where: { tenantId: a.id } });
     await prisma.supplierInvoice.deleteMany({ where: { tenantId: a.id } });
-    await prisma.supplier.deleteMany({ where: { tenantId: a.id } });
+    await prisma.supplier.deleteMany({ where: { tenantId: { in: [a.id, b.id] } } });
     await prisma.employee.deleteMany({ where: { tenantId: a.id } });
     await prisma.tenant.deleteMany({ where: { id: { in: [a.id, b.id] } } });
     await prisma.$disconnect();
