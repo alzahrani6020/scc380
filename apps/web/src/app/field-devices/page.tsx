@@ -37,6 +37,7 @@ export default function FieldDeviceCommandCenter() {
   const [androidReady, setAndroidReady] = useState(false);
   const [enrollment, setEnrollment] = useState<{deviceId: string; enrollmentQrData: string; expiresAt: string} | null>(null);
   const [enrolling, setEnrolling] = useState(false);
+  const [verifying, setVerifying] = useState(false);
 
   const reload = useCallback(async () => {
     setError('');
@@ -93,6 +94,26 @@ export default function FieldDeviceCommandCenter() {
     } catch (err: any) {
       setError(err.response?.data?.message || 'تعذر إصدار رمز التسجيل. تحقق من إعداد Google Android Management API وصلاحيات الشركة.');
     } finally { setEnrolling(false); }
+  };
+
+  const verifyEnrollment = async (device: Device) => {
+    if (!androidReady || verifying) return;
+    setVerifying(true);
+    setError('');
+    try {
+      const result = await api.post<{verified: boolean; managementState: string}>(
+        '/field-device-enrollment/' + encodeURIComponent(device.id) + '/android/verify');
+      setNotice(result.data.verified
+        ? 'تحقق Google من تسجيل الجهاز وإدارته. حالة الجهاز الآن مُدار.'
+        : 'لم يتحقق تسجيل الجهاز بعد. أكمل الإعداد على الهاتف ثم أعد الفحص.');
+      if (result.data.verified) {
+        setEnrollment(null);
+        setSelected({ ...device, managementState: 'MANAGED', provider: 'ANDROID_MANAGEMENT_API' });
+      }
+      await reload();
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'تعذر التحقق من تسجيل الجهاز لدى Google.');
+    } finally { setVerifying(false); }
   };
 
   return (
@@ -174,6 +195,11 @@ export default function FieldDeviceCommandCenter() {
               disabled={!androidReady || enrolling || selected.managementState !== 'UNCONFIGURED'}
               className="rounded-lg bg-sky-600 px-4 py-2 text-white disabled:cursor-not-allowed disabled:opacity-50">
               {enrolling ? 'جار إصدار رمز التسجيل...' : 'إصدار رمز تسجيل Android بضغطة واحدة'}
+            </button>
+            <button type="button" onClick={() => void verifyEnrollment(selected)}
+              disabled={!androidReady || verifying}
+              className="mr-2 rounded-lg border border-slate-600 px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50">
+              {verifying ? 'جار التحقق لدى Google...' : 'تحقق من تسجيل الجهاز الفعلي'}
             </button>
             {!androidReady && <p className="text-xs text-amber-300">اتصال Android MDM غير مهيأ أو غير متحقق. لا يمكن إصدار رمز التسجيل.</p>}
             {enrollment?.deviceId === selected.id && (
