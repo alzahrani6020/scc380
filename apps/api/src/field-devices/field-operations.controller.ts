@@ -36,7 +36,7 @@ export class FieldOperationsController {
         select: { id: true, platform: true, managementState: true,
           lastSeenAt: true, provider: true }, take: 2000 }),
       prisma.surveillanceIncident.count({ where: { tenantId, status: { in: ['OPEN', 'ACKNOWLEDGED'] } } }),
-      prisma.surveillanceMaintenance.count({ where: { tenantId, status: { in: ['PENDING', 'IN_PROGRESS'] } } }),
+      prisma.surveillanceMaintenance.count({ where: { tenantId, status: { in: ['OPEN', 'IN_PROGRESS'] } } }),
       prisma.fieldDeviceCommand.count({ where: { tenantId,
         status: { in: ['NOT_DISPATCHED', 'DISPATCH_UNCERTAIN', 'PROVIDER_ACCEPTED', 'PROVIDER_PENDING'] } } }),
     ]);
