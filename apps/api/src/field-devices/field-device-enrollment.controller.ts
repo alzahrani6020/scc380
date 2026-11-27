@@ -1,5 +1,5 @@
 import {
-  Controller, ForbiddenException, NotFoundException, Param, Post, Req,
+  ConflictException, Controller, ForbiddenException, NotFoundException, Param, Post, Req,
   Res, ServiceUnavailableException, TooManyRequestsException, UseGuards,
 } from '@nestjs/common';
 import { prisma } from '@scc/database';
@@ -74,4 +74,72 @@ export class FieldDeviceEnrollmentController {
       deviceManaged: false,
     };
   }
+  @Post(':deviceId/android/verify')
+  async verifyAndroidEnrollment(@Req() req: any, @Param('deviceId') deviceId: string) {
+    const user = req?.user;
+    if (!user?.tenantId || !user?.userId || user.role !== 'ADMIN') {
+      throw new ForbiddenException('Company administrator session required');
+    }
+    const device = await prisma.fieldManagedDevice.findFirst({
+      where: { id: deviceId, tenantId: user.tenantId },
+      select: { id: true, assetTag: true, platform: true, managementState: true,
+        providerDeviceId: true },
+    });
+    if (!device) throw new NotFoundException('Device not found in company');
+    if (device.platform !== 'ANDROID') {
+      throw new ForbiddenException('Only Android devices can use this verification');
+    }
+    let adapter;
+    try {
+      adapter = makeAndroidMdmAdapter();
+      if (!(await adapter.verifyTenantConnection(user.tenantId))) {
+        throw new ServiceUnavailableException('Android MDM is not configured or verified');
+      }
+    } catch {
+      throw new ServiceUnavailableException('Android MDM is not configured or verified');
+    }
+    let verified: { providerDeviceId: string; lastSeenAt: Date } | null;
+    try {
+      verified = await adapter.findVerifiedDevice(user.tenantId, device.assetTag);
+    } catch {
+      throw new ServiceUnavailableException('Android provider verification could not complete');
+    }
+    if (!verified) {
+      return { deviceId, managementState: device.managementState,
+        verified: false, status: 'PENDING_DEVICE_ENROLLMENT' };
+    }
+    if (device.managementState === 'MANAGED') {
+      if (device.providerDeviceId !== verified.providerDeviceId) {
+        throw new ConflictException('Provider device does not match the linked company asset');
+      }
+      return { deviceId, managementState: 'MANAGED', verified: true };
+    }
+    if (device.managementState !== 'UNCONFIGURED' || device.providerDeviceId) {
+      throw new ConflictException('Unexpected device state during enrollment verification');
+    }
+    try {
+      return await prisma.$transaction(async tx => {
+        const changed = await tx.fieldManagedDevice.updateMany({
+          where: { id: deviceId, tenantId: user.tenantId,
+            platform: 'ANDROID', managementState: 'UNCONFIGURED', providerDeviceId: null },
+          data: { managementState: 'MANAGED', provider: 'ANDROID_MANAGEMENT_API',
+            providerDeviceId: verified!.providerDeviceId, lastSeenAt: verified!.lastSeenAt },
+        });
+        if (!changed.count) throw new ConflictException('Device status changed during verification');
+        await tx.fieldDeviceAudit.create({ data: {
+          tenantId: user.tenantId, deviceId, actorUserId: user.userId,
+          action: 'ANDROID_DEVICE_ENROLLMENT_VERIFIED', decision: 'PROVIDER_VERIFIED',
+          reason: 'Device owner, corporate ownership, policy and compliance confirmed by Google API',
+        } });
+        return { deviceId, managementState: 'MANAGED', verified: true,
+          lastSeenAt: verified!.lastSeenAt };
+      });
+    } catch (error: any) {
+      if (error?.code === 'P2002') {
+        throw new ConflictException('Provider device is already linked to another company asset');
+      }
+      throw error;
+    }
+  }
+
 }
