@@ -1,5 +1,5 @@
 import { GoogleAuth } from 'google-auth-library';
-import { AndroidManagementAdapter, type AndroidEnterpriseBinding, type AndroidManagementTransport } from './android-management.adapter';
+import { AndroidManagementAdapter, validateAndroidBinding, type AndroidEnterpriseBinding, type AndroidManagementTransport } from './android-management.adapter';
 
 /**
  * Deployment configuration:
@@ -20,6 +20,7 @@ export function configuredAndroidTenants(value: string | undefined):
   const entries = Object.entries(parsed as Record<string, unknown>);
   if (entries.length > 1000) throw new Error('ANDROID_TENANT_BINDINGS_TOO_LARGE');
   const result = new Map<string, AndroidEnterpriseBinding>();
+  const assignedEnterprises = new Set<string>();
   for (const [tenantId, data] of entries) {
     if (!/^[A-Za-z0-9_-]{5,100}$/.test(tenantId) ||
         !data || typeof data !== 'object' || Array.isArray(data)) {
@@ -29,10 +30,12 @@ export function configuredAndroidTenants(value: string | undefined):
     if (typeof record.enterpriseName !== 'string' || typeof record.policyName !== 'string') {
       throw new Error('ANDROID_TENANT_BINDING_INVALID');
     }
-    result.set(tenantId, {
-      enterpriseName: record.enterpriseName,
-      policyName: record.policyName,
-    });
+    const binding = { enterpriseName: record.enterpriseName, policyName: record.policyName };
+    if (!validateAndroidBinding(binding) || assignedEnterprises.has(binding.enterpriseName)) {
+      throw new Error('ANDROID_ENTERPRISE_TENANT_ISOLATION_CONFLICT');
+    }
+    assignedEnterprises.add(binding.enterpriseName);
+    result.set(tenantId, binding);
   }
   return result;
 }
