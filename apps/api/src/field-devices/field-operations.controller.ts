@@ -24,7 +24,9 @@ export class FieldOperationsController {
       sites, cameras, gateways, devices, openIncidents, pendingMaintenance,
       unconfirmedCommands,
     ] = await Promise.all([
-      prisma.surveillanceSite.count({ where: { tenantId } }),
+      prisma.surveillanceSite.findMany({ where: { tenantId },
+        select: { id: true, name: true, branchId: true, siteType: true },
+        orderBy: { name: 'asc' }, take: 200 }),
       prisma.surveillanceCamera.findMany({ where: { tenantId },
         select: { id: true, siteId: true, connectionStatus: true, lastSeenAt: true,
           supportsAudio: true, supportsTalk: true, supportsPtz: true, cameraType: true },
@@ -54,11 +56,21 @@ export class FieldOperationsController {
       tenantScoped: true,
       cameraCoverage: { total: cameras.length, freshOnline: cameraFresh,
         degraded: cameraDegraded, staleOrOffline: cameras.length - cameraFresh - cameraDegraded,
-        sites, gateways: gateways.length, connectedGateways: gatewayConnected,
+        sites: sites.length, gateways: gateways.length, connectedGateways: gatewayConnected,
         audioCapable: cameras.filter(c => c.supportsAudio).length,
         talkCapable: cameras.filter(c => c.supportsTalk).length,
         ptzCapable: cameras.filter(c => c.supportsPtz).length,
         vehicleCameras: cameras.filter(c => c.cameraType.startsWith('DASHCAM')).length },
+      sites: sites.map(site => {
+        const siteCameras = cameras.filter(c => c.siteId === site.id);
+        const siteGateways = gateways.filter(g => g.siteId === site.id);
+        return { id: site.id, name: site.name, branchId: site.branchId,
+          siteType: site.siteType, cameras: siteCameras.length,
+          freshOnline: siteCameras.filter(camera => camera.connectionStatus === 'ONLINE' &&
+            camera.lastSeenAt && camera.lastSeenAt >= cutoff).length,
+          connectedGateways: siteGateways.filter(gateway => !gateway.revokedAt &&
+            gateway.lastSeenAt && gateway.lastSeenAt >= cutoff).length };
+      }),
       fieldDevices: { total: devices.length,
         android: devices.filter(d => d.platform === 'ANDROID').length,
         ios: devices.filter(d => d.platform === 'IOS').length,
