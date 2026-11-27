@@ -18,16 +18,13 @@ export class FieldProcurementReviewController {
       throw new ForbiddenException('Company purchasing audit role required');
     }
     const tenantId = actor.tenantId as string;
-    const [invoices, orders] = await Promise.all([
-      prisma.supplierInvoice.findMany({
+    const invoices = await prisma.supplierInvoice.findMany({
         where: { tenantId },
         select: { id: true, invoiceNumber: true, supplierId: true,
           total: true, paidAmount: true, currency: true, dueDate: true,
           status: true, supplier: { select: { tenantId: true, name: true, isActive: true } } },
         orderBy: { createdAt: 'desc' }, take: 500,
-      }),
-      prisma.purchaseOrder.count({ where: { tenantId } }),
-    ]);
+      });
     const now = new Date();
     const findings: { invoiceId: string; invoiceNumber: string; supplierId: string;
       supplierName: string; code: string; severity: 'INFO' | 'REVIEW';
@@ -54,7 +51,7 @@ export class FieldProcurementReviewController {
         explanation: 'فاتورة لها رصيد مفتوح رغم تعطيل سجل المورد؛ يتطلب التحقق من السبب' });
     }
     return { tenantScoped: true, asOf: now.toISOString(),
-      invoicesScanned: invoices.length, purchaseOrdersRecorded: orders,
+      invoicesScanned: invoices.length, purchaseOrdersRecorded: null,
       sampleLimited: invoices.length === 500,
       source: 'SCC380_SUPPLIER_INVOICES',
       matchToPurchaseOrders: 'NOT_VERIFIED',
