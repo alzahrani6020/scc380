@@ -17,6 +17,8 @@ type Device = {
 };
 type OperationsSummary = {
   asOf: string;
+  alerts: { kind: string; resourceId: string; siteId: string | null;
+    severity: string; lastSeenAt: string | null; message: string }[];
   sites: { id: string; name: string; branchId: string | null; siteType: string;
     cameras: number; freshOnline: number; connectedGateways: number }[];
   cameraCoverage: { total: number; freshOnline: number; degraded: number;
@@ -255,6 +257,25 @@ export default function FieldDeviceCommandCenter() {
                   ))}
                 </ul>
               }
+            </section>
+            <section className="mt-4 space-y-2" aria-label="تنبيهات الاتصال">
+              <h3 className="text-sm font-semibold">تنبيهات انقطاع الأجهزة والبوابات والكاميرات</h3>
+              {operations.alerts.length === 0 ? (
+                <p className="text-xs text-slate-300">لا توجد انقطاعات مثبتة في البيانات المستلمة. عدم وجود تنبيه لا يثبت صلاحية بث الكاميرات.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {operations.alerts.map((alert, i) => (
+                    <li key={alert.kind + alert.resourceId + i}
+                      className="rounded-lg border border-amber-800 p-3 text-sm">
+                      <strong>{alert.message}</strong>
+                      <p className="mt-1 text-xs text-slate-300">النوع: {alert.kind} — المرجع: {alert.resourceId}</p>
+                      {alert.lastSeenAt && <p className="text-xs text-slate-400">
+                        آخر إشارة: {new Date(alert.lastSeenAt).toLocaleString('ar-SA')}
+                      </p>}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </section>
             <p className="text-xs text-amber-300">حالات القبول غير المثبتة: تشغيل البث المباشر، التحكم الفعلي بالأجهزة، وصول GPS، وجلسات الصوت/الفيديو الميدانية.</p>
             <p className="text-xs text-slate-400">آخر تجميع للمؤشرات: {new Date(operations.asOf).toLocaleString('ar-SA')}</p>
