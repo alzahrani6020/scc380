@@ -1,0 +1,39 @@
+name: Field Device Foundation Validation
+on:
+  push:
+    branches:
+      - feature/field-device-command-foundation-20261127
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: postgresql://test:test@localhost:5432/test
+      DIRECT_URL: postgresql://test:test@localhost:5432/test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 8.15.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Validate Prisma schema without accessing a database
+        run: pnpm --filter @scc/api exec prisma validate --schema ../../packages/database/prisma/schema.prisma
+      - name: Generate Prisma client
+        run: pnpm --filter @scc/api run db:generate
+      - name: Run focused device access tests
+        run: pnpm --filter @scc/api exec tsx --test test/field-device-access.policy.spec.ts test/field-devices.controller.spec.ts test/field-device-inventory.controller.spec.ts test/field-device-assignments.controller.spec.ts test/field-device-shifts.controller.spec.ts test/procurement-risk.rules.spec.ts test/field-device-commands.controller.spec.ts test/field-device-locations.controller.spec.ts test/android-management.runtime.spec.ts test/field-device-enrollment.controller.spec.ts test/field-device-dispatch.controller.spec.ts test/field-operations.controller.spec.ts test/field-procurement-review.controller.spec.ts test/android-management.adapter.spec.ts
+      - name: Build shared workspace dependencies
+        run: pnpm --filter @scc/api^... build
+      - name: Compile API
+        run: pnpm --filter @scc/api build
+      - name: Compile web
+        run: pnpm --filter @scc/web build

@@ -1,0 +1,115 @@
+import {
+  Controller, ForbiddenException, Get, Req, UseGuards,
+} from '@nestjs/common';
+import { prisma } from '@scc/database';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+
+/**
+ * Read-only operational overview: derived solely from tenant-owned records.
+ * It is NOT proof of a currently playable camera stream or managed handset.
+ */
+@Controller('field-operations')
+@UseGuards(JwtAuthGuard)
+export class FieldOperationsController {
+  @Get('overview')
+  async overview(@Req() req: any) {
+    const user = req?.user;
+    if (!user?.tenantId || !user?.userId ||
+      !['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'AUDITOR', 'READONLY'].includes(user.role)) {
+      throw new ForbiddenException('Authenticated company operations role required');
+    }
+    const tenantId = user.tenantId as string;
+    const cutoff = new Date(Date.now() - 120_000);
+    const [
+      sites, cameras, gateways, devices, openIncidents, pendingMaintenance,
+      unconfirmedCommands,
+    ] = await Promise.all([
+      prisma.surveillanceSite.findMany({ where: { tenantId },
+        select: { id: true, name: true, branchId: true, siteType: true },
+        orderBy: { name: 'asc' }, take: 200 }),
+      prisma.surveillanceCamera.findMany({ where: { tenantId },
+        select: { id: true, siteId: true, connectionStatus: true, lastSeenAt: true,
+          supportsAudio: true, supportsTalk: true, supportsPtz: true, cameraType: true },
+        take: 2000 }),
+      prisma.surveillanceGateway.findMany({ where: { tenantId },
+        select: { id: true, siteId: true, lastSeenAt: true, revokedAt: true },
+        take: 1000 }),
+      prisma.fieldManagedDevice.findMany({ where: { tenantId },
+        select: { id: true, platform: true, managementState: true,
+          lastSeenAt: true, provider: true }, take: 2000 }),
+      prisma.surveillanceIncident.count({ where: { tenantId, status: { in: ['OPEN', 'ACKNOWLEDGED'] } } }),
+      prisma.surveillanceMaintenance.count({ where: { tenantId, status: { in: ['OPEN', 'IN_PROGRESS'] } } }),
+      prisma.fieldDeviceCommand.count({ where: { tenantId,
+        status: { in: ['NOT_DISPATCHED', 'DISPATCH_UNCERTAIN', 'PROVIDER_ACCEPTED', 'PROVIDER_PENDING'] } } }),
+    ]);
+    const gatewayConnected = gateways.filter(g => !g.revokedAt &&
+      g.lastSeenAt && g.lastSeenAt >= cutoff).length;
+    const cameraFresh = cameras.filter(c => c.connectionStatus === 'ONLINE' &&
+      c.lastSeenAt && c.lastSeenAt >= cutoff).length;
+    const cameraDegraded = cameras.filter(c => c.connectionStatus === 'DEGRADED' &&
+      c.lastSeenAt && c.lastSeenAt >= cutoff).length;
+    const phoneRecentlyReported = devices.filter(d => d.managementState === 'MANAGED' &&
+      d.lastSeenAt && d.lastSeenAt >= cutoff).length;
+
+    return {
+      asOf: new Date().toISOString(),
+      tenantScoped: true,
+      cameraCoverage: { total: cameras.length, freshOnline: cameraFresh,
+        degraded: cameraDegraded, staleOrOffline: cameras.length - cameraFresh - cameraDegraded,
+        sites: sites.length, gateways: gateways.length, connectedGateways: gatewayConnected,
+        audioCapable: cameras.filter(c => c.supportsAudio).length,
+        talkCapable: cameras.filter(c => c.supportsTalk).length,
+        ptzCapable: cameras.filter(c => c.supportsPtz).length,
+        vehicleCameras: cameras.filter(c => c.cameraType.startsWith('DASHCAM')).length },
+      alerts: [
+        ...cameras.filter(camera =>
+          camera.connectionStatus === 'OFFLINE' ||
+          (camera.lastSeenAt && camera.lastSeenAt < cutoff &&
+            ['ONLINE', 'DEGRADED'].includes(camera.connectionStatus))
+        ).slice(0, 100).map(camera => ({
+          kind: 'CAMERA_SIGNAL_LOST', resourceId: camera.id, siteId: camera.siteId,
+          severity: 'WARNING', lastSeenAt: camera.lastSeenAt?.toISOString() ?? null,
+          message: 'لم يصل تحديث حديث للكاميرا أو أبلغت البوابة عن انقطاعها',
+        })),
+        ...gateways.filter(gateway => !gateway.revokedAt &&
+          gateway.lastSeenAt && gateway.lastSeenAt < cutoff
+        ).slice(0, 100).map(gateway => ({
+          kind: 'GATEWAY_STALE', resourceId: gateway.id, siteId: gateway.siteId,
+          severity: 'WARNING', lastSeenAt: gateway.lastSeenAt?.toISOString() ?? null,
+          message: 'توقفت نبضات بوابة الموقع',
+        })),
+        ...devices.filter(device => device.managementState === 'MANAGED' &&
+          device.lastSeenAt && device.lastSeenAt < cutoff
+        ).slice(0, 100).map(device => ({
+          kind: 'DEVICE_STALE', resourceId: device.id, siteId: null,
+          severity: 'WARNING', lastSeenAt: device.lastSeenAt?.toISOString() ?? null,
+          message: 'لا توجد حالة حديثة من الجهاز المُدار',
+        })),
+      ].slice(0, 200),
+      sites: sites.map(site => {
+        const siteCameras = cameras.filter(c => c.siteId === site.id);
+        const siteGateways = gateways.filter(g => g.siteId === site.id);
+        return { id: site.id, name: site.name, branchId: site.branchId,
+          siteType: site.siteType, cameras: siteCameras.length,
+          freshOnline: siteCameras.filter(camera => camera.connectionStatus === 'ONLINE' &&
+            camera.lastSeenAt && camera.lastSeenAt >= cutoff).length,
+          connectedGateways: siteGateways.filter(gateway => !gateway.revokedAt &&
+            gateway.lastSeenAt && gateway.lastSeenAt >= cutoff).length };
+      }),
+      fieldDevices: { total: devices.length,
+        android: devices.filter(d => d.platform === 'ANDROID').length,
+        ios: devices.filter(d => d.platform === 'IOS').length,
+        managedRecords: devices.filter(d => d.managementState === 'MANAGED').length,
+        recentlyReported: phoneRecentlyReported,
+        unconfigured: devices.filter(d => d.managementState === 'UNCONFIGURED').length },
+      workflow: { openIncidents, pendingMaintenance, unconfirmedCommands },
+      acceptance: {
+        playableStreamsVerified: false,
+        liveDeviceControlVerified: false,
+        gpsIngestionVerified: false,
+        liveMediaSessionVerified: false,
+        note: 'Counts and heartbeats are operational metadata, not independent proof of physical media or device execution',
+      },
+    };
+  }
+}
