@@ -86,7 +86,7 @@ export class AndroidManagementAdapter implements MdmAdapter {
   }
 
   async requestEnrollment(tenantId: string, platform: ManagedPlatform, assetTag: string):
-    Promise<{ providerEnrollmentId: string; enrollmentUrl?: string; expiresAt: string }> {
+    Promise<{ providerEnrollmentId: string; enrollmentUrl?: string; enrollmentQrData?: string; expiresAt: string }> {
     if (platform !== 'ANDROID' || !assetTag.trim() || assetTag.length > 100) {
       throw new Error('ANDROID_ENROLLMENT_INPUT_INVALID');
     }
@@ -96,6 +96,7 @@ export class AndroidManagementAdapter implements MdmAdapter {
       policyName: binding.policyName,
       duration: '1800s',
       oneTimeOnly: true,
+      allowPersonalUsage: 'PERSONAL_USAGE_DISALLOWED',
       additionalData: assetTag.trim(),
     });
     const id = token?.name;
@@ -105,7 +106,11 @@ export class AndroidManagementAdapter implements MdmAdapter {
     }
     // Do not persist or log the token. A setup QR can be handed to an
     // authorized enrollment UI only through a separate secret-handling flow.
-    return { providerEnrollmentId: id, expiresAt: token.expirationTimestamp };
+    if (typeof token.qrCode !== 'string' || token.qrCode.length > 8192 || !token.qrCode.trim()) {
+      throw new Error('ANDROID_ENROLLMENT_QR_MISSING');
+    }
+    return { providerEnrollmentId: id, expiresAt: token.expirationTimestamp,
+      enrollmentQrData: token.qrCode };
   }
 
   async submitCommand(tenantId: string, providerDeviceId: string, action: DeviceCommandAction):
