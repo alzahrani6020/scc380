@@ -53,7 +53,8 @@ export class FieldDeviceShiftsController {
   async start(@Req() req: any, @Param('deviceId') deviceId: string, @Body() dto: ShiftReasonDto) {
     const { tenantId, actorId } = this.scope(req, true);
     const reason = this.validateBody(dto);
-    return prisma.$transaction(async tx => {
+    try {
+      return await prisma.$transaction(async tx => {
       const device = await tx.fieldManagedDevice.findFirst({
         where: { tenantId, id: deviceId },
         select: { assignedAt: true, noticeAcknowledgedAt: true, managementState: true },
@@ -75,7 +76,13 @@ export class FieldDeviceShiftsController {
           decision: 'RECORDED', reason },
       });
       return shift;
-    });
+      });
+    } catch (error: any) {
+      if (error?.code === 'P2002') {
+        throw new ConflictException('ONE_ACTIVE_SHIFT_CONFLICT');
+      }
+      throw error;
+    }
   }
 
   @Post(':deviceId/end')
