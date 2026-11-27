@@ -1,5 +1,6 @@
 import { Controller, ForbiddenException, Get, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { makeAndroidMdmAdapter } from './android-management.runtime';
 
 /**
  * Read-only provider readiness API. Never claim that an unconfigured MDM,
@@ -15,6 +16,20 @@ export class FieldDevicesController {
       throw new ForbiddenException('Authenticated company management role required');
     }
     return { tenantId: user.tenantId, userId: user.userId };
+  }
+
+  @Get('android/connection')
+  async androidConnection(@Req() req: any) {
+    const { tenantId } = this.scope(req);
+    const adapter = makeAndroidMdmAdapter();
+    const verified = await adapter.verifyTenantConnection(tenantId);
+    return {
+      provider: 'ANDROID_MANAGEMENT_API',
+      status: verified ? 'PROVIDER_VERIFIED' : 'NOT_CONFIGURED',
+      androidEnrollment: verified ? 'READY_TO_REQUEST_TOKEN' : 'NOT_CONFIGURED',
+      enrolledDevicesVerified: false,
+      note: 'Provider verification does not prove that a physical device is enrolled.',
+    };
   }
 
   @Get('capabilities')
