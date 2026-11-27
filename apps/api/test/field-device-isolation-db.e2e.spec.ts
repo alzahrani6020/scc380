@@ -7,6 +7,7 @@ import { FieldDeviceCommandsController } from '../src/field-devices/field-device
 import { FieldDeviceAssignmentsController } from '../src/field-devices/field-device-assignments.controller';
 import { FieldDeviceShiftsController } from '../src/field-devices/field-device-shifts.controller';
 import { FieldDeviceDispatchController } from '../src/field-devices/field-device-dispatch.controller';
+import { FieldOperationsController } from '../src/field-devices/field-operations.controller';
 
 test('field devices: two tenant DB isolation, notice identity and fail-closed commands', {
   skip: process.env.CRM_DB_E2E !== '1' ? 'CRM_DB_E2E=1 required' : false,
@@ -19,6 +20,7 @@ test('field devices: two tenant DB isolation, notice identity and fail-closed co
   const commands = new FieldDeviceCommandsController();
   const shifts = new FieldDeviceShiftsController();
   const dispatch = new FieldDeviceDispatchController();
+  const operations = new FieldOperationsController();
   const reqA = { user: { tenantId: a.id, userId: 'admin-a-'+marker, role: 'ADMIN' } };
   const reqB = { user: { tenantId: b.id, userId: 'admin-b-'+marker, role: 'ADMIN' } };
   try {
@@ -30,6 +32,13 @@ test('field devices: two tenant DB isolation, notice identity and fail-closed co
     assert.equal(device.managementState, 'UNCONFIGURED');
     assert.equal((await inventory.list(reqA)).length, 1);
     assert.equal((await inventory.list(reqB)).length, 0);
+    const overviewA = await operations.overview(reqA);
+    const overviewB = await operations.overview(reqB);
+    assert.equal(overviewA.fieldDevices.total, 1);
+    assert.equal(overviewB.fieldDevices.total, 0);
+    assert.equal(overviewB.cameraCoverage.total, 0);
+    assert.equal(overviewB.workflow.unconfirmedCommands, 0);
+    assert.equal(overviewA.acceptance.playableStreamsVerified, false);
     await assert.rejects(() => inventory.detail(reqB, device.id), /not found in company/);
     await assert.rejects(() => assignments.assign(reqB, device.id, {
       employeeId: employee.id, noticeVersion: 'v1',
