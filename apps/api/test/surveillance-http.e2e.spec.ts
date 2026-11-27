@@ -154,42 +154,6 @@ test('HTTP JWT and tenant boundaries for sites, cameras and maintenance', async 
     assert.equal(((await (await send('/surveillance/fleet?search=Vehicle',aliceToken)).json()) as
       {total:number}).total,1);
 
-    // Regression: the old inventory capped results at 200. Exercise 205 extra cameras
-    // in isolated localhost Postgres, with no production records or memberships touched.
-    const bulkCount=205;
-    await prisma.surveillanceCamera.createMany({data:Array.from({length:bulkCount},(_,i)=>({
-      tenantId:a.id,siteId,name:'Bulk Camera '+String(i).padStart(3,'0'),
-      connectionStatus:'UNCONFIGURED' as const,
-    }))});
-    const allIds=new Set<string>();
-    const expectedTotal=bulkCount+2;
-    for(let p=1;p<=Math.ceil(expectedTotal/50);p++){
-      const response=await send('/surveillance/fleet?page='+p+'&size=50',aliceToken);
-      assert.equal(response.status,200);
-      const data=await response.json() as
-        {total:number;totalPages:number;page:number;cameras:Array<{id:string}>};
-      assert.equal(data.total,expectedTotal);
-      assert.equal(data.totalPages,5);
-      assert.equal(data.page,p);
-      assert.equal(data.cameras.length,p===5?7:50);
-      for(const camera of data.cameras){
-        assert.equal(allIds.has(camera.id),false,'Camera repeated across pages');
-        allIds.add(camera.id);
-      }
-    }
-    assert.equal(allIds.size,expectedTotal);
-    const beyondEnd=await (await send('/surveillance/fleet?page=6&size=50',aliceToken)).json() as
-      {total:number;cameras:Array<{id:string}>};
-    assert.equal(beyondEnd.total,expectedTotal);
-    assert.equal(beyondEnd.cameras.length,0);
-    const foreignLarge=await (await send('/surveillance/fleet?page=5&size=50',bobToken)).json() as
-      {total:number;cameras:Array<{id:string}>};
-    assert.equal(foreignLarge.total,0);
-    assert.deepEqual(foreignLarge.cameras,[]);
-    const bulkSearch=await (await send('/surveillance/fleet?search=Bulk%20Camera&size=100',aliceToken)).json() as
-      {total:number;cameras:Array<{id:string}>};
-    assert.equal(bulkSearch.total,bulkCount);
-    assert.equal(bulkSearch.cameras.length,100);
 
 
 
@@ -352,6 +316,43 @@ test('HTTP JWT and tenant boundaries for sites, cameras and maintenance', async 
       i.resolution==='Resolved by security team'));
     const bobIncidents=await (await send('/surveillance/incidents',bobToken)).json() as unknown[];
     assert.equal(bobIncidents.length,0);
+    // Regression: the old inventory capped results at 200. Exercise 205 extra cameras
+    // in isolated localhost Postgres, with no production records or memberships touched.
+    const bulkCount=205;
+    await prisma.surveillanceCamera.createMany({data:Array.from({length:bulkCount},(_,i)=>({
+      tenantId:a.id,siteId,name:'Bulk Camera '+String(i).padStart(3,'0'),
+      connectionStatus:'UNCONFIGURED' as const,
+    }))});
+    const allIds=new Set<string>();
+    const expectedTotal=bulkCount+2;
+    for(let p=1;p<=Math.ceil(expectedTotal/50);p++){
+      const response=await send('/surveillance/fleet?page='+p+'&size=50',aliceToken);
+      assert.equal(response.status,200);
+      const data=await response.json() as
+        {total:number;totalPages:number;page:number;cameras:Array<{id:string}>};
+      assert.equal(data.total,expectedTotal);
+      assert.equal(data.totalPages,5);
+      assert.equal(data.page,p);
+      assert.equal(data.cameras.length,p===5?7:50);
+      for(const camera of data.cameras){
+        assert.equal(allIds.has(camera.id),false,'Camera repeated across pages');
+        allIds.add(camera.id);
+      }
+    }
+    assert.equal(allIds.size,expectedTotal);
+    const beyondEnd=await (await send('/surveillance/fleet?page=6&size=50',aliceToken)).json() as
+      {total:number;cameras:Array<{id:string}>};
+    assert.equal(beyondEnd.total,expectedTotal);
+    assert.equal(beyondEnd.cameras.length,0);
+    const foreignLarge=await (await send('/surveillance/fleet?page=5&size=50',bobToken)).json() as
+      {total:number;cameras:Array<{id:string}>};
+    assert.equal(foreignLarge.total,0);
+    assert.deepEqual(foreignLarge.cameras,[]);
+    const bulkSearch=await (await send('/surveillance/fleet?search=Bulk%20Camera&size=100',aliceToken)).json() as
+      {total:number;cameras:Array<{id:string}>};
+    assert.equal(bulkSearch.total,bulkCount);
+    assert.equal(bulkSearch.cameras.length,100);
+
   } finally {
     if(app) await app.close();
     if(tenantIds.length) {
