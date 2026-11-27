@@ -27,6 +27,10 @@ export class TenantService {
   }
 
   async update(user: any, id: string, data: any) {
+    // Defense in depth: controller permissions alone must not authorize service calls.
+    if (!user || !['SUPER_ADMIN', 'ADMIN'].includes(user.role)) {
+      throw new ForbiddenException('Tenant modification requires company admin or platform owner');
+    }
     if (user.role !== 'SUPER_ADMIN' && user.tenantId !== id) {
       throw new ForbiddenException('Not authorized for this tenant');
     }
