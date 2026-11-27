@@ -1,6 +1,6 @@
 # SCC380 P0 — Production database recovery acceptance
 
-**Status: BLOCKED / UNKNOWN for real production.** Passing GitHub Actions with the disposable `scc_test` database is not proof of restoring `scc380-db`.
+**Status: PARTIAL for real production.** A genuine 2026-11-23 production dump and isolated restore were previously verified through user-provided Windows/Docker execution evidence. They have NOT been rechecked independently from this session on 2026-11-27. Disposable `scc_test` CI is not a replacement for that real-production evidence.
 
 ## Verified infrastructure state (2026-11-27)
 
@@ -25,19 +25,19 @@
 
 The backup script rejects unexpected production source DB name, matching source/target DB names, non-empty restore target, missing SCC380 tables, malformed or empty archive, and archive/data restore mismatches. It now additionally checks server-side endpoint separation for `scc_main_qbf1`, multiple critical tables, and unfinished Prisma migrations. The disposable CI test intentionally sets `EXPECTED_SOURCE_DB=scc_test`.
 
-No real production backup has been created, copied, accessed, overwritten, deleted or restored by this PR. No network allowlist, database permissions or production variables have been modified.
+This PR did not create, copy, access, overwrite, delete or restore a production backup. The historical 2026-11-23 production backup and offline restore predate this PR. No network allowlist, database permissions or production variables have been modified.
 
 ## Acceptance record
 
 | Gate | Evidence | Status |
 | --- | --- | --- |
 | Production identity and hosting location | Render metadata | VERIFIED |
-| Current real production archive and SHA-256 | Unavailable | UNKNOWN |
-| Sealed/off-site encrypted backup | Unavailable | UNKNOWN |
-| Separate empty recovery instance | Not provisioned for real production restore | BLOCKED |
-| Actual restoration of `scc_main_qbf1` | Not performed | BLOCKED |
-| Test migrations and full tenant isolation on restored copy | Not performed | BLOCKED |
+| Historical real production archive and SHA-256 (2026-11-23) | User-provided backup and hash output | HISTORICAL PASS |
+| Sealed/off-site encrypted backup | `V:` was reportedly mounted, but current container binding and off-device copy are unverified | UNKNOWN |
+| Historical isolated restore (2026-11-23) | User-provided offline Docker restore output | HISTORICAL PASS |
+| Actual production archive restoration (2026-11-23) | Docker `scc380-restore-verify`, 109 restored tables | HISTORICAL PASS |
+| Migration and all-role/two-company end-to-end testing on historical restored copy | Not demonstrated by the prior restore evidence | UNKNOWN |
 | Synthetic PostgreSQL CI backup/restore | Workflow evidence on its latest green head only | TEST-ONLY |
 | Web build/deploy | Render build-minute quota exhausted | BLOCKED |
 
-**Do not classify production recovery as PASS until every applicable real-production gate is verified.**
+**Do not classify production recovery as PASS until the still-outstanding freshness, migrations, role isolation, integrity and full recovery gates are verified. Do not erase the historical PASS evidence.**
