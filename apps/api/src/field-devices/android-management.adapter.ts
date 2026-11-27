@@ -162,6 +162,30 @@ export class AndroidManagementAdapter implements MdmAdapter {
     throw new Error('ANDROID_DEVICE_INVENTORY_PAGINATION_LIMIT');
   }
 
+  /**
+   * Poll a previously returned, tenant-bound Google operation.
+   * A completed operation is evidence of provider processing, NOT a live media session
+   * or an independently witnessed physical-device state.
+   */
+  async readCommandOperation(tenantId: string, providerDeviceId: string, operationName: string):
+    Promise<'PROVIDER_PENDING' | 'PROVIDER_COMPLETED' | 'PROVIDER_FAILED'> {
+    const binding = this.binding(tenantId);
+    if (!DEVICE.test(providerDeviceId) ||
+        !providerDeviceId.startsWith(binding.enterpriseName + '/devices/') ||
+        typeof operationName !== 'string' ||
+        !/^enterprises\/[A-Za-z0-9_-]+\/devices\/[A-Za-z0-9_.-]+\/operations\/[A-Za-z0-9_.-]+$/.test(operationName) ||
+        !operationName.startsWith(providerDeviceId + '/operations/')) {
+      throw new Error('INVALID_TENANT_OPERATION');
+    }
+    if (!(await this.verifyTenantConnection(tenantId))) throw new MdmNotConfiguredError();
+    const result = await this.api('GET', operationName);
+    if (result?.name !== operationName || typeof result.done !== 'boolean') {
+      throw new Error('INVALID_PROVIDER_OPERATION_RESPONSE');
+    }
+    if (!result.done) return 'PROVIDER_PENDING';
+    return result.error ? 'PROVIDER_FAILED' : 'PROVIDER_COMPLETED';
+  }
+
   async submitCommand(tenantId: string, providerDeviceId: string, action: DeviceCommandAction):
     Promise<ProviderCommandResult> {
     if (!['LOCK', 'WIPE'].includes(action)) throw new Error('ANDROID_COMMAND_NOT_SUPPORTED');
