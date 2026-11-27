@@ -71,3 +71,47 @@ test('missing binding and denied provider stay NOT_CONFIGURED', async () => {
   assert.equal(await denied.verifyTenantConnection('tenant-a'), false);
   await assert.rejects(() => denied.requestEnrollment('tenant-a', 'ANDROID', 'ASSET-1'), MdmNotConfiguredError);
 });
+
+test('Google device inventory confirms only recent fully managed corporate devices', async () => {
+  const reportedAt = new Date().toISOString();
+  const calls: string[] = [];
+  const reporting = new AndroidManagementAdapter(bindings, {
+    async accessToken() { return 'TEST_TOKEN'; },
+    async request(url, init) {
+      calls.push(url);
+      const body = init.method === 'GET' && url.endsWith('/devices?pageSize=100')
+        ? { devices: [
+          { name: 'enterprises/example-one/devices/personal', enrollmentTokenData: 'ASSET-1',
+            managementMode: 'PROFILE_OWNER', ownership: 'COMPANY_OWNED',
+            policyCompliant: true, appliedPolicyName: binding.policyName,
+            appliedState: 'ACTIVE', lastStatusReportTime: reportedAt },
+          { name: 'enterprises/example-one/devices/company', enrollmentTokenData: 'ASSET-1',
+            managementMode: 'DEVICE_OWNER', ownership: 'COMPANY_OWNED',
+            policyCompliant: true, appliedPolicyName: binding.policyName,
+            appliedState: 'ACTIVE', lastStatusReportTime: reportedAt },
+        ] }
+        : { name: binding.enterpriseName };
+      return { ok: true, status: 200, async json() { return body; } };
+    },
+  });
+  const verified = await reporting.findVerifiedDevice('tenant-a', 'ASSET-1');
+  assert.equal(verified?.providerDeviceId, 'enterprises/example-one/devices/company');
+  assert.ok(calls.some(url => url.endsWith('/devices?pageSize=100')));
+});
+
+test('unverified policy, ownership, or stale status never marks Android as managed', async () => {
+  const bad = new AndroidManagementAdapter(bindings, {
+    async accessToken() { return 'TEST_TOKEN'; },
+    async request(url, init) {
+      const body = init.method === 'GET' && url.includes('/devices?pageSize')
+        ? { devices: [{
+          name: 'enterprises/example-one/devices/unverified', enrollmentTokenData: 'ASSET-1',
+          managementMode: 'DEVICE_OWNER', ownership: 'COMPANY_OWNED',
+          policyCompliant: false, appliedPolicyName: binding.policyName,
+          appliedState: 'ACTIVE', lastStatusReportTime: new Date().toISOString(),
+        }] } : { name: binding.enterpriseName };
+      return { ok: true, status: 200, async json() { return body; } };
+    },
+  });
+  assert.equal(await bad.findVerifiedDevice('tenant-a', 'ASSET-1'), null);
+});
