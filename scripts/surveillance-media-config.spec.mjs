@@ -23,3 +23,16 @@ test('reject public camera addresses, missing secrets and duplicate sources',()=
   assert.throws(()=>buildMediaConfig({devices:[{cameraId:'camera12345',rtspUrlEnv:'SCC_MEDIA_TEST_RTSP'},
     {cameraId:'camera12345',rtspUrlEnv:'SCC_MEDIA_TEST_RTSP'}]},env),/duplicate/);
 });
+
+test('site retention accepts 1..720 hours without modifying stored media',()=>{
+  const devices=[{cameraId:'camera12345',rtspUrlEnv:'SCC_MEDIA_TEST_RTSP'}];
+  const cfg=buildMediaConfig({devices,recordingRetentionHours:168},env);
+  assert.match(cfg,/recordDeleteAfter: 168h/);
+  assert.doesNotMatch(cfg,/recordDeleteAfter: 24h/);
+  for(const recordingRetentionHours of [0,-1,721,1.5,'24',null,NaN,Infinity]){
+    assert.throws(()=>buildMediaConfig({devices,recordingRetentionHours},env),
+      /Recording retention must be 1\.\.720 whole hours/);
+  }
+  assert.throws(()=>buildMediaConfig({devices,recordingRetentionHours:24,tenantId:'foreign'},env),
+    /Unexpected media configuration field/);
+});
