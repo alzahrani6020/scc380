@@ -208,6 +208,7 @@ export default function FieldDeviceCommandCenter() {
     <main dir="rtl" className="mx-auto max-w-6xl space-y-6 p-4 text-slate-100 md:p-8">
       <header className="space-y-2">
         <Link href="/dashboard" className="text-sm text-sky-300 hover:underline">العودة إلى لوحة التحكم</Link>
+        <Link href="/field-operations" className="mr-3 text-sm text-sky-300 hover:underline">مركز الكاميرات والعمليات الميدانية</Link>
         <h1 className="text-2xl font-semibold">SCC380 | مركز أجهزة الشركة</h1>
         <p className="text-sm text-slate-300">سجل الأجهزة المؤسسية وحالة تهيئة الإدارة. لا تُعرض وظيفة فعلية باعتبارها متصلة ما لم تُثبت جاهزيتها.</p>
       </header>
