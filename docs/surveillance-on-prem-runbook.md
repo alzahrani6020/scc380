@@ -86,3 +86,13 @@ MediaMTX will request its **site-only** viewer username/password. Do not put the
 5. Test device vendor/profile compatibility and physical controls before enabling either PTZ opt-in.
 
 **NOT IMPLEMENTED:** cloud-mediated live streaming without a tunnel, cross-site recording storage replication, ONVIF two-way talkback, user-session SSO into MediaMTX, production capacity guarantees. These are separate implementation and device acceptance requirements.
+
+
+## E. Windows laptop webcam — local pilot in SCC380 UI (no public relay)
+
+The tested Windows laptop pilot uses an existing Docker container called `scc380-camera-media-test`, with protected MediaMTX accounts, loopback host ports `8554` for RTSP, `8890` for HLS (not the already occupied `8888`), and `9996` for recordings. The publisher path is **`laptop`**, not the SCC380 CUID of a camera. Do not change the tenant's camera IDs or assign these media links to another company's camera.
+
+In SCC380 Surveillance > **البث والتسجيلات** choose **فتح اختبار كاميرا اللابتوب**, on the **same Windows machine** where MediaMTX is listening. Use **فتح فهرس التسجيلات المحلي** to open `http://127.0.0.1:9996/list?path=laptop`, or **فتح المشاهدة المباشرة المحلية** to open `http://127.0.0.1:8890/laptop`. MediaMTX challenges for `laptopViewer` and the local viewer password. Do not enter SCC380 passwords or gateway tokens. The optional embedded preview can be blocked by browser HTTPS/HTTP mixed-content restrictions; the explicit new-tab links are the supported fallback. No automatic network request or camera activation occurs until a user clicks a local media action.
+
+**Live viewing requires an actively publishing FFmpeg process.** The earlier bounded 15-second webcam feed has stopped, so recorded videos can still be enumerated, but no live frames are expected until the operator manually starts the camera publisher again with protected credentials. Never store RTSP credentials in the SCC380 SaaS application, browser localStorage, public URLs, chat or screenshot. Cloud SCC380 auth **does not govern** MediaMTX recordings; this remains a separate site-local authentication boundary. The trial proves local media routing only, not remote viewing, SSO, or a production live video service.
+
