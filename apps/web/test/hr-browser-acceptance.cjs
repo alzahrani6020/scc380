@@ -27,6 +27,7 @@ async function main() {
     let lookupFailure = false;
     let employee = null;
     const businessWrites = [];
+    let rejectedAccountLinks = 0;
     await page.route('**/api/**', async route => {
       const req = route.request();
       const url = new URL(req.url());
@@ -40,7 +41,9 @@ async function main() {
       if (path === '/api/hr/departments' && method === 'GET') return lookupFailure
         ? respond({ message: 'Simulated lookup permission error' }, 403) : respond({ data: [] });
       if (path === '/api/users' && method === 'GET') return lookupFailure
-        ? respond({ message: 'Simulated lookup permission error' }, 403) : respond({ data: [] });
+        ? respond({ message: 'Simulated lookup permission error' }, 403) : respond({ data: [
+          { id: 'user-fixture', firstName: 'Account', lastName: 'Fixture', email: 'fixture@example.test' },
+        ] });
       if (path === '/api/hr/employees' && method === 'GET') {
         if (mode === 'fail') return respond({ message: 'Simulated HTTP 500' }, 500);
         if (mode === 'malformed') return respond({ data: [], totalPages: 1 });
@@ -55,6 +58,10 @@ async function main() {
         businessWrites.push({ type: 'POST', body: payload });
         employee = { id: 'hr-test-fixture-1', ...payload };
         return respond({ id: employee.id, ...employee }, 201);
+      }
+      if (path === '/api/hr/employees/hr-test-fixture-1/link-user' && method === 'POST') {
+        rejectedAccountLinks++;
+        return respond({ message: 'Simulated account membership conflict' }, 409);
       }
       if (path === '/api/hr/employees/hr-test-fixture-1' && method === 'PATCH') {
         if (!employee) return respond({ message: 'No fixture' }, 404);
@@ -111,6 +118,21 @@ async function main() {
     assert.ok(nameFits, 'employee full name must not be clipped by adjacent action buttons');
 
     await page.screenshot({ path: 'apps/web/test/artifacts/SIMULATION-hr-employee-reopened.png', fullPage: true, animations: 'disabled' });
+    // A post-save external account-link failure must not masquerade as failed
+    // employee creation or invite users to create a duplicate record.
+    await page.locator('.scc-card-hover').filter({ hasText: 'P0 Employee Revised' })
+      .getByRole('button', { name: 'تعديل موظف' }).click();
+    const linkDialog = page.getByRole('dialog', { name: 'تعديل موظف' });
+    await linkDialog.getByRole('combobox', { name: 'حساب الخدمة الذاتية' })
+      .selectOption('user-fixture');
+    await linkDialog.getByRole('button', { name: 'حفظ', exact: true }).click();
+    await page.getByRole('alert').filter({ hasText: 'تم حفظ بيانات الموظف' })
+      .waitFor({ timeout: 12000 });
+    assert.equal(rejectedAccountLinks, 1);
+    assert.equal(businessWrites.filter(r => r.type === 'POST').length, 1,
+      'failed login linkage must not create a duplicate employee');
+    console.log('PASS P0_HR_SAVE_SUCCESS_ACCOUNT_LINK_FAILURE_IS_DISTINCT');
+
     console.log('PASS P0_HR_CREATE_EDIT_SAVE_RELOAD_SIMULATED_API');
 
     // Lookups must never appear as a genuinely empty company/department
