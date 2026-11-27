@@ -69,3 +69,11 @@ jobs:
           fi
           node apps/web/test/dashboard-browser-acceptance.cjs
           echo 'PASS: isolated Chromium dashboard browser acceptance'
+      - name: Publish visual evidence (synthetic local API ONLY)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SCC380-P0-SIMULATION-dashboard-screens
+          path: apps/web/test/artifacts/SIMULATION-*.png
+          retention-days: 7
+          if-no-files-found: warn
