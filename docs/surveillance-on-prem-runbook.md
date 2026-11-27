@@ -102,3 +102,15 @@ In SCC380 Surveillance > **البث والتسجيلات** choose **فتح اخ�
 In SCC380 > المراقبة والكاميرات > البث والتسجيلات > فتح اختبار كاميرا اللابتوب, use **تشغيل تسجيل MP4 من جهازك** and select the already recovered MP4 from the local Windows TEMP directory. This uses a browser-created object URL and the native video element. It does not send the file, its metadata, or credentials to SCC380 or MediaMTX. The player is a separate fallback from the MediaMTX playback API, intended for **locally held recordings** after an authenticated download. It does not grant access to new recordings, replace MediaMTX authentication, or provide remote live streaming.
 
 The MediaMTX 9996 Basic Auth browser error remains a separate, not-yet-root-caused issue; the successful PowerShell authenticated API download is not affected. Do not change local viewer secrets, drop recording files or open public ports to work around this issue. For a local user to browse new recordings they must use the separately authenticated API or otherwise obtain the file through authorized access.
+
+## G. Windows webcam + automatic microphone recording pilot
+
+File: scripts/surveillance-windows-av.mjs (local Windows only). No changes to Docker, MediaMTX, cloud, or saved MP4 recordings.
+
+- Run node scripts/surveillance-windows-av.mjs --list to enumerate Windows DirectShow cameras/microphones.
+- Run node scripts/surveillance-windows-av.mjs --record for a new 15-second H.264/AAC MP4 in %LOCALAPPDATA%\SCC380\av-tests. Optional flags: --duration 30, --output-dir PATH, --ffmpeg PATH, --ffprobe PATH.
+- An automatic priority heuristic chooses a headset, then Bluetooth, USB, and the built-in mic. Failed captures retry the next listed microphone in a NEW output file. It never overwrites previous videos and requires deliberate invocation.
+- The adjacent .report.json records both audio/video codecs, duration and source names. Select the new MP4 manually in SCC380 local MP4 player; it is never uploaded.
+- FFmpeg timestamp resampling reduces drift and both tracks are mapped explicitly. Duration similarity is not sufficient to demonstrate perceptual A/V sync: test speaking/clapping visually and audibly on the actual device.
+- Windows privacy permissions, hardware drivers, Bluetooth profiles and supported audio clock rates must be validated on the physical PC.
+- NOT IMPLEMENTED: automatic mid-recording microphone handoff, uninterrupted live streaming, 24/7 managed recording, measured multi-hour drift, cloud SSO, two-way talk, smart sounds, speech-to-text, event buffer, legal evidence export, multi-branch sync and full enterprise acceptance. These require further development and customer hardware testing.
