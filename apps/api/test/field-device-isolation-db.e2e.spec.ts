@@ -6,6 +6,7 @@ import { FieldDeviceInventoryController } from '../src/field-devices/field-devic
 import { FieldDeviceCommandsController } from '../src/field-devices/field-device-commands.controller';
 import { FieldDeviceAssignmentsController } from '../src/field-devices/field-device-assignments.controller';
 import { FieldDeviceShiftsController } from '../src/field-devices/field-device-shifts.controller';
+import { FieldDeviceDispatchController } from '../src/field-devices/field-device-dispatch.controller';
 
 test('field devices: two tenant DB isolation, notice identity and fail-closed commands', {
   skip: process.env.CRM_DB_E2E !== '1' ? 'CRM_DB_E2E=1 required' : false,
@@ -17,6 +18,7 @@ test('field devices: two tenant DB isolation, notice identity and fail-closed co
   const assignments = new FieldDeviceAssignmentsController();
   const commands = new FieldDeviceCommandsController();
   const shifts = new FieldDeviceShiftsController();
+  const dispatch = new FieldDeviceDispatchController();
   const reqA = { user: { tenantId: a.id, userId: 'admin-a-'+marker, role: 'ADMIN' } };
   const reqB = { user: { tenantId: b.id, userId: 'admin-b-'+marker, role: 'ADMIN' } };
   try {
@@ -50,6 +52,10 @@ test('field devices: two tenant DB isolation, notice identity and fail-closed co
     const otherApprover = { user: { tenantId: a.id, userId: 'second-admin-'+marker, role: 'ADMIN' } };
     const approval = await commands.approve(otherApprover, device.id, command.id);
     assert.equal(approval.status, 'NOT_DISPATCHED');
+    await assert.rejects(() => dispatch.lock(reqA, device.id, command.id),
+      /recently verified company-managed Android device/);
+    await assert.rejects(() => dispatch.lock(reqB, device.id, command.id),
+      /Device not found in company/);
     const stored = await prisma.fieldDeviceCommand.findFirst({
       where: { id: command.id, tenantId: a.id },
     });
