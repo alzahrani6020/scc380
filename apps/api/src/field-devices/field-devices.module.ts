@@ -3,6 +3,7 @@ import { FieldDevicesController } from './field-devices.controller';
 import { FieldDeviceInventoryController } from './field-device-inventory.controller';
 import { FieldDeviceAssignmentsController } from './field-device-assignments.controller';
 import { FieldDeviceShiftsController } from './field-device-shifts.controller';
+import { FieldDeviceCommandsController } from './field-device-commands.controller';
 
-@Module({ controllers: [FieldDevicesController, FieldDeviceInventoryController, FieldDeviceAssignmentsController, FieldDeviceShiftsController] })
+@Module({ controllers: [FieldDevicesController, FieldDeviceInventoryController, FieldDeviceAssignmentsController, FieldDeviceShiftsController, FieldDeviceCommandsController] })
 export class FieldDevicesModule {}
