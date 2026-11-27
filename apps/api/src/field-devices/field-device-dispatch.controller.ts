@@ -66,10 +66,11 @@ export class FieldDeviceDispatchController {
         throw new Error('PROVIDER_ACCEPTANCE_INVALID');
       }
       await prisma.$transaction(async tx => {
-        await tx.fieldDeviceCommand.updateMany({
+        const updated = await tx.fieldDeviceCommand.updateMany({
           where: { id: commandId, tenantId, deviceId, status: 'DISPATCH_UNCERTAIN' },
           data: { status: 'PROVIDER_ACCEPTED', providerReceipt: receipt.providerRequestId },
         });
+        if (!updated.count) throw new ConflictException('Command state changed while saving receipt');
         await tx.fieldDeviceAudit.create({ data: {
           tenantId, deviceId, actorUserId: actorId,
           action: 'LOCK_PROVIDER_ACCEPTED', decision: 'PROVIDER_ACCEPTED',
