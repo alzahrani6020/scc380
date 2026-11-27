@@ -31,6 +31,8 @@ jobs:
         run: pnpm --filter @scc/api run db:generate
       - name: Run focused device access tests
         run: pnpm --filter @scc/api exec tsx --test test/field-device-access.policy.spec.ts test/field-devices.controller.spec.ts test/field-device-inventory.controller.spec.ts test/field-device-assignments.controller.spec.ts test/field-device-shifts.controller.spec.ts test/procurement-risk.rules.spec.ts
+      - name: Build shared workspace dependencies
+        run: pnpm --filter @scc/api^... build
       - name: Compile API
         run: pnpm --filter @scc/api build
       - name: Compile web
