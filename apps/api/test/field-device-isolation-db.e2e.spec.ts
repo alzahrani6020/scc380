@@ -55,10 +55,7 @@ test('field devices: two tenant DB isolation, notice identity and fail-closed co
     });
     assert.equal(stored?.approvedById, otherApprover.user.userId);
     assert.equal(stored?.providerReceipt, null);
-    assert.equal((await commands.history(reqB, device.id)).length, 0);
-  } catch (error: any) {
-    if (error?.message?.includes('Device not found in company') && error?.status === 404) throw error;
-    throw error;
+    await assert.rejects(() => commands.history(reqB, device.id), /Device not found/);
   } finally {
     await prisma.fieldDeviceAudit.deleteMany({ where: { tenantId: a.id } });
     await prisma.fieldDeviceCommand.deleteMany({ where: { tenantId: a.id } });
