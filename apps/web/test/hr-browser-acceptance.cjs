@@ -25,6 +25,7 @@ async function main() {
 
     let mode = 'fail';
     let lookupFailure = false;
+    let failNextEmployeeSave = true;
     let employee = null;
     const businessWrites = [];
     let rejectedAccountLinks = 0;
@@ -54,6 +55,10 @@ async function main() {
         });
       }
       if (path === '/api/hr/employees' && method === 'POST') {
+        if (failNextEmployeeSave) {
+          failNextEmployeeSave = false;
+          return respond({ message: 'Simulated validation failure' }, 422);
+        }
         const payload = req.postDataJSON();
         businessWrites.push({ type: 'POST', body: payload });
         employee = { id: 'hr-test-fixture-1', ...payload };
@@ -93,6 +98,11 @@ async function main() {
     await dialog.getByRole('textbox', { name: 'الاسم الأول' }).fill('P0');
     await dialog.getByRole('textbox', { name: 'الاسم الأخير' }).fill('Employee');
     await dialog.getByLabel('تاريخ التعيين').fill('2026-11-27');
+    await dialog.getByRole('button', { name: 'إنشاء' }).click();
+    await dialog.getByRole('alert').filter({ hasText: 'تعذر حفظ بيانات الموظف' })
+      .waitFor({ timeout: 12000 });
+    assert.equal(await dialog.getByRole('textbox', { name: 'الكود' }).inputValue(), 'P0-EM-01');
+    assert.equal(employee, null, 'failed save must not create employee');
     await dialog.getByRole('button', { name: 'إنشاء' }).click();
     await page.getByText('P0 Employee', { exact: true }).waitFor({ timeout: 12000 });
     assert.equal(businessWrites.filter(r => r.type === 'POST').length, 1);
