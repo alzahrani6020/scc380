@@ -21,6 +21,21 @@ if [[ "$source_db" != "$EXPECTED_SOURCE_DB" || -z "$target_db" || "$target_db" =
   echo 'FAIL: source database identity mismatch or restore target is production' >&2
   exit 3
 fi
+# The real-production P0 acceptance requires physically separate database
+# endpoints, not merely a different database name on the production server.
+# Disposable CI databases intentionally share one Postgres container and do
+# not qualify as production restore evidence.
+if [[ "$EXPECTED_SOURCE_DB" == "scc_main_qbf1" ]]; then
+  source_endpoint=$(psql -X -qAt -v ON_ERROR_STOP=1 "$DATABASE_URL" -c "SELECT coalesce(inet_server_addr()::text, '') || ':' || coalesce(inet_server_port()::text, '')")
+  target_endpoint=$(psql -X -qAt -v ON_ERROR_STOP=1 "$RESTORE_DATABASE_URL" -c "SELECT coalesce(inet_server_addr()::text, '') || ':' || coalesce(inet_server_port()::text, '')")
+  if [[ -z "$source_endpoint" || -z "$target_endpoint" ||
+        "$source_endpoint" == ":" || "$target_endpoint" == ":" ||
+        "$source_endpoint" == "$target_endpoint" ]]; then
+    echo 'FAIL: production restore requires a distinct, verified PostgreSQL server endpoint' >&2
+    exit 3
+  fi
+fi
+
 # Prevent writing into a database containing application data. Do not drop anything.
 target_tables=$(psql -X -qAt -v ON_ERROR_STOP=1 "$RESTORE_DATABASE_URL" -c "SELECT count(*) FROM pg_catalog.pg_tables WHERE schemaname NOT IN ('pg_catalog','information_schema')")
 if [[ "$target_tables" != "0" ]]; then
@@ -52,12 +67,20 @@ mv -- "$tmp" "$dest"
 trap - EXIT
 # Restore is attempted ONLY after the target's identity and emptiness checks.
 PGCONNECT_TIMEOUT=10 pg_restore --exit-on-error --single-transaction --no-owner --no-privileges --dbname="$RESTORE_DATABASE_URL" "$dest"
-source_tenants=$(psql -X -qAt -v ON_ERROR_STOP=1 "$DATABASE_URL" -c 'SELECT count(*) FROM public.tenants')
-target_tenants=$(psql -X -qAt -v ON_ERROR_STOP=1 "$RESTORE_DATABASE_URL" -c 'SELECT count(*) FROM public.tenants')
-source_orders=$(psql -X -qAt -v ON_ERROR_STOP=1 "$DATABASE_URL" -c 'SELECT count(*) FROM public.pos_orders')
-target_orders=$(psql -X -qAt -v ON_ERROR_STOP=1 "$RESTORE_DATABASE_URL" -c 'SELECT count(*) FROM public.pos_orders')
-if [[ "$source_tenants" != "$target_tenants" || "$source_orders" != "$target_orders" ]]; then
-  echo "FAIL: restored control counts differ; archive retained: $dest" >&2
+# Compare multiple business-critical relations and Prisma migration history.
+# Fail closed if the source changes during the dump: do not claim point-in-time
+# equivalence from inconsistent snapshots. The archive remains for investigation.
+for relation in tenants products pos_orders chart_of_accounts _prisma_migrations; do
+  source_count=$(psql -X -qAt -v ON_ERROR_STOP=1 "$DATABASE_URL" -c "SELECT count(*) FROM public.\"$relation\"")
+  target_count=$(psql -X -qAt -v ON_ERROR_STOP=1 "$RESTORE_DATABASE_URL" -c "SELECT count(*) FROM public.\"$relation\"")
+  if [[ -z "$source_count" || "$source_count" != "$target_count" ]]; then
+    echo "FAIL: restored control row counts differ in $relation; archive retained" >&2
+    exit 5
+  fi
+done
+failed_migrations=$(psql -X -qAt -v ON_ERROR_STOP=1 "$RESTORE_DATABASE_URL" -c "SELECT count(*) FROM public._prisma_migrations WHERE finished_at IS NULL OR rolled_back_at IS NOT NULL")
+if [[ "$failed_migrations" != "0" ]]; then
+  echo 'FAIL: restored database contains unfinished or rolled-back migration history' >&2
   exit 5
 fi
 verified="$BACKUP_DIR/scc380-verified-$(date -u +%Y%m%dT%H%M%SZ)-$.dump"
