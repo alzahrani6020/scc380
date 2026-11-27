@@ -32,8 +32,10 @@ test('evidence tool rejects wrong paths, empty files and symlink clips',async()=
     await writeFile(clip,'');
     await assert.rejects(()=>createManifest(clip,clip+'.integrity.json'),/UNSAFE_OR_EMPTY_CLIP/);
     await writeFile(join(dir,'actual.mp4'),'clip');
-    await symlink(join(dir,'actual.mp4'),clip);
-  }catch(e){if(e.code!=='EEXIST')throw e;}
+    const link=join(dir,'alias.mp4');
+    await symlink(join(dir,'actual.mp4'),link);
+    await assert.rejects(()=>createManifest(link,link+'.integrity.json'),/UNSAFE_OR_EMPTY_CLIP/);
+  }catch(e){throw e;}
   try{
     await assert.rejects(()=>createManifest(join(dir,'actual.mp4'),join(dir,'other.json')),/MANIFEST_MUST_BE_ADJACENT/);
     await assert.rejects(()=>createManifest(join(dir,'actual.mp4'),join(dir,'actual.mp4.integrity.json')+'-wrong'),/MANIFEST_MUST_BE_ADJACENT/);
