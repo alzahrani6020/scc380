@@ -174,12 +174,23 @@ export default function HrPage() {
         const created = await api.post('/hr/employees', payload);
         employeeId = created.data.id;
       }
+      // Saving an employee and linking a login are separate committed operations.
+      // A failed link must not be reported as a failed save: retrying creation
+      // could otherwise create a duplicate employee record.
+      let linkFailure = false;
       if (formData.userId && formData.userId !== editing?.userId) {
-        await api.post(`/hr/employees/${employeeId}/link-user`, { userId: formData.userId });
+        try {
+          await api.post(`/hr/employees/${employeeId}/link-user`, { userId: formData.userId });
+        } catch { linkFailure = true; }
       } else if (!formData.userId && editing?.userId) {
-        await api.delete(`/hr/employees/${employeeId}/link-user`);
+        try {
+          await api.delete(`/hr/employees/${employeeId}/link-user`);
+        } catch { linkFailure = true; }
       }
       setIsModalOpen(false);
+      setActionError(linkFailure
+        ? 'تم حفظ بيانات الموظف، لكن ربط حساب الدخول أو فصله لم ينجح. راجع الملف قبل إعادة المحاولة ولا تنشئ موظفًا مكررًا.'
+        : null);
       setPage(1);
       fetchData();
     } catch (err) {
