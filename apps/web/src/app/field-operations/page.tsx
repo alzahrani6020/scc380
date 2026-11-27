@@ -18,7 +18,7 @@ type Incident = { id: string; cameraId: string; title: string; severity: string;
   resolution: string | null; camera: { name: string; site: { name: string } } };
 type ProcurementReview = {
   invoicesScanned: number;
-  purchaseOrdersRecorded: number;
+  purchaseOrdersRecorded: number | null;
   matchToPurchaseOrders: string;
   matchToGoodsReceipts: string;
   sampleLimited: boolean;
@@ -297,7 +297,7 @@ export default function FieldOperationsCenterPage() {
           {!procurement ? <p className="text-sm text-amber-300">هذه البيانات غير متاحة للحساب الحالي أو لم يكتمل ربط API.</p> : <>
             <div className="flex flex-wrap gap-4 text-sm">
               <span>الفواتير المفحوصة: {procurement.invoicesScanned}</span>
-              <span>أوامر الشراء المسجلة: {procurement.purchaseOrdersRecorded}</span>
+              <span>أوامر الشراء المسجلة: {procurement.purchaseOrdersRecorded ?? 'غير متحقق'}</span>
               <span>الملاحظات: {procurement.findings.length}</span>
             </div>
             {procurement.sampleLimited && <p className="text-xs text-amber-300">الفحص محدود بأحدث 500 فاتورة؛ النتائج ليست شاملة.</p>}
