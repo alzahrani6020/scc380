@@ -27,14 +27,13 @@ export class FieldDeviceDispatchController {
     const { tenantId, actorId } = this.admin(req);
     const device = await prisma.fieldManagedDevice.findFirst({
       where: { tenantId, id: deviceId },
-      select: { id: true, platform: true, provider: true, providerDeviceId: true,
-        managementState: true, noticeAcknowledgedAt: true, lastSeenAt: true },
+      select: { id: true, assetTag: true, platform: true, provider: true, providerDeviceId: true,
+        managementState: true, noticeAcknowledgedAt: true },
     });
     if (!device) throw new NotFoundException('Device not found in company');
     if (device.platform !== 'ANDROID' || device.provider !== 'ANDROID_MANAGEMENT_API' ||
         device.managementState !== 'MANAGED' || !device.providerDeviceId ||
-        !device.noticeAcknowledgedAt ||
-        !device.lastSeenAt || Date.now() - device.lastSeenAt.getTime() > 24 * 60 * 60 * 1000) {
+        !device.noticeAcknowledgedAt) {
       throw new ForbiddenException('A recently verified company-managed Android device is required');
     }
     const command = await prisma.fieldDeviceCommand.findFirst({
@@ -52,6 +51,15 @@ export class FieldDeviceDispatchController {
     const adapter = makeAndroidMdmAdapter();
     if (!(await adapter.verifyTenantConnection(tenantId))) {
       throw new ServiceUnavailableException('Android Enterprise connection not verified');
+    }
+    let current;
+    try {
+      current = await adapter.findVerifiedDevice(tenantId, device.assetTag);
+    } catch {
+      throw new ServiceUnavailableException('Cannot establish current corporate device compliance');
+    }
+    if (!current || current.providerDeviceId !== device.providerDeviceId) {
+      throw new ForbiddenException('Current Google device ownership or policy verification failed');
     }
     const claimed = await prisma.$transaction(async tx => {
       const updated = await tx.fieldDeviceCommand.updateMany({
