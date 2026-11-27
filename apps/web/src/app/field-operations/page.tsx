@@ -34,6 +34,7 @@ export default function FieldOperationsCenterPage() {
   const [taskType, setTaskType] = useState('CLEANING');
   const [taskDescription, setTaskDescription] = useState('');
   const [busy, setBusy] = useState(false);
+  const [incidentResolutions, setIncidentResolutions] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [resultMessage, setResultMessage] = useState('');
@@ -91,6 +92,30 @@ export default function FieldOperationsCenterPage() {
       await refresh();
     } catch (err: any) {
       setError(err.response?.data?.message || 'تعذر تسجيل طلب الصيانة.');
+    } finally { setBusy(false); }
+  };
+
+  const updateIncident = async (id: string, action: 'ACKNOWLEDGED' | 'RESOLVED') => {
+    if (busy) return;
+    const resolution = (incidentResolutions[id] || '').trim();
+    if (action === 'RESOLVED' && !resolution) {
+      setError('يلزم كتابة إجراء المعالجة قبل إغلاق الحادثة.');
+      return;
+    }
+    if (action === 'RESOLVED' &&
+        !window.confirm('هل تؤكد إغلاق الحادثة بعد مراجعة إجراء المعالجة؟')) return;
+    setBusy(true); setError(''); setResultMessage('');
+    try {
+      await api.patch('/surveillance/incidents/' + encodeURIComponent(id), {
+        status: action, ...(action === 'RESOLVED' ? { resolution } : {}),
+      });
+      setResultMessage(action === 'RESOLVED'
+        ? 'حُفظ قرار إغلاق الحادثة ومبررات المعالجة.'
+        : 'حُفظ استلام الحادثة للمتابعة.');
+      setIncidentResolutions(current => ({ ...current, [id]: '' }));
+      await refresh();
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'تعذر حفظ قرار الحادثة.');
     } finally { setBusy(false); }
   };
 
@@ -230,6 +255,22 @@ export default function FieldOperationsCenterPage() {
               <p className="text-sm text-slate-300">{i.camera.name} — {i.camera.site.name}</p>
               <p className="text-xs text-slate-400">الخطورة: {i.severity} — الحالة: {i.status} — {new Date(i.occurredAt).toLocaleString('ar-SA')}</p>
               {i.resolution && <p className="mt-2 text-sm">{i.resolution}</p>}
+              {i.status === 'OPEN' && (
+                <button type="button" disabled={busy} onClick={() => void updateIncident(i.id, 'ACKNOWLEDGED')}
+                  className="mt-2 rounded border border-slate-500 px-3 py-1 text-xs disabled:opacity-50">استلام البلاغ للمتابعة</button>
+              )}
+              {['OPEN', 'ACKNOWLEDGED'].includes(i.status) && (
+                <div className="mt-2 space-y-2">
+                  <label className="block text-xs">نتيجة المعالجة
+                    <textarea rows={2} value={incidentResolutions[i.id] || ''} maxLength={2000}
+                      onChange={e => setIncidentResolutions(v => ({ ...v, [i.id]: e.target.value }))}
+                      className="mt-1 w-full rounded-lg bg-slate-800 p-2" />
+                  </label>
+                  <button type="button" disabled={busy || !(incidentResolutions[i.id] || '').trim()}
+                    onClick={() => void updateIncident(i.id, 'RESOLVED')}
+                    className="rounded border border-amber-700 px-3 py-1 text-xs disabled:opacity-50">إغلاق الحادثة بعد التحقق</button>
+                </div>
+              )}
             </article>)}
             {incidents.length === 0 && <p className="text-sm text-slate-300">لا توجد حوادث مسجلة.</p>}
           </div>
