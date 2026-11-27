@@ -5,6 +5,7 @@
 import net from 'node:net';
 import { readFile } from 'node:fs/promises';
 import { executePtz } from './surveillance-onvif-ptz.mjs';
+import { gatewayFailure } from './surveillance-gateway-error.mjs';
 
 const fail = (message) => { console.error('EDGE_AGENT_FAIL:', message); process.exitCode = 1; };
 const args = process.argv.slice(2);
@@ -78,7 +79,7 @@ if (args.length !== 2 || args[0] !== '--config') {
       headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
       body:JSON.stringify({cameras:statuses}),
     });
-    if (!response.ok) throw new Error('Gateway heartbeat rejected: HTTP ' + response.status);
+    if (!response.ok) throw new Error('Gateway heartbeat rejected: ' + await gatewayFailure(response));
     const data = await response.json();
     if (!Number.isInteger(data.accepted) || data.accepted !== statuses.length) throw new Error('Unexpected heartbeat acknowledgement');
     console.log(JSON.stringify({status:'HEARTBEAT_ACCEPTED',accepted:data.accepted,
