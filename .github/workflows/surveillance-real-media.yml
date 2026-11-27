@@ -78,8 +78,12 @@ jobs:
           exit 1
       - name: Install FFmpeg encoder on ephemeral runner
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq ffmpeg
+          # GitHub ubuntu-24.04 runners normally ship FFmpeg. Avoid unnecessary apt update,
+          # which can fail on unrelated third-party Microsoft package mirrors (HTTP 403).
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq ffmpeg
+          fi
           ffmpeg -version | head -n 1
       - name: Check HLS authorization, synthetic video with audio and recorded segments
         shell: bash

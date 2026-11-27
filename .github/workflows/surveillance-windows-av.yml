@@ -1,0 +1,25 @@
+name: Surveillance Windows AV Capture Acceptance
+on:
+  pull_request:
+    paths:
+      - 'scripts/surveillance-windows-av*.mjs'
+      - '.github/workflows/surveillance-windows-av.yml'
+      - 'docs/surveillance-on-prem-runbook.md'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-av-unit:
+    runs-on: windows-2022
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify no side effects and deterministic AV capture planning
+        shell: pwsh
+        run: |
+          node --check scripts/surveillance-windows-av.mjs
+          node --test scripts/surveillance-windows-av.spec.mjs
+          # Do not attempt physical capture in CI: runner has no real microphone/camera.
