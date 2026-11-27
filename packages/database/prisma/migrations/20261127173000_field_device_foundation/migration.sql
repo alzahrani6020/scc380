@@ -41,6 +41,9 @@ CREATE UNIQUE INDEX "field_device_shifts_id_tenantId_key"
   ON "field_device_shifts" ("id", "tenantId");
 CREATE INDEX "field_device_shifts_tenantId_deviceId_endedAt_idx"
   ON "field_device_shifts" ("tenantId", "deviceId", "endedAt");
+-- Prevent overlapping open shifts even when two requests race.
+CREATE UNIQUE INDEX "field_device_shifts_one_active_per_device"
+  ON "field_device_shifts" ("tenantId", "deviceId") WHERE "endedAt" IS NULL;
 ALTER TABLE "field_device_shifts" ADD CONSTRAINT "field_device_shifts_deviceId_tenantId_fkey"
   FOREIGN KEY ("deviceId", "tenantId") REFERENCES "field_managed_devices"("id", "tenantId")
   ON DELETE RESTRICT ON UPDATE CASCADE;
