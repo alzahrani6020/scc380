@@ -8,6 +8,8 @@ on:
       - 'apps/api/test/surveillance-http.e2e.spec.ts'
       - 'apps/api/test/surveillance-real-edge.e2e.spec.ts'
       - 'scripts/surveillance-site-agent.mjs'
+      - 'scripts/surveillance-rtsp-simulator*.mjs'
+      - 'scripts/surveillance-windows-simulation.ps1'
       - 'scripts/surveillance-onvif-ptz*.mjs'
       - 'scripts/surveillance-media-config*.mjs'
       - 'apps/web/src/app/dashboard/surveillance/**'
@@ -60,6 +62,7 @@ jobs:
       - name: Verify on-prem surveillance modules and run fake-device tests
         run: |
           node --check scripts/surveillance-site-agent.mjs
+          node --test scripts/surveillance-rtsp-simulator.spec.mjs
           node --check scripts/surveillance-onvif-ptz.mjs
           node --check scripts/surveillance-media-config.mjs
           node --test scripts/surveillance-onvif-ptz.spec.mjs scripts/surveillance-media-config.spec.mjs
