@@ -18,7 +18,7 @@ test('P0: platform owner, company admin, manager and worker cannot cross company
   const users: Array<{ id: string; role: string; tenantId: string | null }> = [];
   const tenantService = new TenantService();
   try {
-    for (const role of ['ADMIN', 'MANAGER', 'USER'] as const) {
+    for (const role of ['ADMIN', 'MANAGER', 'USER', 'AUDITOR', 'READONLY'] as const) {
       const user = await prisma.user.create({
         data: { tenantId: tenantA.id, role,
           email: 'p0-'+role.toLowerCase()+'-'+suffix+'@example.test',
@@ -30,6 +30,8 @@ test('P0: platform owner, company admin, manager and worker cannot cross company
     const admin = users.find(u => u.role === 'ADMIN')!;
     const manager = users.find(u => u.role === 'MANAGER')!;
     const worker = users.find(u => u.role === 'USER')!;
+    const auditor = users.find(u => u.role === 'AUDITOR')!;
+    const readonly = users.find(u => u.role === 'READONLY')!;
 
     await assert.rejects(() => tenantService.findAll({ role: 'ADMIN' }), ForbiddenException);
     await assert.rejects(() => tenantService.findAll({ role: 'MANAGER', tenantId: undefined }), ForbiddenException);
@@ -37,7 +39,7 @@ test('P0: platform owner, company admin, manager and worker cannot cross company
     await assert.rejects(() => tenantService.findOne({ role: 'USER' }, tenantA.id), ForbiddenException);
     // The platform owner can read across tenants; local users only their own.
     assert.equal((await tenantService.findAll(owner)).some(t => t.id === tenantB.id), true);
-    for (const actor of [admin, manager, worker]) {
+    for (const actor of [admin, manager, worker, auditor, readonly]) {
       const visible = await tenantService.findAll(actor);
       assert.deepEqual(visible.map(t => t.id), [tenantA.id]);
       await assert.rejects(() => tenantService.findOne(actor, tenantB.id), ForbiddenException);
@@ -47,7 +49,7 @@ test('P0: platform owner, company admin, manager and worker cannot cross company
     }
     // Defense in depth: a manager and employee also cannot call the service
     // directly to mutate their own company, even if the HTTP guard is bypassed.
-    for (const actor of [manager, worker]) {
+    for (const actor of [manager, worker, auditor, readonly]) {
       await assert.rejects(() => tenantService.update(actor, tenantA.id,
         { name: 'unauthorized self-service name' }), ForbiddenException);
     }
