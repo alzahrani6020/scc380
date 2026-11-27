@@ -61,6 +61,31 @@ export class FieldOperationsController {
         talkCapable: cameras.filter(c => c.supportsTalk).length,
         ptzCapable: cameras.filter(c => c.supportsPtz).length,
         vehicleCameras: cameras.filter(c => c.cameraType.startsWith('DASHCAM')).length },
+      alerts: [
+        ...cameras.filter(camera =>
+          camera.connectionStatus === 'OFFLINE' ||
+          (camera.lastSeenAt && camera.lastSeenAt < cutoff &&
+            ['ONLINE', 'DEGRADED'].includes(camera.connectionStatus))
+        ).slice(0, 100).map(camera => ({
+          kind: 'CAMERA_SIGNAL_LOST', resourceId: camera.id, siteId: camera.siteId,
+          severity: 'WARNING', lastSeenAt: camera.lastSeenAt?.toISOString() ?? null,
+          message: 'لم يصل تحديث حديث للكاميرا أو أبلغت البوابة عن انقطاعها',
+        })),
+        ...gateways.filter(gateway => !gateway.revokedAt &&
+          gateway.lastSeenAt && gateway.lastSeenAt < cutoff
+        ).slice(0, 100).map(gateway => ({
+          kind: 'GATEWAY_STALE', resourceId: gateway.id, siteId: gateway.siteId,
+          severity: 'WARNING', lastSeenAt: gateway.lastSeenAt?.toISOString() ?? null,
+          message: 'توقفت نبضات بوابة الموقع',
+        })),
+        ...devices.filter(device => device.managementState === 'MANAGED' &&
+          device.lastSeenAt && device.lastSeenAt < cutoff
+        ).slice(0, 100).map(device => ({
+          kind: 'DEVICE_STALE', resourceId: device.id, siteId: null,
+          severity: 'WARNING', lastSeenAt: device.lastSeenAt?.toISOString() ?? null,
+          message: 'لا توجد حالة حديثة من الجهاز المُدار',
+        })),
+      ].slice(0, 200),
       sites: sites.map(site => {
         const siteCameras = cameras.filter(c => c.siteId === site.id);
         const siteGateways = gateways.filter(g => g.siteId === site.id);
