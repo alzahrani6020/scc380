@@ -1,6 +1,6 @@
 import {
   ConflictException, Controller, ForbiddenException, NotFoundException, Param, Post, Req,
-  Res, ServiceUnavailableException, TooManyRequestsException, UseGuards,
+  Res, ServiceUnavailableException, UseGuards,
 } from '@nestjs/common';
 import { prisma } from '@scc/database';
 import type { Response } from 'express';
@@ -37,7 +37,7 @@ export class FieldDeviceEnrollmentController {
       where: { tenantId: user.tenantId, deviceId, action: 'ANDROID_ENROLLMENT_REQUEST',
         createdAt: { gte: new Date(Date.now() - 60 * 60 * 1000) } },
     });
-    if (recent >= 4) throw new TooManyRequestsException('Enrollment attempts exceeded for this asset');
+    if (recent >= 4) throw new HttpException('Enrollment attempts exceeded for this asset', HttpStatus.TOO_MANY_REQUESTS);
 
     let adapter;
     try {
