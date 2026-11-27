@@ -17,6 +17,8 @@ type Device = {
 };
 type OperationsSummary = {
   asOf: string;
+  sites: { id: string; name: string; branchId: string | null; siteType: string;
+    cameras: number; freshOnline: number; connectedGateways: number }[];
   cameraCoverage: { total: number; freshOnline: number; degraded: number;
     staleOrOffline: number; sites: number; gateways: number;
     connectedGateways: number; vehicleCameras: number; ptzCapable: number;
@@ -239,6 +241,21 @@ export default function FieldDeviceCommandCenter() {
                 </div>
               ))}
             </div>
+            <section className="mt-4 space-y-2" aria-label="المواقع والفروع">
+              <h3 className="text-sm font-semibold">حالة المواقع والفروع</h3>
+              {operations.sites.length === 0 ?
+                <p className="text-xs text-slate-400">لا توجد مواقع مسجلة للشركة الحالية.</p> :
+                <ul className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                  {operations.sites.map(site => (
+                    <li key={site.id} className="rounded-lg border border-slate-700 p-3">
+                      <p className="text-sm font-semibold">{site.name}</p>
+                      <p className="text-xs text-slate-300">النوع: {site.siteType} — الكاميرات: {site.cameras} — اتصال حديث: {site.freshOnline}</p>
+                      <p className="text-xs text-slate-300">بوابات نشطة: {site.connectedGateways}</p>
+                    </li>
+                  ))}
+                </ul>
+              }
+            </section>
             <p className="text-xs text-amber-300">حالات القبول غير المثبتة: تشغيل البث المباشر، التحكم الفعلي بالأجهزة، وصول GPS، وجلسات الصوت/الفيديو الميدانية.</p>
             <p className="text-xs text-slate-400">آخر تجميع للمؤشرات: {new Date(operations.asOf).toLocaleString('ar-SA')}</p>
           </>
