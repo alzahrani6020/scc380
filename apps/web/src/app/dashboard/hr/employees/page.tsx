@@ -30,6 +30,8 @@ export default function HrPage() {
   const [departments, setDepartments] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [listError, setListError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState('');
@@ -53,17 +55,24 @@ export default function HrPage() {
 
   const fetchData = () => {
     setLoading(true);
+    setListError(null);
     const params = new URLSearchParams({ page: String(page), limit: '25' });
     if (search.trim()) params.set('search', search.trim());
     if (statusFilter) params.set('status', statusFilter);
     if (departmentFilter) params.set('departmentId', departmentFilter);
     api.get('/hr/employees?' + params.toString())
       .then(r => {
-        setEmployees(r.data.data || []);
-        setTotal(Number(r.data.count || 0));
-        setTotalPages(Number(r.data.totalPages || 1));
+        const body = r.data;
+        if (!body || !Array.isArray(body.data) ||
+            !Number.isSafeInteger(body.count) || body.count < 0 ||
+            !Number.isSafeInteger(body.totalPages) || body.totalPages < 1) {
+          throw new Error('HR_EMPLOYEES_INVALID_RESPONSE');
+        }
+        setEmployees(body.data);
+        setTotal(body.count);
+        setTotalPages(body.totalPages);
       })
-      .catch(console.error)
+      .catch(() => setListError('تعذر التحقق من بيانات الموظفين. القائمة غير متاحة وليست فارغة.'))
       .finally(() => setLoading(false));
   };
 
@@ -177,8 +186,13 @@ export default function HrPage() {
 
   const handleTerminate = async (id: string) => {
     if (!confirm('سيتم إنهاء خدمة الموظف مع الاحتفاظ بسجلاته. هل تريد المتابعة؟')) return;
-    await api.delete(`/hr/employees/${id}`);
-    if (employees.length === 1 && page > 1) setPage(page - 1); else fetchData();
+    setActionError(null);
+    try {
+      await api.delete(`/hr/employees/${id}`);
+      if (employees.length === 1 && page > 1) setPage(page - 1); else fetchData();
+    } catch {
+      setActionError('تعذر إنهاء خدمة الموظف. لم يُثبت حفظ هذا الإجراء. تحقق من الاتصال والصلاحيات.');
+    }
   };
 
   const deptOptions = departments.map(d => ({ value: d.id, label: d.name }));
@@ -195,7 +209,7 @@ export default function HrPage() {
             <Briefcase className="h-6 w-6 text-primary-400" />
             مكين - الموارد البشرية
           </h1>
-          <p className="text-slate-400 text-sm mt-1">منصة مكين لإدارة الموارد البشرية داخل SCC 380 — {total} موظف</p>
+          <p className="text-slate-400 text-sm mt-1">منصة مكين لإدارة الموارد البشرية داخل SCC 380 — {listError ? 'عدد الموظفين غير متحقق' : total + ' موظف'}</p>
         </div>
         <Button onClick={openCreate}><Plus className="h-5 w-5" /> إضافة موظف</Button>
       </div>
@@ -204,12 +218,18 @@ export default function HrPage() {
           <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-500" />
           <input type="text" placeholder="البحث بالاسم أو الكود أو المسمى..." className="scc-input pr-10" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
         </div>
-        <Select label="" options={[{ value: '', label: 'كل الحالات' }, ...empStatuses]} value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }} />
-        <Select label="" options={[{ value: '', label: 'كل الإدارات' }, ...deptOptions]} value={departmentFilter} onChange={(e) => { setDepartmentFilter(e.target.value); setPage(1); }} />
+        <Select aria-label="تصفية الموظفين حسب الحالة" label="" options={[{ value: '', label: 'كل الحالات' }, ...empStatuses]} value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }} />
+        <Select aria-label="تصفية الموظفين حسب الإدارة" label="" options={[{ value: '', label: 'كل الإدارات' }, ...deptOptions]} value={departmentFilter} onChange={(e) => { setDepartmentFilter(e.target.value); setPage(1); }} />
       </div>
+      {actionError && <div role="alert" className="rounded-xl border border-red-700 p-4 text-sm text-red-300">{actionError}</div>}
       {loading ? (
         <div className="flex items-center justify-center h-64">
           <div className="w-10 h-10 border-4 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+        </div>
+      ) : listError ? (
+        <div role="alert" className="scc-card flex flex-col items-center gap-3 p-8">
+          <p className="font-semibold text-red-300">{listError}</p>
+          <Button type="button" variant="ghost" onClick={() => fetchData()}>إعادة المحاولة</Button>
         </div>
       ) : employees.length === 0 ? (
         <div className="scc-card text-center py-14">
