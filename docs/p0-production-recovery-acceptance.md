@@ -41,3 +41,11 @@ This PR did not create, copy, access, overwrite, delete or restore a production 
 | Web build/deploy | Render build-minute quota exhausted | BLOCKED |
 
 **Do not classify production recovery as PASS until the still-outstanding freshness, migrations, role isolation, integrity and full recovery gates are verified. Do not erase the historical PASS evidence.**
+
+## P0 scope and tenant-role findings
+
+- The actual Prisma `UserRole` enum is `SUPER_ADMIN`, `ADMIN`, `MANAGER`, `USER`, `AUDITOR`, `READONLY`. **A separate `SUPERVISOR` role is absent**. Do not claim the user's requested supervisory acceptance is complete by renaming MANAGER without an explicit role/permissions mapping and E2E.
+- In the branch, `TenantService.update` now denies MANAGER and USER as defense-in-depth even if a controller guard is bypassed. A two-company PostgreSQL test covers SUPER_ADMIN, ADMIN, MANAGER and USER scope; this is still test-environment evidence, not an authenticated browser session on production.
+- P0 dashboard fail-closed zero-vs-unknown work is separate in PR #262, CI passed as of 2026-11-27; main/production confirmation remains pending.
+- Vercel has READY deployments, but currently returned web/API deployment SHAs do not match the new P0 branches. Render web builds were blocked by depleted build minutes. Neither proves current P0 changes have shipped.
+- **UI acceptance remains OPEN**: buttons, dropdowns, company creation/edit, record save/reopen and role-specific sessions must be validated on the actual published environment after safe release.
