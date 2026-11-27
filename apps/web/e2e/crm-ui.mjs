@@ -1168,7 +1168,7 @@ async function testCrmLifecycle(page) {
   await page.goto(`${BASE}/dashboard/crm/deals`);
   await page.getByRole('button', { name: 'صفقة جديدة', exact: true }).click();
   await fieldByLabel(page, 'العنوان', 'input').fill('Lifecycle Deal');
-  await chooseComboboxOption(page, 'العميل', 'ابحث بالاسم أو البريد أو الجوال...', 'Lifecycle', 'Lifecycle Contact');
+  await chooseComboboxOption(page, 'العميل', 'ابحث بالاسم أو البريد أو الجوال...', 'Lifecycle', 'Lifecycle Contact Revised');
   await chooseComboboxOption(page, 'الشركة', 'ابحث عن شركة...', 'Lifecycle', 'Lifecycle Company');
   await fieldByLabel(page, 'مسار المبيعات', 'select').selectOption('p-new');
   await fieldByLabel(page, 'المرحلة الديناميكية', 'select').selectOption('s-life');
@@ -1182,7 +1182,7 @@ async function testCrmLifecycle(page) {
   await page.goto(`${BASE}/dashboard/crm/activities`);
   await page.getByRole('button', { name: 'نشاط جديد', exact: true }).click();
   await fieldByLabel(page, 'الموضوع', 'input').fill('Lifecycle Activity');
-  await chooseComboboxOption(page, 'جهة الاتصال', 'ابحث عن جهة اتصال...', 'Lifecycle', 'Lifecycle Contact');
+  await chooseComboboxOption(page, 'جهة الاتصال', 'ابحث عن جهة اتصال...', 'Lifecycle', 'Lifecycle Contact Revised');
   await chooseComboboxOption(page, 'الصفقة', 'ابحث عن صفقة...', 'Lifecycle', 'Lifecycle Deal');
   await page.getByRole('button', { name: 'إنشاء', exact: true }).click();
   await waitUntil(() => lifecycle.activity?.id === 'a-life', 'Lifecycle activity was not created');
