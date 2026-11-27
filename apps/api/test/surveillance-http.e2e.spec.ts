@@ -138,6 +138,22 @@ test('HTTP JWT and tenant boundaries for sites, cameras and maintenance', async 
     const dashcam=await dashResponse.json() as {id:string;cameraType:string;vehicleId:string};
     assert.equal(dashcam.vehicleId,aliceVehicle.id);
     assert.equal(dashcam.cameraType,'DASHCAM_FRONT');
+    const fleetFirst=await (await send('/surveillance/fleet?page=1&size=1',aliceToken)).json() as
+      {total:number;totalPages:number;cameras:Array<{id:string}>};
+    const fleetSecond=await (await send('/surveillance/fleet?page=2&size=1',aliceToken)).json() as
+      {total:number;cameras:Array<{id:string}>};
+    assert.equal(fleetFirst.total,2);
+    assert.equal(fleetFirst.totalPages,2);
+    assert.equal(fleetSecond.total,2);
+    assert.equal(fleetFirst.cameras.length,1);
+    assert.equal(fleetSecond.cameras.length,1);
+    assert.notEqual(fleetFirst.cameras[0].id,fleetSecond.cameras[0].id);
+    const fleetBySite=await (await send('/surveillance/fleet?page=1&siteId='+siteId,aliceToken)).json() as
+      {total:number};
+    assert.equal(fleetBySite.total,2);
+    assert.equal(((await (await send('/surveillance/fleet?search=Vehicle',aliceToken)).json()) as
+      {total:number}).total,1);
+
 
 
     assert.equal((await send('/surveillance/gateways',bobToken,'POST',
