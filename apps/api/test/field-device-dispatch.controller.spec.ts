@@ -62,7 +62,7 @@ test('Google command polling rejects invalid or missing operation status', async
           return { ok: true, status: 200, async json() { return { name: binding.enterpriseName }; } };
         }
         return { ok: true, status: 200, async json() {
-          return { name: 'enterprises/enterprise-a/devices/device-a/operations/op-a' };
+          return { name: 'enterprises/enterprise-a/devices/device-a/operations/op-a', done: 'not-a-boolean' };
         } };
       },
     },
