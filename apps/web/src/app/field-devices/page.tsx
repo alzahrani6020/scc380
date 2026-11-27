@@ -15,6 +15,15 @@ type Device = {
   branchId: string | null;
   lastSeenAt: string | null;
 };
+type DeviceCommand = {
+  id: string;
+  action: string;
+  status: string;
+  reason: string;
+  requestedById: string;
+  approvedById: string | null;
+  createdAt: string;
+};
 type Capabilities = {
   status: string;
   enrollment: { android: string; ios: string };
@@ -38,6 +47,9 @@ export default function FieldDeviceCommandCenter() {
   const [enrollment, setEnrollment] = useState<{deviceId: string; enrollmentQrData: string; expiresAt: string} | null>(null);
   const [enrolling, setEnrolling] = useState(false);
   const [verifying, setVerifying] = useState(false);
+  const [deviceCommands, setDeviceCommands] = useState<DeviceCommand[]>([]);
+  const [commandReason, setCommandReason] = useState('');
+  const [commandBusy, setCommandBusy] = useState(false);
 
   const reload = useCallback(async () => {
     setError('');
@@ -116,6 +128,55 @@ export default function FieldDeviceCommandCenter() {
     } finally { setVerifying(false); }
   };
 
+  const refreshCommands = async (deviceId: string) => {
+    try {
+      const response = await api.get<DeviceCommand[]>('/field-device-commands/' + encodeURIComponent(deviceId));
+      setDeviceCommands(response.data);
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'تعذر قراءة أوامر الجهاز');
+    }
+  };
+
+  const requestLock = async (deviceId: string) => {
+    if (!commandReason.trim() || commandBusy) return;
+    setCommandBusy(true);
+    setError('');
+    try {
+      await api.post('/field-device-commands/' + encodeURIComponent(deviceId), {
+        action: 'LOCK', reason: commandReason.trim(),
+        idempotencyKey: crypto.randomUUID(),
+      });
+      setNotice('سُجل طلب القفل، ويلزم اعتماد مدير آخر قبل إرساله إلى Google.');
+      setCommandReason('');
+      await refreshCommands(deviceId);
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'تعذر إنشاء طلب قفل الجهاز');
+    } finally { setCommandBusy(false); }
+  };
+
+  const processLock = async (deviceId: string, commandId: string,
+    action: 'approve' | 'lock' | 'verify') => {
+    if (commandBusy) return;
+    if (action === 'lock' && !window.confirm('هل تؤكد إرسال أمر قفل لهذا الجهاز المؤسسي؟')) return;
+    setCommandBusy(true);
+    setError('');
+    try {
+      const route = action === 'approve'
+        ? '/field-device-commands/' + encodeURIComponent(deviceId) + '/' + encodeURIComponent(commandId) + '/approve'
+        : '/field-device-dispatch/' + encodeURIComponent(deviceId) + '/' + encodeURIComponent(commandId) +
+          (action === 'lock' ? '/lock' : '/verify');
+      const response = await api.post<{status: string}>(route);
+      setNotice(action === 'approve'
+        ? 'سُجلت الموافقة، ولم يُرسل الأمر بعد.'
+        : 'حالة العملية لدى المزود: ' + response.data.status +
+          '. لا تعتبر هذه النتيجة مشاهدة مستقلة لحالة قفل الشاشة.');
+      await refreshCommands(deviceId);
+    } catch (err: any) {
+      setError(err.response?.data?.message ||
+        'تعذر تنفيذ العملية. لا تعاود الإرسال عند عدم اليقين قبل مراجعة السجل.');
+    } finally { setCommandBusy(false); }
+  };
+
   return (
     <main dir="rtl" className="mx-auto max-w-6xl space-y-6 p-4 text-slate-100 md:p-8">
       <header className="space-y-2">
@@ -171,7 +232,7 @@ export default function FieldDeviceCommandCenter() {
             <p className="text-sm text-slate-300">لا توجد أجهزة مسجلة أو لم تتوفر بيانات.</p> :
             <ul className="space-y-2">
               {devices.map(d => <li key={d.id}>
-                <button onClick={() => { setSelected(d); setEnrollment(null); }} className="flex w-full items-center justify-between rounded-lg border border-slate-700 p-3 text-right hover:bg-slate-800">
+                <button onClick={() => { setSelected(d); setEnrollment(null); setDeviceCommands([]); setCommandReason(''); }} className="flex w-full items-center justify-between rounded-lg border border-slate-700 p-3 text-right hover:bg-slate-800">
                   <span><span className="font-medium">{d.assetTag}</span><span className="mr-3 text-xs text-slate-300">{d.platform}</span></span>
                   <span className="text-xs text-amber-300">{d.managementState === 'UNCONFIGURED' ? 'لم يُربط بـMDM' : d.managementState}</span>
                 </button>
@@ -212,7 +273,52 @@ export default function FieldDeviceCommandCenter() {
             )}
           </div>
         )}
-        <p className="mt-4 text-xs text-amber-300">أوامر التحكم والبث والتتبع معطلة حتى يتم ربط مزود MDM معتمد واجتياز الاختبارات.</p>
+        {selected.platform === 'ANDROID' && selected.managementState === 'MANAGED' && (
+          <section className="mt-5 space-y-3 border-t border-slate-700 pt-4" aria-label="إدارة أوامر القفل">
+            <h3 className="font-semibold">أوامر قفل الجهاز المؤسسي</h3>
+            <p className="text-xs text-slate-300">يتطلب القفل طلبًا معللًا واعتماد مدير مستقل، ثم إرسالًا صريحًا إلى Google. المسح عن بُعد غير مفعّل.</p>
+            <label className="block text-sm">سبب طلب القفل
+              <input value={commandReason} maxLength={500}
+                onChange={e => setCommandReason(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-800 p-2 text-white"
+                placeholder="مثال: بلاغ فقدان هاتف الشركة"/>
+            </label>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" disabled={commandBusy || !commandReason.trim()}
+                onClick={() => void requestLock(selected.id)}
+                className="rounded-lg border border-sky-600 px-3 py-2 text-sm disabled:opacity-50">طلب قفل</button>
+              <button type="button" disabled={commandBusy}
+                onClick={() => void refreshCommands(selected.id)}
+                className="rounded-lg border border-slate-600 px-3 py-2 text-sm disabled:opacity-50">تحديث سجل الأوامر</button>
+            </div>
+            {deviceCommands.length === 0 && <p className="text-xs text-slate-400">اضغط تحديث سجل الأوامر لعرض الطلبات الحالية.</p>}
+            <ul className="space-y-2">
+              {deviceCommands.filter(cmd => cmd.action === 'LOCK').map(cmd => (
+                <li key={cmd.id} className="space-y-2 rounded-lg border border-slate-700 p-3">
+                  <p className="text-sm">{cmd.reason} — <strong>{cmd.status}</strong></p>
+                  <div className="flex flex-wrap gap-2">
+                    {cmd.status === 'NOT_DISPATCHED' && !cmd.approvedById && (
+                      <button type="button" disabled={commandBusy}
+                        onClick={() => void processLock(selected.id, cmd.id, 'approve')}
+                        className="rounded border border-slate-500 px-2 py-1 text-xs disabled:opacity-50">اعتماد مدير ثانٍ</button>
+                    )}
+                    {cmd.status === 'NOT_DISPATCHED' && cmd.approvedById && (
+                      <button type="button" disabled={commandBusy}
+                        onClick={() => void processLock(selected.id, cmd.id, 'lock')}
+                        className="rounded border border-amber-600 px-2 py-1 text-xs disabled:opacity-50">إرسال أمر القفل</button>
+                    )}
+                    {['PROVIDER_ACCEPTED', 'PROVIDER_PENDING', 'PROVIDER_COMPLETED', 'PROVIDER_FAILED'].includes(cmd.status) && (
+                      <button type="button" disabled={commandBusy}
+                        onClick={() => void processLock(selected.id, cmd.id, 'verify')}
+                        className="rounded border border-slate-500 px-2 py-1 text-xs disabled:opacity-50">تحقق من نتيجة Google</button>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+        <p className="mt-4 text-xs text-amber-300">مسح الجهاز والبث والتتبع المباشر ما زالت غير مفعلة. استجابة Google لأمر القفل ليست دليلًا مرئيًا مستقلًا على قفل الشاشة.</p>
       </section>}
     </main>
   );
