@@ -47,3 +47,28 @@ Go back to the same workspace, refresh cameras and `ربط الفروع`: verify
 - No real video, audio, GPS location or ONVIF support is proved by this procedure
 
 Use the [real-device runbook](surveillance-on-prem-runbook.md) for physical cameras.
+
+## Keep the simulation status fresh for a limited trial
+
+Use the recurring foreground watchdog after the one-shot test has passed with a valid, **non-revoked** gateway key. This is deliberately **not** a Windows service or persistent scheduled task; closing the terminal stops it, and credentials are not saved in a file.
+
+```powershell
+$repo = 'C:\Users\vip\scc380-camera-agent'
+git -C $repo status --short
+git -C $repo pull --ff-only origin main
+$watch = Join-Path $repo 'scripts\surveillance-windows-watch.ps1'
+powershell.exe -NoProfile -File $watch -ProbeOnly -MaxCycles 2 -IntervalSeconds 1
+```
+
+Expected offline result: `LOCAL_RTSP_SIMULATION_PASS`, `LOCAL_PROBE_PASS cycle=1`, `LOCAL_PROBE_PASS cycle=2`, `WATCH_COMPLETED cycles=2`. This phase makes no production API requests and needs no token.
+
+For a bounded authorized five-minute trial (five authenticated reports, 60 seconds apart), on a connected Windows machine:
+
+```powershell
+$watch = 'C:\Users\vip\scc380-camera-agent\scripts\surveillance-windows-watch.ps1'
+powershell.exe -NoProfile -File $watch -CameraId 'cmwya84cq000rr04fznu7n7fr' -IntervalSeconds 60 -MaxCycles 5
+```
+
+Enter the **current** private gateway token interactively when prompted. Do not paste it into chat or save it in a file; any token shown in a screenshot should be revoked first. Keep the window open, use `Ctrl+C` to stop it early. Stop the watchdog before revoking the token or switching tenants. A rejected heartbeat causes the watchdog to **stop** instead of retrying indefinitely. The temporary camera list is removed and the token environment variable cleared on normal exit/errors. The simulator binds only to loopback and performs **RTSP OPTIONS**, not live footage playback.
+
+For a continuously running foreground session, omit `-MaxCycles 5`, but only after the bounded trial is verified in the same workspace. A single run every 60 seconds is not a production SLA or long-term resilient service; production installations need a separately reviewed service manager and protected credential store, not saved plaintext tokens.

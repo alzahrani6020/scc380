@@ -10,6 +10,7 @@ on:
       - 'scripts/surveillance-site-agent.mjs'
       - 'scripts/surveillance-rtsp-simulator*.mjs'
       - 'scripts/surveillance-windows-simulation.ps1'
+      - 'scripts/surveillance-windows-watch.ps1'
       - 'scripts/surveillance-onvif-ptz*.mjs'
       - 'scripts/surveillance-media-config*.mjs'
       - 'apps/web/src/app/dashboard/surveillance/**'
@@ -68,3 +69,16 @@ jobs:
           node --test scripts/surveillance-onvif-ptz.spec.mjs scripts/surveillance-media-config.spec.mjs
       - name: Verify two-tenant isolation and lifecycle
         run: pnpm --filter @scc/api exec tsx --test --test-concurrency=1 test/surveillance-db.e2e.spec.ts test/surveillance-http.e2e.spec.ts test/surveillance-real-edge.e2e.spec.ts
+
+  windows-watch-probe:
+    runs-on: windows-2022
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Test Windows loopback-only simulator monitoring for two cycles
+        shell: powershell
+        run: |
+          .\\scripts\\surveillance-windows-watch.ps1 -ProbeOnly -MaxCycles 2 -IntervalSeconds 1
