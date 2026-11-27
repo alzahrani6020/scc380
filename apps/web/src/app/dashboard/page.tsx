@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import api from '@/lib/api';
+import { isVerifiedDashboardPayload } from '@/lib/dashboard-data-integrity';
 import { isVIP } from '@/lib/auth';
 import AlertsWidget from '@/components/AlertsWidget';
 import {
@@ -97,21 +98,11 @@ export default function DashboardPage() {
     );
   }
 
-  const requiredCounts = ['contacts', 'deals', 'employees', 'vehicles', 'invoices'] as const;
-  const validTotals = !!stats && !!stats.counts && requiredCounts.every(key =>
-    typeof stats.counts[key] === 'number' &&
-    Number.isSafeInteger(stats.counts[key]) && stats.counts[key] >= 0
-  ) && stats.revenue?.invoices !== undefined && stats.revenue?.invoices !== null &&
-    Number.isFinite(Number(stats.revenue.invoices));
-  const validBreakdowns =
-    Array.isArray(revenueTrend) &&
-    Array.isArray(crmData?.byStage) &&
-    Array.isArray(erpData?.byStatus) &&
-    Array.isArray(fleetData?.byStatus);
+  const validDashboard = isVerifiedDashboardPayload(stats, revenueTrend, crmData, erpData, fleetData);
 
   // P0 data integrity: missing API data is UNKNOWN, never silently a company-wide zero.
   // Promise.all is all-or-nothing; refuse to show misleading partial statistics.
-  if (loadError || !validTotals || !validBreakdowns) {
+  if (loadError || !validDashboard) {
     return (
       <section role="alert" dir="rtl" className="rounded-xl border border-amber-700 bg-slate-900 p-6 text-slate-100">
         <h1 className="text-xl font-bold">تعذر التحقق من بيانات لوحة التحكم</h1>
