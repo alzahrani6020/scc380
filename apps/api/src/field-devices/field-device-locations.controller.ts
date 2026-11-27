@@ -21,7 +21,7 @@ export class FieldDeviceLocationsController {
       throw new ForbiddenException('Verified management and employee notice required');
     }
     return prisma.fieldDeviceLocation.findMany({
-      where: { tenantId: user.tenantId, deviceId, shift: { startedAt: { lte: new Date() } } },
+      where: { tenantId: user.tenantId, deviceId },
       select: { id: true, shiftId: true, recordedAt: true, receivedAt: true,
         latitude: true, longitude: true, accuracyMeters: true, source: true },
       orderBy: { recordedAt: 'desc' }, take: 100,
