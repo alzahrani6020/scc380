@@ -194,7 +194,7 @@ export class AndroidManagementAdapter implements MdmAdapter {
 
   async submitCommand(tenantId: string, providerDeviceId: string, action: DeviceCommandAction):
     Promise<ProviderCommandResult> {
-    if (!['LOCK', 'WIPE'].includes(action)) throw new Error('ANDROID_COMMAND_NOT_SUPPORTED');
+    if (action !== 'LOCK') throw new Error('ANDROID_COMMAND_NOT_SUPPORTED');
     const binding = this.binding(tenantId);
     if (!DEVICE.test(providerDeviceId) ||
       !providerDeviceId.startsWith(binding.enterpriseName + '/devices/')) {
