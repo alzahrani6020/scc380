@@ -53,12 +53,21 @@ export class FieldDeviceDispatchController {
     if (!(await adapter.verifyTenantConnection(tenantId))) {
       throw new ServiceUnavailableException('Android Enterprise connection not verified');
     }
-    const claimed = await prisma.fieldDeviceCommand.updateMany({
-      where: { id: commandId, tenantId, deviceId, action: 'LOCK',
-        approvedById: command.approvedById, status: 'NOT_DISPATCHED' },
-      data: { status: 'DISPATCH_UNCERTAIN' },
+    const claimed = await prisma.$transaction(async tx => {
+      const updated = await tx.fieldDeviceCommand.updateMany({
+        where: { id: commandId, tenantId, deviceId, action: 'LOCK',
+          approvedById: command.approvedById, status: 'NOT_DISPATCHED' },
+        data: { status: 'DISPATCH_UNCERTAIN' },
+      });
+      if (!updated.count) return false;
+      await tx.fieldDeviceAudit.create({ data: {
+        tenantId, deviceId, actorUserId: actorId, action: 'LOCK_DISPATCH_CLAIM',
+        decision: 'DISPATCH_UNCERTAIN',
+        reason: 'Single dispatch claimed; provider outcome not established',
+      } });
+      return true;
     });
-    if (!claimed.count) throw new ConflictException('Command already claimed for dispatch');
+    if (!claimed) throw new ConflictException('Command already claimed for dispatch');
     // A crash or network timeout here stays UNCERTAIN. Never auto-retry.
     try {
       const receipt = await adapter.submitCommand(tenantId, device.providerDeviceId, 'LOCK');
