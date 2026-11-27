@@ -28,6 +28,6 @@ test('localhost simulator answers actual RTSP OPTIONS, rejects invalid requests 
   }
 });
 test('forbids privileged and invalid simulation ports',async()=>{
-  await assert.rejects(startRtspSimulator(554),/unprivileged/);
-  await assert.rejects(startRtspSimulator(65536),/unprivileged/);
+  assert.throws(()=>startRtspSimulator(554),/unprivileged/);
+  assert.throws(()=>startRtspSimulator(65536),/unprivileged/);
 });
