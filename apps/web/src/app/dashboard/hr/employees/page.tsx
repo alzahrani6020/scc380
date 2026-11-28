@@ -30,6 +30,8 @@ export default function HrPage() {
   const [departments, setDepartments] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [listError, setListError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState('');
@@ -39,11 +41,40 @@ export default function HrPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [formLoading, setFormLoading] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const [formData, setFormData] = useState<any>({});
 
+  const [lookupError, setLookupError] = useState<string | null>(null);
+
+  const loadLookups = async () => {
+    setLookupError(null);
+    const [departmentResult, userResult] = await Promise.allSettled([
+      api.get('/hr/departments'),
+      api.get('/users?status=ACTIVE'),
+    ]);
+    const failures: string[] = [];
+    if (departmentResult.status === 'fulfilled' &&
+        Array.isArray(departmentResult.value.data?.data)) {
+      setDepartments(departmentResult.value.data.data);
+    } else {
+      setDepartments([]);
+      failures.push('الإدارات');
+    }
+    if (userResult.status === 'fulfilled' &&
+        Array.isArray(userResult.value.data?.data)) {
+      setUsers(userResult.value.data.data);
+    } else {
+      setUsers([]);
+      failures.push('حسابات المستخدمين');
+    }
+    if (failures.length) setLookupError(
+      'تعذر تحميل خيارات ' + failures.join(' و ') +
+      '. عدم ظهور الخيارات لا يثبت عدم وجودها.'
+    );
+  };
+
   useEffect(() => {
-    api.get('/hr/departments').then(r => setDepartments(r.data.data || [])).catch(console.error);
-    api.get('/users?status=ACTIVE').then(r => setUsers(r.data.data || [])).catch(console.error);
+    void loadLookups();
   }, []);
 
   useEffect(() => {
@@ -53,27 +84,36 @@ export default function HrPage() {
 
   const fetchData = () => {
     setLoading(true);
+    setListError(null);
     const params = new URLSearchParams({ page: String(page), limit: '25' });
     if (search.trim()) params.set('search', search.trim());
     if (statusFilter) params.set('status', statusFilter);
     if (departmentFilter) params.set('departmentId', departmentFilter);
     api.get('/hr/employees?' + params.toString())
       .then(r => {
-        setEmployees(r.data.data || []);
-        setTotal(Number(r.data.count || 0));
-        setTotalPages(Number(r.data.totalPages || 1));
+        const body = r.data;
+        if (!body || !Array.isArray(body.data) ||
+            !Number.isSafeInteger(body.count) || body.count < 0 ||
+            !Number.isSafeInteger(body.totalPages) || body.totalPages < 1) {
+          throw new Error('HR_EMPLOYEES_INVALID_RESPONSE');
+        }
+        setEmployees(body.data);
+        setTotal(body.count);
+        setTotalPages(body.totalPages);
       })
-      .catch(console.error)
+      .catch(() => setListError('تعذر التحقق من بيانات الموظفين. القائمة غير متاحة وليست فارغة.'))
       .finally(() => setLoading(false));
   };
 
   const openCreate = () => {
+    setFormError(null);
     setEditing(null);
     setFormData({ employmentType: 'FULL_TIME', status: 'ACTIVE', nationality: 'SA' });
     setIsModalOpen(true);
   };
 
   const openEdit = (item: any) => {
+    setFormError(null);
     setEditing(item);
     setFormData({
       employeeCode: item.employeeCode,
@@ -105,6 +145,7 @@ export default function HrPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError(null);
     setFormLoading(true);
     try {
       const payload = {
@@ -137,16 +178,27 @@ export default function HrPage() {
         const created = await api.post('/hr/employees', payload);
         employeeId = created.data.id;
       }
+      // Saving an employee and linking a login are separate committed operations.
+      // A failed link must not be reported as a failed save: retrying creation
+      // could otherwise create a duplicate employee record.
+      let linkFailure = false;
       if (formData.userId && formData.userId !== editing?.userId) {
-        await api.post(`/hr/employees/${employeeId}/link-user`, { userId: formData.userId });
+        try {
+          await api.post(`/hr/employees/${employeeId}/link-user`, { userId: formData.userId });
+        } catch { linkFailure = true; }
       } else if (!formData.userId && editing?.userId) {
-        await api.delete(`/hr/employees/${employeeId}/link-user`);
+        try {
+          await api.delete(`/hr/employees/${employeeId}/link-user`);
+        } catch { linkFailure = true; }
       }
       setIsModalOpen(false);
+      setActionError(linkFailure
+        ? 'تم حفظ بيانات الموظف، لكن ربط حساب الدخول أو فصله لم ينجح. راجع الملف قبل إعادة المحاولة ولا تنشئ موظفًا مكررًا.'
+        : null);
       setPage(1);
       fetchData();
     } catch (err) {
-      alert('تعذر حفظ بيانات الموظف');
+      setFormError('تعذر حفظ بيانات الموظف. لم يتم تأكيد الحفظ؛ تحقق من البيانات والاتصال ثم أعد المحاولة.');
     } finally {
       setFormLoading(false);
     }
@@ -177,8 +229,13 @@ export default function HrPage() {
 
   const handleTerminate = async (id: string) => {
     if (!confirm('سيتم إنهاء خدمة الموظف مع الاحتفاظ بسجلاته. هل تريد المتابعة؟')) return;
-    await api.delete(`/hr/employees/${id}`);
-    if (employees.length === 1 && page > 1) setPage(page - 1); else fetchData();
+    setActionError(null);
+    try {
+      await api.delete(`/hr/employees/${id}`);
+      if (employees.length === 1 && page > 1) setPage(page - 1); else fetchData();
+    } catch {
+      setActionError('تعذر إنهاء خدمة الموظف. لم يُثبت حفظ هذا الإجراء. تحقق من الاتصال والصلاحيات.');
+    }
   };
 
   const deptOptions = departments.map(d => ({ value: d.id, label: d.name }));
@@ -195,7 +252,7 @@ export default function HrPage() {
             <Briefcase className="h-6 w-6 text-primary-400" />
             مكين - الموارد البشرية
           </h1>
-          <p className="text-slate-400 text-sm mt-1">منصة مكين لإدارة الموارد البشرية داخل SCC 380 — {total} موظف</p>
+          <p className="text-slate-400 text-sm mt-1">منصة مكين لإدارة الموارد البشرية داخل SCC 380 — {listError ? 'عدد الموظفين غير متحقق' : loading ? 'جار تحميل الموظفين' : total + ' موظف'}</p>
         </div>
         <Button onClick={openCreate}><Plus className="h-5 w-5" /> إضافة موظف</Button>
       </div>
@@ -204,12 +261,24 @@ export default function HrPage() {
           <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-500" />
           <input type="text" placeholder="البحث بالاسم أو الكود أو المسمى..." className="scc-input pr-10" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
         </div>
-        <Select label="" options={[{ value: '', label: 'كل الحالات' }, ...empStatuses]} value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }} />
-        <Select label="" options={[{ value: '', label: 'كل الإدارات' }, ...deptOptions]} value={departmentFilter} onChange={(e) => { setDepartmentFilter(e.target.value); setPage(1); }} />
+        <Select aria-label="تصفية الموظفين حسب الحالة" label="" options={[{ value: '', label: 'كل الحالات' }, ...empStatuses]} value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }} />
+        <Select aria-label="تصفية الموظفين حسب الإدارة" label="" options={[{ value: '', label: 'كل الإدارات' }, ...deptOptions]} value={departmentFilter} onChange={(e) => { setDepartmentFilter(e.target.value); setPage(1); }} />
       </div>
+      {lookupError && (
+        <div role="alert" className="rounded-xl border border-amber-700 bg-slate-900 p-4 text-sm text-amber-300">
+          <p>{lookupError}</p>
+          <Button type="button" variant="ghost" onClick={() => void loadLookups()}>إعادة تحميل الخيارات</Button>
+        </div>
+      )}
+      {actionError && <div role="alert" className="rounded-xl border border-red-700 p-4 text-sm text-red-300">{actionError}</div>}
       {loading ? (
         <div className="flex items-center justify-center h-64">
           <div className="w-10 h-10 border-4 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+        </div>
+      ) : listError ? (
+        <div role="alert" className="scc-card flex flex-col items-center gap-3 p-8">
+          <p className="font-semibold text-red-300">{listError}</p>
+          <Button type="button" variant="ghost" onClick={() => fetchData()}>إعادة المحاولة</Button>
         </div>
       ) : employees.length === 0 ? (
         <div className="scc-card text-center py-14">
@@ -221,18 +290,18 @@ export default function HrPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {employees.map((emp) => (
             <div key={emp.id} className="scc-card-hover group">
-              <div className="flex items-start gap-4">
+              <div className="flex flex-wrap items-start gap-3">
                 <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg shrink-0">
                   {emp.firstName?.charAt(0)}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <Link href={`/dashboard/hr/employees/${emp.id}`} className="font-bold text-white truncate hover:text-primary-400 block">{emp.firstName} {emp.lastName}</Link>
+                  <Link href={`/dashboard/hr/employees/${emp.id}`} className="font-bold text-white break-words hover:text-primary-400 block">{emp.firstName} {emp.lastName}</Link>
                   <p className="text-slate-400 text-sm">{emp.jobTitle || '—'}</p>
                 </div>
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="flex w-full flex-wrap items-center justify-end gap-2 opacity-100 transition-opacity">
                   <Link href={`/dashboard/hr/documents?employeeId=${emp.id}`} className="p-1.5 rounded-lg hover:bg-emerald-500/10 text-emerald-400" title="مستندات الموظف"><FolderOpen className="h-4 w-4" /></Link>
-                  <button onClick={() => window.open('/dashboard/templates?search=عقد+عمل', '_blank')} className="p-1.5 rounded-lg hover:bg-blue-500/10 text-blue-400" title="تصدير كنموذج"><FileText className="h-4 w-4" /></button>
-                  <button onClick={() => openEdit(emp)} className="p-1.5 rounded-lg hover:bg-primary-500/10 text-primary-400"><Pencil className="h-4 w-4" /></button>
+                  <button type="button" aria-label="فتح نموذج عقد العمل" onClick={() => window.open('/dashboard/templates?search=عقد+عمل', '_blank')} className="p-1.5 rounded-lg hover:bg-blue-500/10 text-blue-400" title="تصدير كنموذج"><FileText className="h-4 w-4" /></button>
+                  <button type="button" aria-label="تعديل موظف" onClick={() => openEdit(emp)} className="p-1.5 rounded-lg hover:bg-primary-500/10 text-primary-400"><Pencil className="h-4 w-4" /></button>
                   {emp.email && emp.status !== 'TERMINATED' && (!emp.userId || emp.user?.status === 'PENDING_VERIFICATION') && (
                     <button
                       onClick={() => provisionSelfService(emp)}
@@ -242,7 +311,7 @@ export default function HrPage() {
                       <UserPlus className="h-4 w-4" />
                     </button>
                   )}
-                  {emp.status !== 'TERMINATED' && <button onClick={() => handleTerminate(emp.id)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-400" title="إنهاء الخدمة"><UserMinus className="h-4 w-4" /></button>}
+                  {emp.status !== 'TERMINATED' && <button type="button" aria-label="إنهاء خدمة الموظف" onClick={() => handleTerminate(emp.id)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-400" title="إنهاء الخدمة"><UserMinus className="h-4 w-4" /></button>}
                 </div>
               </div>
               <div className="mt-4 space-y-2 text-sm">
@@ -260,7 +329,9 @@ export default function HrPage() {
           ))}
         </div>
       )}
-      <PaginationControls page={page} totalPages={totalPages} total={total} onPageChange={setPage} />
+      {!loading && !listError && (
+        <PaginationControls page={page} totalPages={totalPages} total={total} onPageChange={setPage} />
+      )}
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editing ? 'تعديل موظف' : 'موظف جديد'} size="xl">
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -287,6 +358,7 @@ export default function HrPage() {
             <Input label="هاتف الطوارئ" value={formData.emergencyContactPhone || ''} onChange={(e) => setFormData({ ...formData, emergencyContactPhone: e.target.value })} />
             <Select label="حساب الخدمة الذاتية" options={userOptions} value={formData.userId || ''} onChange={(e) => setFormData({ ...formData, userId: e.target.value })} />
           </div>
+          {formError && <p role="alert" className="text-sm text-red-300">{formError}</p>}
           <div className="flex justify-end gap-3 pt-2">
             <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}><X className="h-4 w-4" /> إلغاء</Button>
             <Button type="submit" isLoading={formLoading}>{editing ? 'حفظ' : 'إنشاء'}</Button>

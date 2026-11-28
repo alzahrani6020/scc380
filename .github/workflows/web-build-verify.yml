@@ -45,4 +45,6 @@ jobs:
 
       # Live API login acceptance runs separately by explicit dispatch.
       # Repeated PR probes trigger production auth rate limiting (HTTP 429).
+      - name: Prove dashboard zero-versus-unknown behavior
+        run: pnpm exec tsx --test apps/web/test/dashboard-data-integrity.spec.ts
       - run: pnpm --filter @scc/web build

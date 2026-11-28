@@ -324,8 +324,8 @@ export default function CrmPage() {
                     <p className="text-slate-400 text-sm">{contact.company?.name || contact.companyName || '—'}</p>
                   </div>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => openEdit(contact)} className="p-1.5 rounded-lg hover:bg-primary-500/10 text-primary-400"><Pencil className="h-4 w-4" /></button>
-                    <button onClick={() => handleDelete(contact.id)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-400"><Trash2 className="h-4 w-4" /></button>
+                    <button type="button" aria-label="تعديل جهة اتصال" onClick={() => openEdit(contact)} className="p-1.5 rounded-lg hover:bg-primary-500/10 text-primary-400"><Pencil className="h-4 w-4" /></button>
+                    <button type="button" aria-label="حذف جهة اتصال" onClick={() => handleDelete(contact.id)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-400"><Trash2 className="h-4 w-4" /></button>
                   </div>
                   <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
                     contact.type === 'CUSTOMER' ? 'bg-emerald-500/20 text-emerald-400' :
