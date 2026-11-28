@@ -1,0 +1,82 @@
+name: SCC380 S3 Conditional Write Integration
+on:
+  pull_request:
+    paths:
+      - 'ops/backup/**'
+      - '.github/workflows/scc380-backup-s3-conditional.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  s3-conditional-write:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      AWS_ACCESS_KEY_ID: scc380-ci-only
+      AWS_SECRET_ACCESS_KEY: scc380-ci-isolated-test-secret
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_EC2_METADATA_DISABLED: 'true'
+      AWS_ENDPOINT_URL: http://127.0.0.1:9000
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Start isolated S3-compatible service
+        run: |
+          set -euo pipefail
+          docker run -d --name scc380-s3-ci -p 127.0.0.1:9000:9000 \
+            -e MINIO_ROOT_USER="$AWS_ACCESS_KEY_ID" \
+            -e MINIO_ROOT_PASSWORD="$AWS_SECRET_ACCESS_KEY" \
+            quay.io/minio/minio:RELEASE.2025-02-07T23-21-09Z server /data
+          for i in $(seq 1 45); do
+            if curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null
+          aws --version
+          aws s3api create-bucket --bucket scc380-ci-no-overwrite
+      - name: Verify conditional PUT rejects overwrites and simultaneous writers
+        run: |
+          set -euo pipefail
+          script=ops/backup/scc380-encrypted-backup.sh
+          grep -Fq -- '--if-none-match "*"' "$script"
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+          printf 'original-archive-never-overwrite' > "$work/original"
+          printf 'attempted-unsafe-replacement' > "$work/replacement"
+          bucket=scc380-ci-no-overwrite
+          key=scc380/postgres17/atomic-test.pgdump.gpg
+          aws s3api put-object --bucket "$bucket" --key "$key" --if-none-match '*' --body "$work/original" >/dev/null
+          if aws s3api put-object --bucket "$bucket" --key "$key" --if-none-match '*' \
+              --body "$work/replacement" > "$work/rejected.log" 2>&1; then
+            echo 'FAIL: existing S3 object overwritten'
+            exit 1
+          fi
+          aws s3api get-object --bucket "$bucket" --key "$key" "$work/downloaded" >/dev/null
+          cmp "$work/original" "$work/downloaded"
+          echo 'PASS: actual conditional S3 API refused overwrite and preserved existing bytes'
+          key=scc380/postgres17/concurrent-test.pgdump.gpg
+          set +e
+          aws s3api put-object --bucket "$bucket" --key "$key" --if-none-match '*' \
+            --body "$work/original" > "$work/out1" 2>&1 &
+          p1=$!
+          aws s3api put-object --bucket "$bucket" --key "$key" --if-none-match '*' \
+            --body "$work/replacement" > "$work/out2" 2>&1 &
+          p2=$!
+          wait "$p1"; s1=$?
+          wait "$p2"; s2=$?
+          set -e
+          if [[ "$s1" -eq 0 && "$s2" -ne 0 ]]; then
+            expected="$work/original"
+          elif [[ "$s1" -ne 0 && "$s2" -eq 0 ]]; then
+            expected="$work/replacement"
+          else
+            echo "FAIL: expected exactly one writer to succeed; status=$s1,$s2"
+            exit 1
+          fi
+          aws s3api get-object --bucket "$bucket" --key "$key" "$work/concurrent-downloaded" >/dev/null
+          cmp "$expected" "$work/concurrent-downloaded"
+          echo 'PASS: concurrent S3 conditional writes accepted one winner with intact bytes'
+      - name: Cleanup isolated container
+        if: always()
+        run: docker rm -f scc380-s3-ci || true
