@@ -62,8 +62,18 @@ fi
 
 # Persist the validated archive BEFORE restoration. A restore error must never
 # erase the only backup. Keep it marked unverified until integrity checks pass.
-dest="$BACKUP_DIR/scc380-unverified-$(date -u +%Y%m%dT%H%M%SZ)-$.dump"
-mv -- "$tmp" "$dest"
+# Unique process/random suffix plus no-clobber prevents accidental overwrite of an
+# earlier backup made in the same second by another recovery attempt.
+dest="$BACKUP_DIR/scc380-unverified-$(date -u +%Y%m%dT%H%M%SZ)-$-$RANDOM.dump"
+if [[ -e "$dest" ]]; then
+  echo 'FAIL: archive destination already exists; refusing overwrite' >&2
+  exit 4
+fi
+mv --no-clobber -- "$tmp" "$dest"
+if [[ -e "$tmp" || ! -s "$dest" ]]; then
+  echo 'FAIL: backup archive could not be persisted without overwrite' >&2
+  exit 4
+fi
 trap - EXIT
 # Restore is attempted ONLY after the target's identity and emptiness checks.
 PGCONNECT_TIMEOUT=10 pg_restore --exit-on-error --single-transaction --no-owner --no-privileges --dbname="$RESTORE_DATABASE_URL" "$dest"
@@ -83,8 +93,16 @@ if [[ "$failed_migrations" != "0" ]]; then
   echo 'FAIL: restored database contains unfinished migration history' >&2
   exit 5
 fi
-verified="$BACKUP_DIR/scc380-verified-$(date -u +%Y%m%dT%H%M%SZ)-$.dump"
-mv -- "$dest" "$verified"
+verified="$BACKUP_DIR/scc380-verified-$(date -u +%Y%m%dT%H%M%SZ)-$-$RANDOM.dump"
+if [[ -e "$verified" ]]; then
+  echo 'FAIL: verified archive filename collision; unverified backup retained' >&2
+  exit 5
+fi
+mv --no-clobber -- "$dest" "$verified"
+if [[ -e "$dest" || ! -s "$verified" ]]; then
+  echo 'FAIL: verified archive could not be promoted; unverified backup retained' >&2
+  exit 5
+fi
 dest="$verified"
 echo 'STATUS: PASS - BACKUP_RESTORED_TO_ISOLATED_DATABASE'
 printf 'SOURCE_DB: %s\nRESTORE_DB: %s\nBACKUP: %s\n' "$source_db" "$target_db" "$dest"
