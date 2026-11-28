@@ -37,6 +37,8 @@ jobs:
           grep -Fq '"$target_tables" != "0"' "$file"
           grep -Fq -- '--single-transaction' "$file"
           grep -Fq -- '--exit-on-error' "$file"
+          grep -Fq -- 'mv --no-clobber -- "$tmp" "$dest"' "$file"
+          grep -Fq -- 'mv --no-clobber -- "$dest" "$verified"' "$file"
           if grep -Eq '(^|[[:space:]])(DROP DATABASE|DROP TABLE|TRUNCATE|--clean|--create)([[:space:]]|$)' "$file"; then
             echo 'FAIL: destructive backup verifier command' >&2
             exit 1
@@ -45,6 +47,7 @@ jobs:
           docker exec -e PGPASSWORD=fixture-only "$cid" psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE scc_ci_fixture'
           docker exec -e PGPASSWORD=fixture-only "$cid" psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE scc_main_qbf1'
           docker exec -e PGPASSWORD=fixture-only "$cid" psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE scc380_restore_acceptance'
+          docker exec -e PGPASSWORD=fixture-only "$cid" psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE scc380_restore_acceptance_again'
           docker exec -e PGPASSWORD=fixture-only "$cid" psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE scc380_nonempty'
           docker exec -e PGPASSWORD=fixture-only "$cid" psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE scc380_restore_failure'
           docker exec -e PGPASSWORD=fixture-only -i "$cid" psql -h localhost -U postgres -d scc_ci_fixture -v ON_ERROR_STOP=1 <<'SQL'
@@ -97,3 +100,20 @@ jobs:
           docker exec -e PGPASSWORD=fixture-only "$cid" psql -h localhost -U postgres -d scc380_restore_acceptance -tAc 'SELECT count(*) FROM tenants' | grep -qx 1
           docker exec -e PGPASSWORD=fixture-only "$cid" psql -h localhost -U postgres -d scc380_restore_acceptance -tAc 'SELECT count(*) FROM pos_orders' | grep -qx 1
           echo 'PASS: real isolated PostgreSQL 17 archive and restore verified'
+          # Repeat archive creation into the SAME backup folder, retaining
+          # the original verified archive and its digest without any clobber.
+          initial_checksum="$(docker exec "$cid" bash -c 'set -e; sha256sum /tmp/fixture-backup/scc380-verified-*.dump')"
+          docker exec -e EXPECTED_SOURCE_DB=scc_ci_fixture -e DATABASE_URL="$source_url" \
+            -e RESTORE_DATABASE_URL='postgresql://postgres:fixture-only@localhost:5432/scc380_restore_acceptance_again' \
+            -e BACKUP_DIR=/tmp/fixture-backup "$cid" bash /verify-scc380.sh | tee backup-repeat-result.log
+          grep -Fq 'STATUS: PASS - BACKUP_RESTORED_TO_ISOLATED_DATABASE' backup-repeat-result.log
+          archive_count="$(docker exec "$cid" bash -c 'find /tmp/fixture-backup -maxdepth 1 -type f -name "scc380-verified-*.dump" | wc -l')"
+          test "$archive_count" = '2'
+          docker exec "$cid" bash -c 'set -e; for f in /tmp/fixture-backup/scc380-verified-*.dump; do sha256sum "$f"; done' > backup-digests.txt
+          while read -r checksum filename; do
+            grep -Fxq "$checksum  $filename" backup-digests.txt
+          done <<< "$initial_checksum"
+          docker exec -e PGPASSWORD=fixture-only "$cid" psql -h localhost -U postgres \
+            -d scc380_restore_acceptance_again -tAc 'SELECT count(*) FROM tenants' | grep -qx 1
+          echo 'PASS: repeated backup retained the original verified archive and SHA256'
+
