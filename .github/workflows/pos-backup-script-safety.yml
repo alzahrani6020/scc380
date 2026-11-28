@@ -37,50 +37,83 @@ jobs:
           grep -Fq '"$target_tables" != "0"' "$file"
           grep -Fq -- '--single-transaction' "$file"
           grep -Fq -- '--exit-on-error' "$file"
+          grep -Fq -- 'mv --no-clobber -- "$tmp" "$dest"' "$file"
+          grep -Fq -- 'mv --no-clobber -- "$dest" "$verified"' "$file"
           if grep -Eq '(^|[[:space:]])(DROP DATABASE|DROP TABLE|TRUNCATE|--clean|--create)([[:space:]]|$)' "$file"; then
             echo 'FAIL: destructive backup verifier command' >&2
             exit 1
           fi
           cid="${{ job.services.postgres.id }}"
+          docker exec -e PGPASSWORD=fixture-only "$cid" psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE scc_ci_fixture'
           docker exec -e PGPASSWORD=fixture-only "$cid" psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE scc_main_qbf1'
           docker exec -e PGPASSWORD=fixture-only "$cid" psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE scc380_restore_acceptance'
+          docker exec -e PGPASSWORD=fixture-only "$cid" psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE scc380_restore_acceptance_again'
           docker exec -e PGPASSWORD=fixture-only "$cid" psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE scc380_nonempty'
           docker exec -e PGPASSWORD=fixture-only "$cid" psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE scc380_restore_failure'
-          docker exec -e PGPASSWORD=fixture-only -i "$cid" psql -h localhost -U postgres -d scc_main_qbf1 -v ON_ERROR_STOP=1 <<'SQL'
+          docker exec -e PGPASSWORD=fixture-only -i "$cid" psql -h localhost -U postgres -d scc_ci_fixture -v ON_ERROR_STOP=1 <<'SQL'
           CREATE TABLE tenants(id text primary key);
           CREATE TABLE products(id text primary key);
           CREATE TABLE pos_orders(id text primary key);
           CREATE TABLE chart_of_accounts(id text primary key);
+          CREATE TABLE _prisma_migrations(id text primary key, finished_at timestamptz, rolled_back_at timestamptz);
           INSERT INTO tenants VALUES ('fixture-tenant');
           INSERT INTO products VALUES ('fixture-product');
           INSERT INTO pos_orders VALUES ('fixture-order');
           INSERT INTO chart_of_accounts VALUES ('fixture-account');
+          INSERT INTO _prisma_migrations VALUES ('ci-fixture-migration', now(), null);
           SQL
           docker exec -e PGPASSWORD=fixture-only "$cid" psql -h localhost -U postgres -d scc380_nonempty -v ON_ERROR_STOP=1 -c 'CREATE TABLE keep_me(id int)'
           # A view is not a table, so the empty-table guard passes, but restoring a
           # table of the same name must fail. The backup must still be retained.
           docker exec -e PGPASSWORD=fixture-only "$cid" psql -h localhost -U postgres -d scc380_restore_failure -v ON_ERROR_STOP=1 -c 'CREATE VIEW tenants AS SELECT 1::text AS id'
           docker cp "$file" "$cid":/verify-scc380.sh
-          source_url='postgresql://postgres:fixture-only@localhost:5432/scc_main_qbf1'
+          source_url='postgresql://postgres:fixture-only@localhost:5432/scc_ci_fixture'
           restore_url='postgresql://postgres:fixture-only@localhost:5432/scc380_restore_acceptance'
           nonempty_url='postgresql://postgres:fixture-only@localhost:5432/scc380_nonempty'
+          # Production-named fixture must fail if restore is on the same
+          # PostgreSQL server, even when the target database is empty.
+          # This is disposable CI only, NOT an actual production connection.
+          production_fixture_url='postgresql://postgres:fixture-only@localhost:5432/scc_main_qbf1'
+          if docker exec -e DATABASE_URL="$production_fixture_url" -e RESTORE_DATABASE_URL="$restore_url" -e BACKUP_DIR=/tmp/prod-isolation-negative "$cid" bash /verify-scc380.sh; then
+            echo 'FAIL: production guard accepted a same-server restore target' >&2
+            exit 1
+          fi
+          docker exec -e PGPASSWORD=fixture-only "$cid" psql -h localhost -U postgres -d scc380_restore_acceptance -tAc "SELECT count(*) FROM pg_tables WHERE schemaname='public'" | grep -qx 0
+          echo 'PASS: production same-server restore rejected without data writes'
           # Must reject backup into the source database itself.
-          if docker exec -e DATABASE_URL="$source_url" -e RESTORE_DATABASE_URL="$source_url" -e BACKUP_DIR=/tmp/fixture-backup "$cid" bash /verify-scc380.sh; then
+          if docker exec -e EXPECTED_SOURCE_DB=scc_ci_fixture -e DATABASE_URL="$source_url" -e RESTORE_DATABASE_URL="$source_url" -e BACKUP_DIR=/tmp/fixture-backup "$cid" bash /verify-scc380.sh; then
             echo 'FAIL: script allowed restore onto source' >&2; exit 1
           fi
           # Must reject a nonempty restore database without modifying existing tables.
-          if docker exec -e DATABASE_URL="$source_url" -e RESTORE_DATABASE_URL="$nonempty_url" -e BACKUP_DIR=/tmp/fixture-backup "$cid" bash /verify-scc380.sh; then
+          if docker exec -e EXPECTED_SOURCE_DB=scc_ci_fixture -e DATABASE_URL="$source_url" -e RESTORE_DATABASE_URL="$nonempty_url" -e BACKUP_DIR=/tmp/fixture-backup "$cid" bash /verify-scc380.sh; then
             echo 'FAIL: script allowed restore onto existing data' >&2; exit 1
           fi
           docker exec -e PGPASSWORD=fixture-only "$cid" psql -h localhost -U postgres -d scc380_nonempty -tAc "SELECT count(*) FROM keep_me" >/dev/null
           # An isolated restore failure must not delete the already-created backup.
-          if docker exec -e DATABASE_URL="$source_url" -e RESTORE_DATABASE_URL='postgresql://postgres:fixture-only@localhost:5432/scc380_restore_failure' -e BACKUP_DIR=/tmp/failed-restore-backup "$cid" bash /verify-scc380.sh; then
+          if docker exec -e EXPECTED_SOURCE_DB=scc_ci_fixture -e DATABASE_URL="$source_url" -e RESTORE_DATABASE_URL='postgresql://postgres:fixture-only@localhost:5432/scc380_restore_failure' -e BACKUP_DIR=/tmp/failed-restore-backup "$cid" bash /verify-scc380.sh; then
             echo 'FAIL: conflicting restore unexpectedly succeeded' >&2; exit 1
           fi
           docker exec "$cid" bash -c 'test "$(find /tmp/failed-restore-backup -maxdepth 1 -type f -name "scc380-unverified-*.dump" | wc -l)" -eq 1'
           echo 'PASS: restore failure retained an unverified archive'
-          docker exec -e DATABASE_URL="$source_url" -e RESTORE_DATABASE_URL="$restore_url" -e BACKUP_DIR=/tmp/fixture-backup "$cid" bash /verify-scc380.sh | tee backup-result.log
+          docker exec -e EXPECTED_SOURCE_DB=scc_ci_fixture -e DATABASE_URL="$source_url" -e RESTORE_DATABASE_URL="$restore_url" -e BACKUP_DIR=/tmp/fixture-backup "$cid" bash /verify-scc380.sh | tee backup-result.log
           grep -Fq 'STATUS: PASS - BACKUP_RESTORED_TO_ISOLATED_DATABASE' backup-result.log
           docker exec -e PGPASSWORD=fixture-only "$cid" psql -h localhost -U postgres -d scc380_restore_acceptance -tAc 'SELECT count(*) FROM tenants' | grep -qx 1
           docker exec -e PGPASSWORD=fixture-only "$cid" psql -h localhost -U postgres -d scc380_restore_acceptance -tAc 'SELECT count(*) FROM pos_orders' | grep -qx 1
           echo 'PASS: real isolated PostgreSQL 17 archive and restore verified'
+          # Repeat archive creation into the SAME backup folder, retaining
+          # the original verified archive and its digest without any clobber.
+          initial_checksum="$(docker exec "$cid" bash -c 'set -e; sha256sum /tmp/fixture-backup/scc380-verified-*.dump')"
+          docker exec -e EXPECTED_SOURCE_DB=scc_ci_fixture -e DATABASE_URL="$source_url" \
+            -e RESTORE_DATABASE_URL='postgresql://postgres:fixture-only@localhost:5432/scc380_restore_acceptance_again' \
+            -e BACKUP_DIR=/tmp/fixture-backup "$cid" bash /verify-scc380.sh | tee backup-repeat-result.log
+          grep -Fq 'STATUS: PASS - BACKUP_RESTORED_TO_ISOLATED_DATABASE' backup-repeat-result.log
+          archive_count="$(docker exec "$cid" bash -c 'find /tmp/fixture-backup -maxdepth 1 -type f -name "scc380-verified-*.dump" | wc -l')"
+          test "$archive_count" = '2'
+          docker exec "$cid" bash -c 'set -e; for f in /tmp/fixture-backup/scc380-verified-*.dump; do sha256sum "$f"; done' > backup-digests.txt
+          while read -r checksum filename; do
+            grep -Fxq "$checksum  $filename" backup-digests.txt
+          done <<< "$initial_checksum"
+          docker exec -e PGPASSWORD=fixture-only "$cid" psql -h localhost -U postgres \
+            -d scc380_restore_acceptance_again -tAc 'SELECT count(*) FROM tenants' | grep -qx 1
+          echo 'PASS: repeated backup retained the original verified archive and SHA256'
+
