@@ -174,6 +174,31 @@ jobs:
           DIRECT_URL: postgresql://scc:scc@127.0.0.1:5432/scc_pos_restored
         run: pnpm --filter @scc/api exec tsx --test --test-concurrency=1 test/pos-atomic-db.e2e.spec.ts
 
+      - name: P0 replay migrations and exercise real tenant permissions ON RESTORED database
+        env:
+          CRM_DB_E2E: '1'
+          DATABASE_URL: postgresql://scc:scc@127.0.0.1:5432/scc_pos_restored
+          DIRECT_URL: postgresql://scc:scc@127.0.0.1:5432/scc_pos_restored
+        shell: bash
+        run: |
+          set -euo pipefail
+          # This is a disposable, populated restored CI database. It is NOT
+          # Render production and must never be described as a production restore.
+          test "$(psql "$DIRECT_URL" -XAt -v ON_ERROR_STOP=1 -c 'SELECT current_database()')" = 'scc_pos_restored'
+          test "$(psql "$DIRECT_URL" -XAt -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM tenants WHERE id='pos-restore-fixture'")" = '1'
+          migrations_before="$(psql "$DIRECT_URL" -XAt -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM _prisma_migrations')"
+          pnpm --filter @scc/database exec prisma migrate status --schema prisma/schema.prisma
+          pnpm --filter @scc/database exec prisma migrate deploy --schema prisma/schema.prisma
+          migrations_after="$(psql "$DIRECT_URL" -XAt -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM _prisma_migrations')"
+          test "$migrations_before" -gt 0
+          test "$migrations_before" = "$migrations_after"
+          pnpm --filter @scc/api exec tsx --test --test-concurrency=1 \
+            test/p0-tenant-role-isolation-db.e2e.spec.ts \
+            test/p0-authenticated-tenant-switch-db.e2e.spec.ts
+          test "$(psql "$DIRECT_URL" -XAt -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM tenants WHERE id='pos-restore-fixture'")" = '1'
+          test "$(psql "$DIRECT_URL" -XAt -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM products WHERE id='pos-restore-product'")" = '1'
+          echo 'PASS P0_CI_RESTORED_DB_MIGRATION_REPLAY_AND_TWO_COMPANY_ROLES'
+
       - name: Build API dependency graph
         run: pnpm turbo run build --filter=@scc/api...
 
