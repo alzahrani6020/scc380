@@ -1,0 +1,81 @@
+name: P0 Dashboard Browser Acceptance
+
+on:
+  pull_request:
+    paths:
+      - "apps/web/src/app/dashboard/**"
+      - "apps/web/src/lib/dashboard-data-integrity.ts"
+      - "apps/web/test/dashboard-browser-acceptance.cjs"
+      - "apps/web/test/hr-browser-acceptance.cjs"
+      - ".github/workflows/p0-dashboard-browser-acceptance.yml"
+      - "pnpm-lock.yaml"
+      - "package.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser-acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      # All API calls are intercepted by local Chromium. No production credentials.
+      NEXT_PUBLIC_API_URL: http://127.0.0.1:3102/api
+      TEST_WEB_ORIGIN: http://127.0.0.1:3102
+      SCC_PLAYWRIGHT_PATH: /tmp/scc-browser-test/node_modules/playwright
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 8
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install monorepo dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build tested web application
+        run: pnpm --filter @scc/web build
+      - name: Install isolated Chromium test runner (CI only)
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/scc-browser-test
+          npm install --prefix /tmp/scc-browser-test --no-save playwright@1.56.1
+          /tmp/scc-browser-test/node_modules/.bin/playwright install --with-deps chromium
+      - name: Start local Next.js app and run real browser error/retry/mobile checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm --filter @scc/web exec next start -p 3102 -H 127.0.0.1 > /tmp/scc-p0-browser-next.log 2>&1 &
+          web_pid=$!
+          trap 'kill "$web_pid" 2>/dev/null || true' EXIT
+          ready=0
+          for attempt in $(seq 1 60); do
+            if ! kill -0 "$web_pid" 2>/dev/null; then
+              cat /tmp/scc-p0-browser-next.log
+              echo 'FAIL: local Next.js process exited before acceptance' >&2
+              exit 1
+            fi
+            if curl -fsS -o /dev/null http://127.0.0.1:3102/auth/login; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [[ "$ready" != "1" ]]; then
+            cat /tmp/scc-p0-browser-next.log
+            echo 'FAIL: local Next.js application not ready' >&2
+            exit 1
+          fi
+          node apps/web/test/dashboard-browser-acceptance.cjs
+          node apps/web/test/hr-browser-acceptance.cjs
+          echo 'PASS: isolated Chromium dashboard browser acceptance'
+      - name: Publish visual evidence (synthetic local API ONLY)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SCC380-P0-SIMULATION-dashboard-screens
+          path: apps/web/test/artifacts/SIMULATION-*.png
+          retention-days: 7
+          if-no-files-found: warn

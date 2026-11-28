@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
@@ -14,6 +14,7 @@ interface ModalProps {
 
 export default function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
+  const headingId = useId();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => setMounted(true), []);
@@ -54,10 +55,10 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' }:
         if (e.target === overlayRef.current) onClose();
       }}
     >
-      <div className={`w-full ${sizes[size]} bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden animate-fade-in-up`}>
+      <div role="dialog" aria-modal="true" aria-labelledby={headingId} className={`w-full ${sizes[size]} bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden animate-fade-in-up`}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800">
-          <h3 className="text-lg font-bold text-white">{title}</h3>
-          <button onClick={onClose} className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-400 hover:text-white transition-all">
+          <h3 id={headingId} className="text-lg font-bold text-white">{title}</h3>
+          <button type="button" aria-label="إغلاق النافذة" onClick={onClose} className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-400 hover:text-white transition-all">
             <X className="h-4 w-4" />
           </button>
         </div>
