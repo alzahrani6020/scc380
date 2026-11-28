@@ -1,0 +1,69 @@
+name: SCC380 Backup PostgreSQL 17 Roundtrip
+on:
+  pull_request:
+    paths:
+      - 'ops/backup/**'
+      - '.github/workflows/scc380-backup-roundtrip.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  encrypted-roundtrip:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: scc380_source_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test -d scc380_source_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify PostgreSQL 17 utilities from service image
+        run: |
+          set -euo pipefail
+          cid="$(docker ps --filter ancestor=postgres:17 --format '{{.ID}}' | head -n 1)"
+          test -n "$cid"
+          echo "PG_CONTAINER=$cid" >> "$GITHUB_ENV"
+          docker exec "$cid" pg_dump --version | grep -E '^pg_dump \(PostgreSQL\) 17\.'
+          docker exec "$cid" pg_restore --version | grep -E '^pg_restore \(PostgreSQL\) 17\.'
+          command -v gpg
+      - name: Exercise encrypted dump and isolated restore with synthetic data
+        run: |
+          set -euo pipefail
+          export GNUPGHOME="$(mktemp -d)"
+          work="$(mktemp -d)"
+          trap 'rm -rf "$GNUPGHOME" "$work"' EXIT
+          chmod 700 "$GNUPGHOME"
+          gpg --batch --passphrase '' --quick-generate-key 'SCC380 CI Only <test@example.invalid>' default default never
+          gpg --batch --list-keys 'SCC380 CI Only'
+          docker exec -i "$PG_CONTAINER" psql -X -v ON_ERROR_STOP=1 -U test -d scc380_source_ci <<'SQL'
+          CREATE TABLE sample_tenants (id integer PRIMARY KEY, name text NOT NULL);
+          CREATE TABLE sample_files (id integer PRIMARY KEY, tenant_id integer NOT NULL REFERENCES sample_tenants(id), content bytea NOT NULL);
+          INSERT INTO sample_tenants VALUES (1, 'first'), (2, 'second');
+          INSERT INTO sample_files VALUES (1, 1, decode('00ffaa','hex')), (2, 2, decode('aabbcc','hex'));
+          SQL
+          docker exec "$PG_CONTAINER" pg_dump -U test -d scc380_source_ci --format=custom --no-owner --no-privileges |
+            gpg --batch --yes --trust-model always --recipient 'SCC380 CI Only' --encrypt --output "$work/archive.pgdump.gpg"
+          test -s "$work/archive.pgdump.gpg"
+          (cd "$work" && sha256sum archive.pgdump.gpg > archive.sha256 && sha256sum -c archive.sha256)
+          gpg --batch --decrypt --output "$work/archive.pgdump" "$work/archive.pgdump.gpg"
+          test "$(head -c 5 "$work/archive.pgdump")" = PGDMP
+          docker exec -i "$PG_CONTAINER" pg_restore --list < "$work/archive.pgdump" > "$work/toc.txt"
+          grep -q 'sample_files' "$work/toc.txt"
+          docker exec "$PG_CONTAINER" createdb -U test scc380_restore_acceptance
+          docker exec -i "$PG_CONTAINER" pg_restore -U test --exit-on-error --no-owner --no-privileges --dbname scc380_restore_acceptance < "$work/archive.pgdump"
+          test "$(docker exec "$PG_CONTAINER" psql -XAtq -U test -d scc380_restore_acceptance -c 'SELECT count(*) FROM sample_tenants')" = 2
+          test "$(docker exec "$PG_CONTAINER" psql -XAtq -U test -d scc380_restore_acceptance -c 'SELECT count(*) FROM sample_files')" = 2
+          test "$(docker exec "$PG_CONTAINER" psql -XAtq -U test -d scc380_restore_acceptance -c "SELECT encode(content,'hex') FROM sample_files WHERE id=1")" = 00ffaa
+          test "$(docker exec "$PG_CONTAINER" psql -XAtq -U test -d scc380_restore_acceptance -c "SELECT count(*) FROM pg_constraint WHERE contype='f' AND conrelid='sample_files'::regclass")" = 1
+          echo "PASS: PostgreSQL 17 synthetic encrypted dump, hash, decrypt, restore, rows and FK"
+          echo "NOTE: No S3 or production data involved"
